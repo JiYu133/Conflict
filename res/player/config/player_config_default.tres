@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="PlayerConfig" format=3 uid="uid://b230l7offyda4"]
+
+[ext_resource type="Resource" uid="uid://j88hv5ppormb" path="res://res/player/config/player_model_config_default.tres" id="1_1c417"]
+[ext_resource type="PackedScene" uid="uid://02dsfd82wxvv" path="res://res/models/scenes/ukraine_assault.scn" id="2_ttob6"]
+[ext_resource type="Script" uid="uid://bue10h7xqqc1a" path="res://scripts/Classes/Player/player_config.gd" id="3_fp7ic"]
+
+[resource]
+script = ExtResource("3_fp7ic")
+model_scene = ExtResource("2_ttob6")
+model_config = ExtResource("1_1c417")
+metadata/_custom_type_script = "uid://bue10h7xqqc1a"

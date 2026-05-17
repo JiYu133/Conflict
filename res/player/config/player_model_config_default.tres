@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="ModelLookupConfig" format=3 uid="uid://j88hv5ppormb"]
+
+[ext_resource type="Script" uid="uid://bi5o6tknd7k8g" path="res://scripts/Classes/Player/model_lookup_config.gd" id="1_lyd6x"]
+
+[resource]
+script = ExtResource("1_lyd6x")
+metadata/_custom_type_script = "uid://bi5o6tknd7k8g"

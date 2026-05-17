@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://ba056myf5glkq"]
+
+[ext_resource type="Script" uid="uid://1pc5r0bqgakj" path="res://scripts/Classes/Player/base_player.gd" id="1_veopq"]
+[ext_resource type="Resource" uid="uid://b230l7offyda4" path="res://res/player/config/player_config_default.tres" id="2_disou"]
+
+[node name="Player" type="CharacterBody3D" unique_id=1794306928]
+script = ExtResource("1_veopq")
+player_config = ExtResource("2_disou")
+faction = 1
