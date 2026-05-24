@@ -15,25 +15,52 @@ var _camera_mount: Node3D
 var _model_camera: Camera3D
 var _active_camera: Camera3D
 var _model_manager: PlayerModelManager
-var _config: ModelLookupConfig
+var _model_lookup_config: ModelLookupConfig
+var _player_config: PlayerConfig
+var _player: CharacterBody3D
+
+var _mouse_sensitivity: float # 鼠标灵敏度
+var _vertical_angle: float = 0.0  # 当前垂直角度（弧度）
+var _max_vertical_angle: float # 上下限制（约 80 度）
+
+func _ready() -> void:
+	print("player_camera_controller.gd 已激活")
 
 ## 初始化（由BasePlayer调用）
-func initialize(model_manager: PlayerModelManager, config: ModelLookupConfig) -> void:
+func initialize(player: CharacterBody3D, model_manager: PlayerModelManager, model_lookup_config: ModelLookupConfig, player_config: PlayerConfig) -> void:
 	_model_manager = model_manager
-	_config = config
+	_model_lookup_config = model_lookup_config
+	_player_config = player_config
+	_player = player
 	
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	# 监听模型加载
 	if not _model_manager.model_loaded.is_connected(_on_model_loaded):
 		_model_manager.model_loaded.connect(_on_model_loaded)
-
+	print("摄像机控制器初始化完成")
+	enable_camera()
 ## 启用第一人称
 func enable_camera() -> void:
-	var viewport_camera = get_viewport().get_camera_3d()
-	if not viewport_camera:
-		push_warning("视口中没有激活的摄像机")
-		return
+	# 读取有关视角控制的配置参数
+	_mouse_sensitivity = _player_config.mouse_sensitivity
+	_max_vertical_angle = _player_config.max_vertical_angle 
 	
+	var seedCamera = Camera3D.new()
+	if seedCamera :
+		print("种子相机创建完毕")
+		seedCamera.name = "SeedCamera"
+		seedCamera.current = true
+		_player.add_child(seedCamera)
+	
+	print("开始激活第一人称")
+	var viewport = get_viewport()
+	if not viewport:
+		push_warning("没有找到有效视口")
+		return
+	else:
+		print("已找到视口")
 	# 优先级：挂载点 > 模型摄像机 > 骨骼创建
+	var viewport_camera = viewport.get_camera_3d()
 	if _camera_mount:
 		_attach_to_mount(viewport_camera, _camera_mount)
 	elif _model_camera:
@@ -56,19 +83,18 @@ func _find_camera_nodes() -> void:
 	if not _model_manager.model_node:
 		return
 	
-	# 查找挂载点
-	_camera_mount = _model_manager.find_node_by_names(_config.camera_mount_names, "Node3D")
+	_camera_mount = _model_manager.find_node_by_names(_model_lookup_config.camera_mount_names, "Node3D")
 	
-	# 查找模型摄像机
 	var cameras = _model_manager.model_node.find_children("*", "Camera3D", true, false)
 	_model_camera = cameras[0] if cameras.size() > 0 else null
 	
 	if _camera_mount:
 		print("找到摄像机挂载点: ", _camera_mount.name)
-	elif _model_camera:
-		print("找到模型摄像机: ", _model_camera.name)
+		var cam = get_viewport().get_camera_3d()
+		if cam:
+			_attach_to_mount(cam, _camera_mount)
 	else:
-		print("未找到任何摄像机节点，将尝试从骨骼创建")
+		print("未找到摄像机挂载点")
 
 func _attach_to_mount(camera: Camera3D, mount: Node3D) -> void:
 	# 重新挂载
@@ -91,7 +117,7 @@ func _create_mount_from_skeleton(camera: Camera3D) -> void:
 		return
 	
 	# 查找头部骨骼
-	for bone_name in _config.head_bone_names:
+	for bone_name in _model_lookup_config.head_bone_names:
 		var bone_idx = skeleton.find_bone(bone_name)
 		if bone_idx != -1:
 			# 创建挂载点
@@ -109,3 +135,26 @@ func _create_mount_from_skeleton(camera: Camera3D) -> void:
 			return
 	
 	push_warning("未找到合适的头部骨骼")
+
+## 视角控制
+
+func _input(event: InputEvent) -> void:
+	var active_camera = get_viewport().get_camera_3d()
+	if not active_camera:
+		return
+	
+	# 只处理鼠标移动
+	if event is not InputEventMouseMotion:
+		return
+	
+	# 水平旋转：旋转 BasePlayer
+	var player = get_parent()  # CameraController 的父节点是 BasePlayer
+	if player and player is CharacterBody3D:
+		player.rotate_y(-event.relative.x * _mouse_sensitivity)
+	
+	# 垂直旋转：旋转摄像机本身
+	_vertical_angle -= event.relative.y * _mouse_sensitivity
+	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
+	
+	if active_camera:
+		active_camera.rotation.x = _vertical_angle	

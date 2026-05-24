@@ -21,6 +21,9 @@ var _skeleton: Skeleton3D
 var _animator: AnimationPlayer
 var _config: ModelLookupConfig
 
+func _ready() -> void:
+	print("player_model_manager.gd 已激活")
+
 ## 加载模型
 func load_model(scene: PackedScene, config: ModelLookupConfig = null) -> void:
 	if not scene:
@@ -39,16 +42,23 @@ func load_model(scene: PackedScene, config: ModelLookupConfig = null) -> void:
 		return
 	
 	# 添加到场景树
-	if owner:
-		owner.add_child(_model_node)
-	else:
-		add_child(_model_node)
+	add_child(_model_node)
+	
+	# 强制取消 top_level
+	_model_node.top_level = false
+	_model_node.transform = Transform3D.IDENTITY
 	
 	# 查找关键组件
 	_find_components()
 	
 	model_loaded.emit(_model_node)
 	print("模型加载完成: ", _model_node.name)
+	
+	# 延迟验证（仅调试用，正式版删除）
+	await get_tree().process_frame
+	print("模型全局位置: ", _model_node.global_position)
+	print("模型父节点: ", _model_node.get_parent().name)
+
 
 ## 卸载模型
 func unload_model() -> void:
