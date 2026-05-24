@@ -1,0 +1,119 @@
+[gd_scene format=3 uid="uid://fxy7esyowvpg"]
+
+[ext_resource type="Script" uid="uid://1pc5r0bqgakj" path="res://Classes/Player/base_player.gd" id="1_jkswc"]
+[ext_resource type="Script" uid="uid://bue10h7xqqc1a" path="res://Classes/Player/player_config.gd" id="2_jkswc"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_xrl83"]
+sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+ground_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+
+[sub_resource type="Sky" id="Sky_0xmdt"]
+sky_material = SubResource("ProceduralSkyMaterial_xrl83")
+
+[sub_resource type="Environment" id="Environment_jkswc"]
+background_mode = 2
+sky = SubResource("Sky_0xmdt")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_3ysk3"]
+size = Vector2(100, 100)
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_muw3u"]
+data = PackedVector3Array(50, 0, 50, -50, 0, 50, 50, 0, -50, -50, 0, 50, -50, 0, -50, 50, 0, -50)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_jkswc"]
+albedo_color = Color(0.23529412, 1, 1, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_vlrgw"]
+material = SubResource("StandardMaterial3D_jkswc")
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_t0rhc"]
+data = PackedVector3Array(-0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5, 0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, 0.5, 0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5, -0.5)
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_n2e6q"]
+
+[sub_resource type="Resource" id="Resource_cgqpe"]
+script = ExtResource("2_jkswc")
+jump_force = 5.0
+metadata/_custom_type_script = "uid://bue10h7xqqc1a"
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_jkswc"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_jkswc"]
+height = 1.9353027
+
+[node name="TestMap" type="Node3D" unique_id=691901148]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1233258789]
+environment = SubResource("Environment_jkswc")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1139026747]
+transform = Transform3D(-0.8660254, -0.43301278, 0.25, 0, 0.49999997, 0.86602545, -0.50000006, 0.75, -0.43301266, 0, 0, 0)
+shadow_enabled = true
+
+[node name="Ground" type="StaticBody3D" parent="." unique_id=2019596655]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=604271978]
+mesh = SubResource("PlaneMesh_3ysk3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1471353796]
+shape = SubResource("ConcavePolygonShape3D_muw3u")
+
+[node name="Box" type="StaticBody3D" parent="." unique_id=874188616]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Box" unique_id=458561630]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7808058, 0.071055055, 0)
+mesh = SubResource("BoxMesh_vlrgw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Box" unique_id=1056066406]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7808058, 0.071055055, 0)
+shape = SubResource("ConcavePolygonShape3D_t0rhc")
+
+[node name="Box2" type="StaticBody3D" parent="." unique_id=169106881]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.3086088, 0.17155021, -0.07871699)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Box2" unique_id=975311904]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7808058, 0.071055055, 0)
+mesh = SubResource("BoxMesh_vlrgw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Box2" unique_id=920971881]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7808058, 0.071055055, 0)
+shape = SubResource("ConcavePolygonShape3D_t0rhc")
+
+[node name="Box3" type="StaticBody3D" parent="." unique_id=108838709]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.40900695, 1.5912296)
+physics_material_override = SubResource("PhysicsMaterial_n2e6q")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Box3" unique_id=939567046]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4083545, 0.6456028, 0)
+mesh = SubResource("BoxMesh_vlrgw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Box3" unique_id=816806452]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7808058, 0.071055055, 0)
+shape = SubResource("ConcavePolygonShape3D_t0rhc")
+
+[node name="Box4" type="StaticBody3D" parent="." unique_id=81597899]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5226257, 4.2013493)
+physics_material_override = SubResource("PhysicsMaterial_n2e6q")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Box4" unique_id=1725791051]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4083545, 0.6456028, 0)
+mesh = SubResource("BoxMesh_vlrgw")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Box4" unique_id=1217564017]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7808058, 0.071055055, 0)
+shape = SubResource("ConcavePolygonShape3D_t0rhc")
+
+[node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1095234307]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.097422, -2.4987323)
+script = ExtResource("1_jkswc")
+player_config = SubResource("Resource_cgqpe")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CharacterBody3D" unique_id=15448512]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.35530925, 0)
+mesh = SubResource("CapsuleMesh_jkswc")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CharacterBody3D" unique_id=357584811]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.31486368, 0)
+shape = SubResource("CapsuleShape3D_jkswc")
