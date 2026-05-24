@@ -1,0 +1,7 @@
+res://res/models/scenes/player_model.tscn
+res://Classes/Player/base_player.gd
+res://Classes/Player/player_camera_controller.gd
+res://Classes/Player/player_model_manager.gd
+res://Classes/Player/player_movement_controller.gd
+res://res/map/TestMap.tscn
+res://Classes/Player/player_config.gd

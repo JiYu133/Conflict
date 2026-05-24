@@ -5,10 +5,11 @@ extends Resource
 
 ## 移动参数
 @export_group("Movement")
-@export var walk_speed: float = 5.0
-@export var run_speed: float = 8.0
-@export var jump_force: float = 10.0
-@export var gravity: float = 9.8
+@export var walk_speed: float = 2.0 ## 行走速度
+@export var run_speed: float = 4.0 ## 奔跑速度
+@export var jump_force: float = 2.0 ## 跳跃时垂直方向的力
+@export var gravity: float = 9.8 ## 重力加速度
+@export var deceleration_multiplier: float = 20.0 ## 减速系数 (决定玩家减速的惯性大小)
 
 ## 模型配置
 @export_group("Model")
@@ -18,4 +19,5 @@ extends Resource
 ## 摄像机配置
 @export_group("Camera")
 @export var fov: float = 90.0
-@export var mouse_sensitivity: float = 0.1
+@export var mouse_sensitivity: float = 0.003 ## 鼠标灵敏度
+@export var max_vertical_angle: float = 1.4 ## 上下限制（约 80 度）

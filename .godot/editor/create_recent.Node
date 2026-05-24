@@ -1,9 +1,10 @@
-Camera3D
+MeshInstance3D
+Marker3D
 CollisionShape3D
 CharacterBody3D
+Camera3D
+StaticBody3D
 Area3D
 RayCast3D
 AnimationPlayer
-MeshInstance3D
-StaticBody3D
 Skeleton3D
