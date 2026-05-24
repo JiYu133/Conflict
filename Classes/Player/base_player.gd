@@ -4,7 +4,7 @@ extends CharacterBody3D
 # 在定义玩家对象时绑定给玩家的脚本 同时也要绑定玩家配置文件
 
 # ============================================
-# 导出变量（Mod制作者可配置）
+# 导出变量
 # ============================================
 
 @export_group("Configuration")
@@ -37,17 +37,14 @@ signal died
 signal revived
 signal faction_changed(new_faction: Faction)
 
-# ============================================
 # 玩家阵营枚举
-# ============================================
 
-enum Faction { RU, UA, PMC, None } 
+enum Faction { RU, UA, None } 
 
-# ============================================
 # 生命周期
-# ============================================
 
 func _ready() -> void:
+	print("base_player.gd 已激活")
 	_initialize_subsystems()
 	
 	# 加载配置中的模型
@@ -55,34 +52,20 @@ func _ready() -> void:
 		model_manager.load_model(
 			player_config.model_scene,
 			player_config.model_config
-		)
+		)	
 
-# 在这里处理玩家的移动
-func _physics_process(delta: float) -> void:
-	if not is_alive or not controllable:
-		return
-	
-	# TODO: 获取玩家输入并处理
-	
-	# 处理移动
-	
-	# TODO: 处理脚部IK
-	# foot_ik_controller.process_ik(delta)
-
-# ============================================
 # 子系统初始化
-# ============================================
 
 func _initialize_subsystems() -> void:
 	# 创建子系统
 	model_manager = _create_subsystem(PlayerModelManager.new(), "ModelManager")
-	camera_controller = _create_subsystem(PlayerCameraController.new(), "CameraController")
+	camera_controller = _create_subsystem(PlayerCameraController.new(),"CameraController")
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	
 	# 初始化子系统
-	camera_controller.initialize(model_manager, player_config.model_config if player_config else null)
+	camera_controller.initialize(self, model_manager, player_config.model_config if player_config else null, player_config)
 	movement_controller.initialize(self, player_config)
 	foot_ik_controller.initialize(model_manager, player_config.model_config if player_config else null)
 	
@@ -97,6 +80,7 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 func _connect_signals() -> void:
 	# 模型加载完成后初始化依赖骨骼的子系统
 	model_manager.model_loaded.connect(_on_model_loaded)
+	print("信号已连接")
 
 func _on_model_loaded(_model: Node3D) -> void:
 	# 初始化布娃娃系统（需要骨骼）

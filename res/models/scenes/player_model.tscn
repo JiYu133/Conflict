@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://t8q1u3kyd0ib"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_jo7y0"]
+
+[node name="PlayerModel" type="CharacterBody3D" unique_id=1035907600]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=353656722]
+mesh = SubResource("CapsuleMesh_jo7y0")
+
+[node name="Camera" type="Marker3D" parent="." unique_id=355084730]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.61850643, 0)
