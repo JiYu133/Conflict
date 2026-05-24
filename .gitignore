@@ -1,0 +1,15 @@
+*.import
+*.translation
+.godot/uid_cache.bin
+
+export/
+*.zip
+*.pck
+*.apk
+*.aab
+
+user/
+
+Thumbs.db
+*.tmp
+*.log

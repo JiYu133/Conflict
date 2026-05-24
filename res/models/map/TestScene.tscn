@@ -1,0 +1,47 @@
+[gd_scene format=3 uid="uid://cyaa15afyinlt"]
+
+[ext_resource type="PackedScene" uid="uid://ba056myf5glkq" path="res://classes/player/player.tscn" id="1_e2vuf"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_uu528"]
+sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+ground_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+
+[sub_resource type="Sky" id="Sky_e2vuf"]
+sky_material = SubResource("ProceduralSkyMaterial_uu528")
+
+[sub_resource type="Environment" id="Environment_3qri7"]
+background_mode = 2
+sky = SubResource("Sky_e2vuf")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_8kf8h"]
+
+[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_bu81e"]
+data = PackedVector3Array(1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, -1, 0, -1, 1, 0, -1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_gm6fs"]
+
+[node name="TestScene" type="Node3D" unique_id=1137812958]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1371364746]
+environment = SubResource("Environment_3qri7")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1541666205]
+transform = Transform3D(-0.8660254, -0.43301278, 0.25, 0, 0.49999997, 0.86602545, -0.50000006, 0.75, -0.43301266, 0, 0, 0)
+shadow_enabled = true
+
+[node name="Ground" type="StaticBody3D" parent="." unique_id=457920114]
+physics_material_override = SubResource("PhysicsMaterial_8kf8h")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=423074441]
+shape = SubResource("ConcavePolygonShape3D_bu81e")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=2044476335]
+mesh = SubResource("PlaneMesh_gm6fs")
+
+[node name="Player" parent="." unique_id=224250971 instance=ExtResource("1_e2vuf")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0690084, 0)
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1202935199]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.17417967, 0.5209892, 1.097548)

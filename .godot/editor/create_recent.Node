@@ -1,0 +1,9 @@
+Camera3D
+CollisionShape3D
+CharacterBody3D
+Area3D
+RayCast3D
+AnimationPlayer
+MeshInstance3D
+StaticBody3D
+Skeleton3D
