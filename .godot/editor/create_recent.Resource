@@ -1,2 +1,2 @@
-ModelLookupConfig
 PlayerConfig
+ModelLookupConfig

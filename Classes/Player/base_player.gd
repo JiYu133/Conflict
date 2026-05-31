@@ -50,13 +50,14 @@ func _ready() -> void:
 	# 加载配置中的模型
 	if player_config and player_config.model_scene:
 		model_manager.load_model(
-			player_config.model_scene,
-			player_config.model_config
+			player_config
 		)	
+	
 
 # 子系统初始化
 
 func _initialize_subsystems() -> void:
+	print("初始化玩家类子系统")
 	# 创建子系统
 	model_manager = _create_subsystem(PlayerModelManager.new(), "ModelManager")
 	camera_controller = _create_subsystem(PlayerCameraController.new(),"CameraController")
@@ -65,9 +66,23 @@ func _initialize_subsystems() -> void:
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	
 	# 初始化子系统
-	camera_controller.initialize(self, model_manager, player_config.model_config if player_config else null, player_config)
-	movement_controller.initialize(self, player_config)
-	foot_ik_controller.initialize(model_manager, player_config.model_config if player_config else null)
+	
+	camera_controller.initialize(
+		self, 
+		model_manager, 
+		player_config.model_config if player_config else null, 
+		player_config
+		)
+		
+	movement_controller.initialize(
+		self, 
+		player_config
+		)
+		
+	foot_ik_controller.initialize(
+		model_manager, 
+		player_config.model_config if player_config else null
+		)
 	
 	# 连接信号
 	_connect_signals()
@@ -78,19 +93,24 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 	return subsystem
 
 func _connect_signals() -> void:
-	# 模型加载完成后初始化依赖骨骼的子系统
 	model_manager.model_loaded.connect(_on_model_loaded)
-	print("信号已连接")
-
+	print("ModelManager已连接信号")
+		
 func _on_model_loaded(_model: Node3D) -> void:
+	
 	# 初始化布娃娃系统（需要骨骼）
-	ragdoll_system.initialize(
-		model_manager.skeleton,
-		model_manager.animator
-	)
+	#ragdoll_system.initialize(
+	#	model_manager.skeleton,
+	#	model_manager.animator
+	#)
 	
 	# 启用第一人称摄像机
-	camera_controller.enable_camera()
+	# 将模型从 ModelManager 移到自己身下，确保变换跟随
+	if _model.get_parent():
+		_model.get_parent().remove_child(_model)
+	add_child(_model)
+	
+	camera_controller._find_camera_nodes()
 
 # ============================================
 # 公共API
@@ -127,11 +147,5 @@ func set_controllable(enabled: bool) -> void:
 func reload_model() -> void:
 	if player_config and player_config.model_scene:
 		model_manager.load_model(
-			player_config.model_scene,
-			player_config.model_config
+			player_config
 		)
-
-func change_model(new_scene: PackedScene) -> void:
-	if player_config:
-		player_config.model_scene = new_scene
-	model_manager.load_model(new_scene, player_config.model_config if player_config else null)

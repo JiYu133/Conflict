@@ -7,15 +7,20 @@ extends Resource
 @export_group("Movement")
 @export var walk_speed: float = 2.0 ## 行走速度
 @export var run_speed: float = 4.0 ## 奔跑速度
-@export var jump_force: float = 2.0 ## 跳跃时垂直方向的力
+@export var jump_force: float = 0.0 ## 跳跃时垂直方向的力
 @export var gravity: float = 9.8 ## 重力加速度
 @export var deceleration_multiplier: float = 20.0 ## 减速系数 (决定玩家减速的惯性大小)
+@export var acceleration: float = 30.0          # 地面加速度（米/秒²）
+@export var deceleration: float = 20.0          # 地面减速度
+@export var air_acceleration: float = 10.0      # 空中加速度（通常较低）
+@export var air_deceleration: float = 5.0       # 空中减速度
 
 ## 模型配置
 @export_group("Model")
 @export var model_scene: PackedScene
 @export var model_config: ModelLookupConfig
-
+@export var collision_shape_height: float = 1.8
+@export var collision_shape_radius: float = 0.4
 ## 摄像机配置
 @export_group("Camera")
 @export var fov: float = 90.0

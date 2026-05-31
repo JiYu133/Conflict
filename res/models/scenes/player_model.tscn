@@ -2,10 +2,21 @@
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_jo7y0"]
 
-[node name="PlayerModel" type="CharacterBody3D" unique_id=1035907600]
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_jo7y0"]
+albedo_color = Color(0.31764707, 1, 1, 1)
+
+[sub_resource type="TextMesh" id="TextMesh_jepu8"]
+material = SubResource("StandardMaterial3D_jo7y0")
+text = "正面"
+
+[node name="PlayerModel" type="Node3D" unique_id=1113221465]
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=353656722]
 mesh = SubResource("CapsuleMesh_jo7y0")
 
-[node name="Camera" type="Marker3D" parent="." unique_id=355084730]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.61850643, 0)
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=1452339245]
+transform = Transform3D(1, 0, 1.7484555e-07, 0, 1, 0, -1.7484555e-07, 0, 1, -0.024170756, 0.21956053, -0.50028884)
+mesh = SubResource("TextMesh_jepu8")
+
+[node name="Camera" type="Marker3D" parent="." unique_id=312178935]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.41737795, -0.49316388)
