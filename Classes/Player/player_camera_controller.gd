@@ -33,24 +33,23 @@ func initialize(player: CharacterBody3D, model_manager: PlayerModelManager, mode
 	_player_config = player_config
 	_player = player
 	
+	var seed = Camera3D.new() # 创建待会用于挂载的摄像机
+	if seed :
+		print("seedCamera创建完毕，初始化")
+		seed.name = "SeedCamera"
+		seed.current = true
+		_player.add_child(seed)
+	
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	# 监听模型加载
-	if not _model_manager.model_loaded.is_connected(_on_model_loaded):
-		_model_manager.model_loaded.connect(_on_model_loaded)
-	print("摄像机控制器初始化完成")
+	print("CameraController 初始化完成")
 	enable_camera()
 ## 启用第一人称
 func enable_camera() -> void:
+	print("开始启用摄像机")
 	# 读取有关视角控制的配置参数
 	_mouse_sensitivity = _player_config.mouse_sensitivity
 	_max_vertical_angle = _player_config.max_vertical_angle 
-	
-	var seedCamera = Camera3D.new()
-	if seedCamera :
-		print("种子相机创建完毕")
-		seedCamera.name = "SeedCamera"
-		seedCamera.current = true
-		_player.add_child(seedCamera)
 	
 	print("开始激活第一人称")
 	var viewport = get_viewport()
@@ -62,26 +61,42 @@ func enable_camera() -> void:
 	# 优先级：挂载点 > 模型摄像机 > 骨骼创建
 	var viewport_camera = viewport.get_camera_3d()
 	if _camera_mount:
+		print("摄像机挂载点已找到")
 		_attach_to_mount(viewport_camera, _camera_mount)
 	elif _model_camera:
+		print("未找到摄像机挂载点 开始启用模型自带摄像机")
 		_model_camera.current = true
 		_active_camera = _model_camera
 	else:
+		print("尝试从骨骼创建摄像机")
 		_create_mount_from_skeleton(viewport_camera)
 	
 	camera_ready.emit(_active_camera)
 
 
-func _process(delta: float) -> void:
-	pass  # 以后实现鼠标视角控制
-
-## 私有方法
-func _on_model_loaded(_model: Node3D) -> void:
+func _on_model_loaded() -> void:
+	print("开始查找模型摄像机")
 	_find_camera_nodes()
 
 func _find_camera_nodes() -> void:
+	print("开始寻找摄像机节点")
 	if not _model_manager.model_node:
+		print("模型节模型节点不存在，无法查找摄像机挂载点")
 		return
+	print("开始在模型中查找 CameraMount...")
+	print("模型根节点名称: ", _model_manager.model_node.name)
+	
+	# 直接递归查找
+	_camera_mount = _find_node_recursive(_model_manager.model_node, "CameraMount")
+	
+	if _camera_mount:
+		print("找到摄像机挂载点: ", _camera_mount.name)
+		var cam = get_viewport().get_camera_3d()
+		if cam:
+			_attach_to_mount(cam, _camera_mount)
+	else:
+		print("未找到 CameraMount，打印模型结构：")
+		_print_node_tree(_model_manager.model_node, "")	
 	
 	_camera_mount = _model_manager.find_node_by_names(_model_lookup_config.camera_mount_names, "Node3D")
 	
@@ -103,12 +118,17 @@ func _attach_to_mount(camera: Camera3D, mount: Node3D) -> void:
 	mount.add_child(camera)
 	
 	# 重置相对位置
-	camera.position = Vector3.ZERO
+	#camera.position = Vector3.ZERO
 	camera.rotation = Vector3.ZERO
 	camera.current = true
 	_active_camera = camera
 	
 	print("摄像机已挂载到: ", mount.name)
+	print("挂载点的父节点链: ")
+	var p = mount
+	while p:
+		print("  ", p.name, " (", p.get_class(), ")")
+		p = p.get_parent()
 
 func _create_mount_from_skeleton(camera: Camera3D) -> void:
 	var skeleton = _model_manager.skeleton
@@ -151,6 +171,10 @@ func _input(event: InputEvent) -> void:
 	var player = get_parent()  # CameraController 的父节点是 BasePlayer
 	if player and player is CharacterBody3D:
 		player.rotate_y(-event.relative.x * _mouse_sensitivity)
+
+	else:
+		print("玩家不存在或类型错误！")
+		
 	
 	# 垂直旋转：旋转摄像机本身
 	_vertical_angle -= event.relative.y * _mouse_sensitivity
@@ -158,3 +182,19 @@ func _input(event: InputEvent) -> void:
 	
 	if active_camera:
 		active_camera.rotation.x = _vertical_angle	
+		
+		
+func _find_node_recursive(parent: Node, target_name: String) -> Node:
+	for child in parent.get_children():
+		if child.name == target_name:
+			return child
+		var found = _find_node_recursive(child, target_name)
+		if found:
+			return found
+	return null
+	
+	
+func _print_node_tree(node: Node, indent: String) -> void:
+	print(indent + node.name + " (" + node.get_class() + ")")
+	for child in node.get_children():
+		_print_node_tree(child, indent + "  ")
