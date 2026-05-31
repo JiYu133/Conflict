@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://dgyyrnrhldk21"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_ogr2p"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ogr2p"]
+
+[node name="SimpleTest" type="Node3D" unique_id=34950912]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=776043881]
+mesh = SubResource("BoxMesh_ogr2p")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=899192172]
+shape = SubResource("BoxShape3D_ogr2p")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1188189339]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1.4265418)
