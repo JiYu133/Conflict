@@ -1,46 +1,59 @@
-# Sketchfab Plugin Redone For Godot 4.0
-**Import models from Sketchfab to Godot (v4.0+)**
+**Conflict（冲突）
+以俄乌冲突为背景的拟真战术FPS游戏，追求真实的装备与战斗体验。
 
-* [Installation](#Installation)
-* [Login](#Login)
-* [Import a model from Sketchfab](#import-a-model-from-sketchfab)
-* [Report an issue](#report-an-issue)
+*项目简介
+《Conflict》是一款注重拟真体验的第一人称射击游戏，在真实性与游戏性之间优先选择前者。玩家扮演小队成员，在模块化战场中完成战术任务，体验现代战争的残酷与抉择。
 
-## Installation
+*当前开发阶段
+项目架构设计
 
-Download the **sketchfab.zip** archive attached to the [latest release](https://github.com/StrayEddy/sketchfab-godot-plugin/releases/latest) of the plugin, and unzip it.
+> 玩家基础类（组件化系统）
 
-If you already have some plugins installed in your project, you will only need to copy the extracted directory to the `addons` directory (which you will need to create first if you did not use plugins previously).
+> 模型加载与摄像机控制
 
-You should therefore end up with this structure: `PROJECT_DIRECTORY/addons/sketchfab/[Zip content]`
+> 布娃娃物理系统
 
-Please note that if Godot is running, you might need to quit the editor and reopen it before loading the plugin.
+> 基础移动与惯性
 
-Finally, you need to activate the plugin by going in the project settings (`Project -> Project settings`), and enabling the "Sketchfab" plugin in the Plugins tab.
+> 武器系统
 
-The Sketchfab plugin should now be available in your project's tabs:
+> IK动作系统
 
-![godot1](https://user-images.githubusercontent.com/4066133/37650349-fabdf0e8-2c34-11e8-8c89-f7ecf5210472.JPG)
+> 医疗与伤害系统
 
-## Login
+环境要求
+Godot Engine 4.x（Steam最新稳定版）
 
-This plugin relies on the [Sketchfab download API](https://sketchfab.com/developers/download-api): a Sketchfab account is therefore **REQUIRED** to be able to download and import content from Sketchfab.
+*架构特点
+组件化设计：玩家功能通过添加/移除组件实现，易于扩展和维护。
 
-If you don't have one already, you can create it [here](https://sketchfab.com/signup).
+配置驱动：角色属性、模型节点查找规则均通过配置文件控制。
 
-Use your account email and password to login through the plugin interface, and you should now be able to import models from Sketchfab !
+Mod友好：支持自定义角色模型和配置，提供制作指南。
 
-## Import a model from Sketchfab
+混合真实第一人称：摄像机绑定头部，非瞄准时自由晃动，瞄准时通过IK保持精准。
 
-Select the "Sketchfab" tab to open the browser window, and start browsing the library of 300k+ free models available on Sketchfab.
+*开发规范
+**命名约定
+类名：PascalCase（如 BasePlayer）
 
-![godot2](https://user-images.githubusercontent.com/4066133/37650422-2e4c975c-2c35-11e8-8bf0-5cb6f3c972b7.JPG)
+变量与方法：snake_case（如 model_node、load_model）
 
-To download and import an asset, click on a model card to display the corresponding model page, and then click on "Download" to import the selected model into Godot.
-![godot](https://user-images.githubusercontent.com/4066133/39196488-8db285ee-47e2-11e8-850e-82e1712d9bc9.jpg)
+常量：UPPER_CASE（如 MAX_SPEED）
 
-## Report an issue
+私有成员：_ 前缀（如 _skeleton）
 
-If you feel like you've encountered a bug, or that the plugin lacks an important feature, you can [create an issue](https://github.com/StrayEddy/sketchfab-godot-plugin/issues/new) in this repository.
+**节点约定
+模型场景中建议包含以下节点以获得最佳兼容性：
 
-If you report a bug, please try to append any log from Godot or additional information (Godot version, Operating System...) in your message.
+Skeleton3D：角色骨骼
+
+AnimationPlayer：动画播放器
+
+CameraMount：第一人称摄像机挂载点（Marker3D）
+
+*参与贡献
+欢迎提交Issue和Pull Request参与项目开发。
+
+*许可证
+本项目基于 MIT License 开源
