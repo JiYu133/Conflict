@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="WeaponConfig" format=3 uid="uid://du4wf2wpd2j8k"]
+
+[ext_resource type="Script" uid="uid://cumd76b2e0fn" path="res://Classes/Weapon/weapon_config.gd" id="1_ljmqp"]
+[ext_resource type="PackedScene" uid="uid://dtfj56fulo2tj" path="res://res/models/weapons/AK74M.tscn" id="2_crwit"]
+
+[resource]
+script = ExtResource("1_ljmqp")
+weapon_name = "AK74M"
+weapon_scene = ExtResource("2_crwit")
+metadata/_custom_type_script = "uid://cumd76b2e0fn"
