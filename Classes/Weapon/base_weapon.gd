@@ -117,7 +117,10 @@ func _connect_internal_signals() -> void:
 ## 初始化枪械
 func initialize(cfg: WeaponConfig) -> void:
 	config = cfg
+	_initialize_components()
 	_setup_from_config()
+	_connect_internal_signals()
+	
 ## 按下扳机
 func press_trigger() -> void:
 	trigger_held = true

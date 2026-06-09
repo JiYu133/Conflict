@@ -1,4 +1,3 @@
-*.import
 *.translation
 .godot/uid_cache.bin
 
@@ -13,3 +12,8 @@ user/
 Thumbs.db
 *.tmp
 *.log
+
+
+.godot/
+
+*.import
