@@ -19,6 +19,7 @@ func equip_weapon(weapon: BaseWeapon) -> void:
 		weapon.rotation = Vector3.ZERO
 	weapon_changed.emit(current_weapon)
 
+## 设置武器挂载点(从调用处获取)
 func set_mount(mount: Node3D) -> void:
 	weapon_mount = mount
 
@@ -47,7 +48,7 @@ func load_and_equip(config: WeaponConfig) -> void:
 	var weapon_scene = config.weapon_scene
 	var weapon = weapon_scene.instantiate() as BaseWeapon
 	if not weapon:
-		push_error("武器场景的根节点不是 BaseWeapon")
+		push_error("武器场景的根节点应为BaseWeapon")
 		return
 	weapon.initialize(config)
 	equip_weapon(weapon)	

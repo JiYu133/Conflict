@@ -1,10 +1,6 @@
-res://Classes/Weapon/base_weapon.gd
+res://res/models/weapons/AK74M.tscn
 res://Classes/Weapon/weapon_manager.gd
 res://res/map/TestMap.tscn
+res://Classes/Weapon/base_weapon.gd
 res://Classes/Player/base_player.gd
-res://res/player/config/weapons/ak74m_config.tres
-res://res/player/config/player/player_config_normal.tres
 res://Classes/Player/player_camera_controller.gd
-res://Classes/Player/player_model_manager.gd
-res://res/models/weapons/AK74M.tscn
-res://res/models/scenes/player/player_model.tscn
