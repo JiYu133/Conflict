@@ -3,9 +3,9 @@ extends CharacterBody3D
 
 # 在定义玩家对象时绑定给玩家的脚本 同时也要绑定玩家配置文件
 
-# ============================================
+
 # 导出变量
-# ============================================
+
 
 @export_group("Configuration")
 @export var player_config: PlayerConfig
@@ -19,19 +19,18 @@ extends CharacterBody3D
 
 
 
-# ============================================
+
 # 子系统引用
-# ============================================
 
 var model_manager: PlayerModelManager
 var camera_controller: PlayerCameraController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
 var foot_ik_controller: FootIKController
+var weapon_manager: WeaponManager
 
-# ============================================
 # 信号
-# ============================================
+
 
 signal died
 signal revived
@@ -64,6 +63,7 @@ func _initialize_subsystems() -> void:
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
+	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
 	
 	# 初始化子系统
 	
@@ -83,7 +83,7 @@ func _initialize_subsystems() -> void:
 		model_manager, 
 		player_config.model_config if player_config else null
 		)
-	
+	weapon_manager.load_and_equip(player_config.starting_weapon)	
 	# 连接信号
 	_connect_signals()
 
@@ -111,10 +111,20 @@ func _on_model_loaded(_model: Node3D) -> void:
 	add_child(_model)
 	
 	camera_controller._find_camera_nodes()
+	
+	var mount = model_manager.find_node_by_names(["WeaponMount", "RightHand"], "Node3D")
+	if mount:
+		weapon_manager.set_mount(mount)
+		print("武器挂载点已设置: ", mount.name)
+	else:
+		push_error("未找到武器挂载点，武器将无法显示")
 
-# ============================================
+	if player_config and player_config.starting_weapon:
+		print("test")
+		weapon_manager.load_and_equip(player_config.starting_weapon)
+
 # 公共API
-# ============================================
+
 
 func die() -> void:
 	if not is_alive:
@@ -140,9 +150,9 @@ func set_controllable(enabled: bool) -> void:
 	controllable = enabled
 	print("玩家控制: ", "启用" if enabled else "禁用")
 
-# ============================================
+
 # Mod热重载
-# ============================================
+
 
 func reload_model() -> void:
 	if player_config and player_config.model_scene:
