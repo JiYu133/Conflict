@@ -83,7 +83,6 @@ func _initialize_subsystems() -> void:
 		model_manager, 
 		player_config.model_config if player_config else null
 		)
-	weapon_manager.load_and_equip(player_config.starting_weapon)	
 	# 连接信号
 	_connect_signals()
 
@@ -106,6 +105,7 @@ func _on_model_loaded(_model: Node3D) -> void:
 	
 	# 启用第一人称摄像机
 	# 将模型从 ModelManager 移到自己身下，确保变换跟随
+	camera_controller.enable_camera()
 	if _model.get_parent():
 		_model.get_parent().remove_child(_model)
 	add_child(_model)
