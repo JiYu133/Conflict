@@ -1,0 +1,36 @@
+[gd_scene format=3 uid="uid://dtfj56fulo2tj"]
+
+[ext_resource type="Script" uid="uid://e8pwaqfddary" path="res://Classes/Weapon/base_weapon.gd" id="1_7qnfq"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_5tx2s"]
+size = Vector3(0.1, 0.1, 2)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_7qnfq"]
+radius = 0.05
+height = 0.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_7qnfq"]
+size = Vector3(0.03, 0.4, 0.2)
+
+[sub_resource type="TextMesh" id="TextMesh_im3wr"]
+text = "V"
+font_size = 5
+
+[node name="Ak74m" type="Node3D" unique_id=1957066966]
+script = ExtResource("1_7qnfq")
+metadata/_custom_type_script = "uid://e8pwaqfddary"
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=863763288]
+mesh = SubResource("BoxMesh_5tx2s")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=1280675776]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.21061331, 0.75984454)
+mesh = SubResource("CapsuleMesh_7qnfq")
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="." unique_id=1769013346]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.00027430803, -0.1530329, -0.42293036)
+mesh = SubResource("BoxMesh_7qnfq")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="." unique_id=2029441157]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.058107026, -0.16228819)
+mesh = SubResource("TextMesh_im3wr")

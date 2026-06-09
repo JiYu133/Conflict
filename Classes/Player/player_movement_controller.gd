@@ -36,14 +36,15 @@ func _physics_process(delta: float) -> void:
 	var speed = _config.walk_speed
 	if _player.is_on_floor():
 		if Input.is_action_pressed("sprint"):
-			speed = _config.run_speed
-			if not _is_running:
-				_is_running = true
-				started_running.emit()
-		else:
-			if _is_running:
-				_is_running = false
-				stopped_running.emit()
+			if Input.is_action_pressed("move_forward"):
+				speed = _config.run_speed
+				if not _is_running:
+					_is_running = true
+					started_running.emit()
+			else:
+				if _is_running:
+					_is_running = false
+					stopped_running.emit()
 	
 	var target_velocity = Vector3.ZERO
 	if input_dir.length() > 0.1:
@@ -81,3 +82,4 @@ func _physics_process(delta: float) -> void:
 	# ----- 6. 应用移动 -----
 	_player.velocity = _velocity
 	_player.move_and_slide()
+	

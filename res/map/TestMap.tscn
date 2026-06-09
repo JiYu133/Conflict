@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://fxy7esyowvpg"]
 
 [ext_resource type="Script" uid="uid://1pc5r0bqgakj" path="res://Classes/Player/base_player.gd" id="1_jkswc"]
-[ext_resource type="Resource" uid="uid://cj5m3byjup2a8" path="res://res/player/config/player_config_default.tres" id="2_jkswc"]
+[ext_resource type="Resource" uid="uid://dlllteybf5vq2" path="res://res/player/config/player/player_config_normal.tres" id="2_jkswc"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_xrl83"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -32,6 +32,10 @@ material = SubResource("StandardMaterial3D_jkswc")
 data = PackedVector3Array(-0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5, 0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, 0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, -0.5, 0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5, -0.5, -0.5, 0.5, 0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, -0.5, -0.5, -0.5, -0.5)
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_n2e6q"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_jkswc"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_cgqpe"]
 
 [node name="TestMap" type="Node3D" unique_id=691901148]
 
@@ -79,9 +83,9 @@ physics_material_override = SubResource("PhysicsMaterial_n2e6q")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4083545, 0.6456028, 0)
 mesh = SubResource("BoxMesh_vlrgw")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Box3" unique_id=816806452]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7808058, 0.071055055, 0)
-shape = SubResource("ConcavePolygonShape3D_t0rhc")
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Box3" unique_id=380536542]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4083545, 0.6456028, 0)
+shape = SubResource("BoxShape3D_jkswc")
 
 [node name="Box4" type="StaticBody3D" parent="." unique_id=81597899]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5226257, 4.2013493)
@@ -91,11 +95,14 @@ physics_material_override = SubResource("PhysicsMaterial_n2e6q")
 transform = Transform3D(1, 0, 0, 0, 0.59268814, -0.805432, 0, 0.805432, 0.59268814, 4.0811396, 0.40253985, -6.4691315)
 mesh = SubResource("BoxMesh_vlrgw")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Box4" unique_id=1217564017]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.7808058, 0.071055055, 0)
-shape = SubResource("ConcavePolygonShape3D_t0rhc")
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Box4" unique_id=310825074]
+transform = Transform3D(1, 0, 0, 0, 0.59268814, -0.805432, 0, 0.805432, 0.59268814, 4.0811396, 0.40253985, -6.4691315)
+shape = SubResource("BoxShape3D_cgqpe")
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1095234307]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.646346, -2.4987323)
 script = ExtResource("1_jkswc")
 player_config = ExtResource("2_jkswc")
+is_alive = null
+controllable = null
+faction = null

@@ -9,7 +9,7 @@ extends Resource
 
 ## 摄像机挂载点候选名称（按优先级排列）
 @export var camera_mount_names: Array[String] = [
-	"CameraMount", "Camera_Mount", "EyeMount", "Camera", "camera", "Camera3D"
+	"CameraMount", "Camera_Mount", "EyeMount", "Camera", "camera", "Camera3D", "Marker3D"
 ]
 
 ## 脚部射线候选名称
