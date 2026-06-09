@@ -39,7 +39,6 @@ func initialize(player: CharacterBody3D, model_manager: PlayerModelManager, mode
 	
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	# 监听模型加载
-	enable_camera()
 ## 启用第一人称
 func enable_camera() -> void:
 	# 读取有关视角控制的配置参数
@@ -72,7 +71,7 @@ func _find_camera_nodes() -> void:
 		return
 	
 	# 直接递归查找
-	_camera_mount = _find_node_recursive(_model_manager.model_node, "CameraMount")
+	# _camera_mount = _find_node_recursive(_model_manager.model_node, "CameraMount")
 	
 	if _camera_mount:
 		var cam = get_viewport().get_camera_3d()

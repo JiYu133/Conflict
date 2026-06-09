@@ -103,6 +103,3 @@ shape = SubResource("BoxShape3D_cgqpe")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.646346, -2.4987323)
 script = ExtResource("1_jkswc")
 player_config = ExtResource("2_jkswc")
-is_alive = null
-controllable = null
-faction = null
