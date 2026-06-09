@@ -22,8 +22,6 @@ var _animator: AnimationPlayer
 var _model_lookup_config: ModelLookupConfig
 var _player_config: PlayerConfig
 
-func _ready() -> void:
-	print("player_model_manager.gd 已激活")
 
 ## 加载模型
 func load_model(player_config: PlayerConfig = null) -> void:
@@ -62,23 +60,12 @@ func load_model(player_config: PlayerConfig = null) -> void:
 	
 	# 查找关键组件
 	_find_components()
-	print("=== 加载诊断 ===")
-	print("model_node: ", _model_node)
-	print("skeleton: ", _skeleton)
-	print("animator: ", _animator)
-	print("model_node 子节点数量: ", _model_node.get_child_count())
-	# 递归打印模型树
-	_print_tree(_model_node, "")
-	
+
 	model_loaded.emit(_model_node)
 	print("模型加载完成: ", _model_node.name)
 	# 设置碰撞体积
 	_create_collision_body() 
-	
-	# 延迟验证（仅调试用，正式版删除）
-	await get_tree().process_frame
-	print("模型全局位置: ", _model_node.global_position)
-	print("模型父节点: ", _model_node.get_parent().name)
+
 
 ## 卸载模型
 func unload_model() -> void:
@@ -91,14 +78,12 @@ func unload_model() -> void:
 
 ## 按名称列表查找节点（模糊匹配）
 func find_node_by_names(names: Array, type: String = "") -> Node:
-	print("find_node_by_names()")
 	if not _model_node:
 		return null
 	
 	for name in names:
 		var node = _model_node.find_child(name, true, false)
 		if node and (type.is_empty() or node.is_class(type)):
-			print("找到节点 " + node.name)
 			return node
 		
 	return null
@@ -113,13 +98,8 @@ func _find_components() -> void:
 	if not _animator:
 		push_warning("未找到动画系统")
 		
-func _print_tree(node: Node, indent: String) -> void:
-	print(indent + node.name + " (" + node.get_class() + ")")
-	for child in node.get_children():
-		_print_tree(child, indent + "  ")
 
 func _create_collision_body() -> void:
-	print("开始设置碰撞体")
 	var collision = CollisionShape3D.new()
 	var shape = CapsuleShape3D.new()
 	shape.height =  _player_config.collision_shape_height  # 身高
