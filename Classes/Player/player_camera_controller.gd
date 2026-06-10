@@ -27,8 +27,8 @@ var _max_vertical_angle: float # 上下限制（约 80 度）
 ## 初始化（由BasePlayer调用）
 func initialize(player: CharacterBody3D, model_manager: PlayerModelManager, model_lookup_config: ModelLookupConfig, player_config: PlayerConfig) -> void:
 	_model_manager = model_manager
-	_model_lookup_config = model_lookup_config
-	_player_config = player_config
+	_model_lookup_config = model_lookup_config if model_lookup_config else ModelLookupConfig.new()
+	_player_config = player_config if player_config else PlayerConfig.new()
 	_player = player
 	
 	var seed = Camera3D.new() # 创建待会用于挂载的摄像机
@@ -70,18 +70,7 @@ func _find_camera_nodes() -> void:
 		push_warning("模型节点不存在，无法查找摄像机挂载点")
 		return
 	
-	# 直接递归查找
-	# _camera_mount = _find_node_recursive(_model_manager.model_node, "CameraMount")
-	
-	if _camera_mount:
-		var cam = get_viewport().get_camera_3d()
-		if cam:
-			_attach_to_mount(cam, _camera_mount)
-	else:
-		push_warning("未找到 CameraMount")
-	
 	_camera_mount = _model_manager.find_node_by_names(_model_lookup_config.camera_mount_names, "Node3D")
-	
 	var cameras = _model_manager.model_node.find_children("*", "Camera3D", true, false)
 	_model_camera = cameras[0] if cameras.size() > 0 else null
 	
@@ -89,6 +78,9 @@ func _find_camera_nodes() -> void:
 		var cam = get_viewport().get_camera_3d()
 		if cam:
 			_attach_to_mount(cam, _camera_mount)
+	elif _model_camera:
+		_model_camera.current = true
+		_active_camera = _model_camera
 	else:
 		push_warning("未找到摄像机挂载点")
 
