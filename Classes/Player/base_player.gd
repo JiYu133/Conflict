@@ -103,14 +103,13 @@ func _on_model_loaded(_model: Node3D) -> void:
 	#	model_manager.animator
 	#)
 	
-	# 启用第一人称摄像机
 	# 将模型从 ModelManager 移到自己身下，确保变换跟随
-	camera_controller.enable_camera()
 	if _model.get_parent():
 		_model.get_parent().remove_child(_model)
 	add_child(_model)
 	
 	camera_controller._find_camera_nodes()
+	camera_controller.enable_camera()
 	
 	var mount = model_manager.find_node_by_names(["WeaponMount", "RightHand"], "Node3D")
 	if mount:

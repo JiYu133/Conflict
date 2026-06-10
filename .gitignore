@@ -1,4 +1,6 @@
+*.import
 *.translation
+.godot/
 .godot/uid_cache.bin
 
 export/
@@ -12,8 +14,3 @@ user/
 Thumbs.db
 *.tmp
 *.log
-
-
-.godot/
-
-*.import
