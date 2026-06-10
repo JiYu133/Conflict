@@ -68,41 +68,12 @@ func _initialize_components() -> void:
 
 func _setup_from_config() -> void:
 	print("=== " + config.weapon_name + "组件初始化 ===")
-	bolt_component = BoltComponent.new()
-	ammo_component = AmmoComponent.new()
-	fire_control = FireControlComponent.new()
-	gas_component = GasComponent.new()
-	recoil_component = RecoilComponent.new()
-	ejection_component = EjectionComponent.new()
-	if bolt_component:
-		bolt_component.initialize(config)
-	else:
-		print("bolt_component 为 null！")
-	
-	if ammo_component:
-		ammo_component.initialize(config)
-	else:
-		print("ammo_component 为 null！")
-	
-	if fire_control:
-		fire_control.initialize(config)
-	else:
-		print("fire_control 为 null！")
-	
-	if gas_component:
-		gas_component.initialize(config)
-	else:
-		print("gas_component 为 null！")
-	
-	if recoil_component:
-		recoil_component.initialize(config)
-	else:
-		print("recoil_component 为 null！")
-	
-	if ejection_component:
-		ejection_component.initialize(config)
-	else:
-		print("ejection_component 为 null！")
+	bolt_component.initialize(config)
+	ammo_component.initialize(config)
+	fire_control.initialize(config)
+	gas_component.initialize(config)
+	recoil_component.initialize(config)
+	ejection_component.initialize(config)
 
 func _connect_internal_signals() -> void:
 	fire_control.trigger_pulled.connect(_on_trigger_pulled)
