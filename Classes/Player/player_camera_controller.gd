@@ -58,10 +58,9 @@ func initialize(
 	# 创建备用摄像机防止 Godot 视口空窗
 	# 在真实摄像机挂载前，先用这个占位
 	var seed = Camera3D.new()
-	if seed:
-		seed.name = "SeedCamera"
-		seed.current = true
-		_player.add_child(seed)
+	seed.name = "SeedCamera"
+	seed.current = true
+	_player.add_child(seed)
 
 	# 默认捕获鼠标（FPS 标准操作）
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
@@ -143,19 +142,24 @@ func _find_camera_nodes() -> void:
 ## 同时清理之前创建的备用摄像机
 func _attach_to_mount(camera: Camera3D, mount: Node3D) -> void:
 	# 清理备用摄像机（初始创建的 SeedCamera）
-	var seed = _player.find_child("SeedCamera", true, false)
-	if seed:
-		seed.queue_free()
+	# 注意：必须用 owned=false（非递归），否则会把"挂在玩家下面的真摄像机"也匹配上
+	# 同时校验 camera 自身不是 seed，否则就是"释放当前相机"了
+	if _player:
+		var seed = _player.find_child("SeedCamera", false, false)
+		if seed and seed != camera:
+			seed.queue_free()
 
 	# 从原父节点移除，挂载到新的挂载点
-	if camera.get_parent():
+	if camera and camera.get_parent():
 		camera.get_parent().remove_child(camera)
-	mount.add_child(camera)
+	if mount and camera:
+		mount.add_child(camera)
 
 	# 重置摄像机在挂载点下的局部位置/旋转
-	camera.rotation = Vector3.ZERO
-	camera.current = true
-	_active_camera = camera
+	if camera:
+		camera.rotation = Vector3.ZERO
+		camera.current = true
+		_active_camera = camera
 
 ## 从头部骨骼创建挂载点（回退方案）
 ## 当模型既没有 CameraMount 也没有自带摄像机时使用

@@ -37,7 +37,11 @@ func initialize(cfg: WeaponConfig) -> void:
 	# 后坐速度：取初速的 15% 作为近似（实际取决于枪机质量和火药燃气的动量守恒）
 	bolt_speed_open = cfg.muzzle_velocity * 0.15
 	# 复进速度：F = k/m × t 的简化版本，取一个经验系数 0.02 使数值合理
-	bolt_speed_close = cfg.recoil_spring_strength / cfg.bolt_mass * 0.02
+	# 零值保护：recoil_spring_strength 或 bolt_mass 为 0 时会产生 inf/NaN
+	# 这种情况下用经验默认值兜底
+	var mass = cfg.bolt_mass if cfg.bolt_mass > 0.001 else 0.3
+	var spring = cfg.recoil_spring_strength if cfg.recoil_spring_strength > 0.001 else 50.0
+	bolt_speed_close = spring / mass * 0.02
 
 	# 注册自动循环完成后的闭锁回调
 	cycle_completed.connect(_on_cycle_completed)

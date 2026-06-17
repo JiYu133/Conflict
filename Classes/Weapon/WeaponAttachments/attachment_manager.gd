@@ -167,6 +167,15 @@ func get_magnification() -> float:
 			mag = max(mag, att.get_magnification())
 	return mag
 
+## 获取已装备弹匣附件的额外容量总和
+## （AmmoComponent 用它在 initialize 后调整弹匣大小）
+func get_total_magazine_capacity_bonus() -> int:
+	var total = 0
+	for att in get_all_attachments():
+		if att is ExtendedMagAttachment:
+			total += att.get_extra_capacity()
+	return total
+
 ## 获取当前瞄具的FOV覆盖
 func get_fov_override() -> float:
 	var fov = -1.0
