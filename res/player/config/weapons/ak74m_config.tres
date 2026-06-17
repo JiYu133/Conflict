@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="WeaponConfig" format=3 uid="uid://bak74m001"]
 
-[ext_resource type="Script" path="res://Classes/Weapon/weapon_config.gd" id="1_cfg"]
+[ext_resource type="Script" path="res://Classes/Weapon/Weapon/weapon_config.gd" id="1_cfg"]
 [ext_resource type="PackedScene" uid="uid://dtfj56fulo2tj" path="res://res/models/weapons/AK74M.tscn" id="2_scene"]
 
 [resource]

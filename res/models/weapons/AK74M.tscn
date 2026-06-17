@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dtfj56fulo2tj"]
 
-[ext_resource type="Script" uid="uid://e8pwaqfddary" path="res://Classes/Weapon/base_weapon.gd" id="1_7qnfq"]
+[ext_resource type="Script" uid="uid://e8pwaqfddary" path="res://Classes/Weapon/Weapon/base_weapon.gd" id="1_7qnfq"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_5tx2s"]
 size = Vector3(0.1, 0.1, 2)

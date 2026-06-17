@@ -51,14 +51,14 @@ static func _create_default_placeholder(cfg: AttachmentConfig) -> BaseAttachment
 	# 按类型选择子类脚本
 	var script_class: Script = null
 	match cfg.attachment_type:
-		cfg.AttachmentType.OPTIC:
-			script_class = load("res://Classes/WeaponAttachments/scopes/iron_sight.gd")
-		cfg.AttachmentType.GRIP:
-			script_class = load("res://Classes/WeaponAttachments/grips/vertical_grip.gd")
-		cfg.AttachmentType.MUZZLE:
-			script_class = load("res://Classes/WeaponAttachments/muzzles/suppressor.gd")
+		AttachmentConfig.AttachmentType.OPTIC:
+			script_class = load("res://Classes/Weapon/WeaponAttachments/scopes/iron_sight.gd")
+		AttachmentConfig.AttachmentType.GRIP:
+			script_class = load("res://Classes/Weapon/WeaponAttachments/grips/vertical_grip.gd")
+		AttachmentConfig.AttachmentType.MUZZLE:
+			script_class = load("res://Classes/Weapon/WeaponAttachments/muzzles/suppressor.gd")
 		_:
-			script_class = load("res://Classes/WeaponAttachments/base_attachment.gd")
+			script_class = load("res://Classes/Weapon/WeaponAttachments/base_attachment.gd")
 
 	var att = Node3D.new()
 	att.set_script(script_class)

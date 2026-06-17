@@ -14,9 +14,14 @@ extends BaseAttachment
 # ════════════════════════════════════════════════════════════════════════
 
 # 扩容弹匣特有的容量加成（需要被 ammo_component 查询）
+## 注：通过 getter 暴露给 AmmoComponent 计算实际弹匣容量
 var extra_capacity: int = 10
 
 func _on_initialized() -> void:
 	# 从 config 读取额外容量（如果配置中有定义）
 	# 当前默认值 10，可在 .tres 中修改
 	pass
+
+## 返回扩容后的额外容量（供 AmmoComponent 调用）
+func get_extra_capacity() -> int:
+	return extra_capacity

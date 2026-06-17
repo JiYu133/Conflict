@@ -24,7 +24,18 @@ signal bolt_hold_open()
 ## 空仓挂机激活（枪机被锁定在后方）
 signal round_chambered()
 ## 子弹已推入枪膛
+
+
+
+
 signal magazine_changed(mag_index: int)
+##`magazine_changed` 
+##也是给外部订阅用的钩子：UI 显示"当前在用第 N 个弹匣"、
+##音效模块播弹匣切换音、动画模块触发退弹匣动作等等。
+
+
+
+
 ## 弹匣已更换
 signal ammo_depleted()
 ## 所有弹药耗尽（尝试击发但无弹可用）
@@ -122,7 +133,7 @@ func _setup_from_config() -> void:
 	ammo_component.initialize(config)
 	fire_control.initialize(config)
 	gas_component.initialize(config)
-	recoil_component.initialize(config)
+	recoil_component.initialize(config, attachment_manager)
 	ejection_component.initialize(config)
 
 ## 连接子组件的信号到本类的回调
@@ -149,6 +160,8 @@ func initialize(cfg: WeaponConfig) -> void:
 	# 让配件管理器扫描本节点下的所有 AttachmentSlot
 	# 这样玩家后续调用 equip_to_slot() 才能找到槽位
 	attachment_manager.initialize(self, self)
+	# 弹匣容量 = 武器基础容量 + 扩容弹匣附件的额外容量
+	ammo_component.apply_magazine_attachments(attachment_manager)
 
 ## 按下扳机
 ## 设置 trigger_held 后，连发模式会利用这个标志自动续火
@@ -187,7 +200,13 @@ func reload() -> void:
 		ammo_component.swap_magazine()
 		ammo_component.prepare_next_round()  # 把弹匣顶端的弹喂到进弹位置
 		bolt_component.release_bolt()
-		_start_bolt_forward()
+		# 关键：手动启动复进前必须把 is_cycling 置为 true，
+		# 否则 _update_cycle() 入口判断直接 return，枪机永远到不了 0，
+		# bolt_component.is_locked() 一直 false，后续 _fire_one_round() 被拒绝击发
+		is_cycling = true
+		cycle_phase = "moving_forward"
+		bolt_position = 1.0  # 从全开位开始复进
+		bolt_component.on_bolt_start_forward()
 
 	else:
 		# 非空仓换弹（边缘情况）：换弹匣后手动上膛
@@ -275,22 +294,30 @@ func _start_bolt_back() -> void:
 	bolt_component.on_bolt_start_back()
 
 ## 触发枪机复进
+## 注意：调用方需要先确保 is_cycling = true，并把 bolt_position 设为 1.0（全开位）
+## 本函数只负责"切换状态名 + 通知组件"，不负责初始化循环上下文
 func _start_bolt_forward() -> void:
 	cycle_phase = "moving_forward"
 	bolt_component.on_bolt_start_forward()
 
 ## 自动循环完成后的收尾检查
 ##
-## 两个关键判断：
+## 两个关键判断（互斥，所以顺序无关但都要检查）：
 ##   - 连发模式下扳机仍按住且有弹 → 继续开火
 ##   - 弹匣已空且武器支持空仓挂机 → 挂起枪机
+##
+## 注意：连发续火和空仓挂机在"有弹/无弹"上互斥，
+## 膛内有弹+弹匣有弹 = 续火；膛内无弹+弹匣空 = 挂机。
+## 两种状态不会同时进入，但都需要在闭锁后立刻检查。
 func _handle_cycle_complete() -> void:
-	if current_fire_mode == "auto" and trigger_held and ammo_component.has_ammo():
-		_fire_one_round()
-
 	if ammo_component.should_hold_open():
+		# 优先处理空仓挂机：把弹匣打空后无论什么模式都要停火
 		bolt_component.hold_open()
 		bolt_hold_open.emit()
+		return
+
+	if current_fire_mode == "auto" and trigger_held and ammo_component.has_ammo():
+		_fire_one_round()
 
 ## 单次开火
 ##

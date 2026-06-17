@@ -26,15 +26,6 @@ extends Resource
 @export var attachment_type: AttachmentType = AttachmentType.OPTIC
 ## 配件类型，决定能装到哪个槽位
 
-@export_enum(
-	"Optic: 瞄具（红点/全息/ACOG/机械瞄具）",
-	"Grip: 握把（前握把/垂直握把/半握把）",
-	"Muzzle: 枪口装置（消音器/制退器/补偿器）",
-	"Magazine: 弹匣（扩容/快速换弹）",
-	"Side: 侧挂（手电/激光）"
-)
-var _category_hint: String = ""
-
 # ──────────────────────────── 槽位约束 ────────────────────────────
 @export_group("槽位约束")
 @export var allowed_slot: AttachmentSlot.SlotType = AttachmentSlot.SlotType.OPTIC_RAIL
