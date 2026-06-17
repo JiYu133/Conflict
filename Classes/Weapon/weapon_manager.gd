@@ -44,12 +44,18 @@ func set_aiming(aiming: bool) -> void:
 	
 ## 根据配置和模型路径创建武器实例并装备
 func load_and_equip(config: WeaponConfig) -> void:
+	if not config:
+		push_error("WeaponConfig 为空，无法装备武器")
+		return
 	print("装备武器 " + config.weapon_name)
 	var weapon_scene = config.weapon_scene
+	if not weapon_scene:
+		push_error("武器 %s 缺少 weapon_scene" % config.weapon_name)
+		return
 	var weapon = weapon_scene.instantiate() as BaseWeapon
 	if not weapon:
-		push_error("武器场景的根节点应为BaseWeapon")
+		push_error("武器场景的根节点应为BaseWeapon: " + config.weapon_name)
 		return
 	weapon.initialize(config)
-	equip_weapon(weapon)	
+	equip_weapon(weapon)
 	

@@ -1,10 +1,63 @@
-[gd_resource type="Resource" script_class="WeaponConfig" format=3 uid="uid://du4wf2wpd2j8k"]
+[gd_resource type="Resource" script_class="WeaponConfig" format=3 uid="uid://bak74m001"]
 
-[ext_resource type="Script" uid="uid://cumd76b2e0fn" path="res://Classes/Weapon/weapon_config.gd" id="1_ljmqp"]
-[ext_resource type="PackedScene" uid="uid://dtfj56fulo2tj" path="res://res/models/weapons/AK74M.tscn" id="2_crwit"]
+[ext_resource type="Script" path="res://Classes/Weapon/weapon_config.gd" id="1_cfg"]
+[ext_resource type="PackedScene" uid="uid://dtfj56fulo2tj" path="res://res/models/weapons/AK74M.tscn" id="2_scene"]
 
 [resource]
-script = ExtResource("1_ljmqp")
-weapon_name = "AK74M"
-weapon_scene = ExtResource("2_crwit")
-metadata/_custom_type_script = "uid://cumd76b2e0fn"
+script = ExtResource("1_cfg")
+
+# ──────────────────────────── 基础属性 ────────────────────────────
+weapon_name = "AK-74M"
+weapon_type = "rifle"
+
+# ──────────────────────────── 自动原理 ────────────────────────────
+action_type = "gas_operated"
+open_bolt = false
+cycle_rate = 650.0
+bolt_mass = 0.27
+recoil_spring_strength = 65.0
+
+# ──────────────────────────── 枪管 ────────────────────────────
+barrel_length = 0.415
+muzzle_velocity = 900.0
+
+# ──────────────────────────── 弹药 ────────────────────────────
+magazine_capacity = 30
+magazine_type = "detachable_box"
+has_last_round_hold_open = true
+reserve_magazines = 4
+
+# ──────────────────────────── 击发 ────────────────────────────
+fire_modes = ["safe", "semi", "auto"]
+default_fire_mode = "semi"
+
+# ──────────────────────────── 换弹 ────────────────────────────
+reload_time = 2.5
+reload_empty_time = 3.5
+
+# ──────────────────────────── 后座 ────────────────────────────
+recoil_vertical = 1.8
+recoil_horizontal = 0.6
+recoil_recovery_speed = 4.5
+
+# ──────────────────────────── 散布 ────────────────────────────
+hipfire_spread = 3.2
+ads_spread = 0.18
+
+# ──────────────────────────── 重量 ────────────────────────────
+weight = 3.4
+weight_affects_movement = true
+
+# ──────────────────────────── 视觉 ────────────────────────────
+weapon_scene = ExtResource("2_scene")
+
+# ──────────────────────────── 配件槽 ────────────────────────────
+supports_optic = true
+supports_muzzle = true
+supports_underbarrel = true
+supports_extended_mag = true
+
+# ──────────────────────────── 武器特征 ────────────────────────────
+caliber = "5.45x39mm"
+origin_country = "Russia"
+era = "Modern"
