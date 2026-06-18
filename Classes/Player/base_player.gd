@@ -138,20 +138,18 @@ func die() -> void:
 	if not is_alive:
 		return
 	
+	# is_alive 的 setter 已负责设 controllable=false 并 emit died，避免重复发射
 	is_alive = false
-	controllable = false
 	ragdoll_system.enable()
-	died.emit()
 	print("玩家死亡")
 
 func revive() -> void:
 	if is_alive:
 		return
 	
+	# is_alive 的 setter 已负责设 controllable=true 并 emit revived，避免重复发射
 	is_alive = true
-	controllable = true
 	ragdoll_system.disable()
-	revived.emit()
 	print("玩家复活")
 
 func set_controllable(enabled: bool) -> void:
