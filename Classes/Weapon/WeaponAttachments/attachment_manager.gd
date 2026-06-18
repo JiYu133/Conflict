@@ -48,7 +48,11 @@ func _scan_slots(root: Node) -> void:
 		if child is AttachmentSlot:
 			# 用 slot_name 或节点名作为 key
 			var key = child.slot_name if child.slot_name != "" else child.name
-			_slots[key] = child
+			# 重名挂载点：保留先扫描到者（确定性），告警提示后者被忽略
+			if _slots.has(key):
+				push_warning("[AttachmentMgr] 挂载点名称重复，已忽略后者: %s" % key)
+			else:
+				_slots[key] = child
 		# 递归扫描子节点
 		if child.get_child_count() > 0:
 			_scan_slots(child)

@@ -161,6 +161,9 @@ func initialize(cfg: WeaponConfig) -> void:
 	# 这样玩家后续调用 equip_to_slot() 才能找到槽位
 	attachment_manager.initialize(self, self)
 	# 弹匣容量 = 武器基础容量 + 扩容弹匣附件的额外容量
+	# 【预期不可达】此处运行时尚无配件被装上（attachment_manager 只扫描了槽位），
+	# 故当前 bonus 恒为 0；装/卸扩容弹匣后并未重新结算容量。补全该功能需在
+	# equip_to_slot()/detach_from_slot() 后回调此函数，本轮不实现。
 	ammo_component.apply_magazine_attachments(attachment_manager)
 
 ## 按下扳机
@@ -190,6 +193,9 @@ func reload() -> void:
 	# 根据膛内是否有弹选择换弹时长
 	var duration = config.reload_time if ammo_component.has_chambered_round() else config.reload_empty_time
 	await get_tree().create_timer(duration).timeout
+	# 武器可能在换弹计时期间被卸下/释放，await 恢复后必须确认自身仍有效
+	if not is_instance_valid(self):
+		return
 
 	if ammo_component.has_chambered_round():
 		# 战术换弹：膛内有弹 → 只换弹匣，不动枪机
@@ -384,6 +390,9 @@ func _on_bolt_reached_rear() -> void:
 
 	# 短暂停顿后开始复进（模拟托弹板上升/弹壳脱离的时间）
 	await get_tree().create_timer(0.005).timeout
+	# 武器可能在这 5ms 内被释放，await 恢复后必须确认自身仍有效
+	if not is_instance_valid(self):
+		return
 	_start_bolt_forward()
 
 ## 弹匣最后一发打完
@@ -393,6 +402,9 @@ func _on_last_round_fired() -> void:
 	pass
 
 ## 收到空仓挂机请求
+## 【预期不可达】ammo_component.bolt_hold_open_requested 信号目前全库无 emit，
+## 实际空仓挂机由 _handle_cycle_complete() → should_hold_open() 驱动。
+## 此回调保留为后续"拉机柄挂机"系统的预留接口。
 func _on_bolt_hold_open_requested() -> void:
 	if config.has_last_round_hold_open:
 		bolt_component.hold_open()
