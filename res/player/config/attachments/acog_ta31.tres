@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="AttachmentConfig" format=3 uid="uid://bacog01"]
 
-[ext_resource type="Script" path="res://Classes/Weapon/Weapon/WeaponAttachments/attachment_config.gd" id="1_a"]
+[ext_resource type="Script" path="res://Classes/Weapon/WeaponAttachments/attachment_config.gd" id="1_a"]
 
 [resource]
 script = ExtResource("1_a")
