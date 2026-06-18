@@ -148,9 +148,9 @@ func should_hold_open() -> bool:
 
 ## 切换弹匣
 ## 优先级：找第一个有子弹的弹匣；若都为空则保持当前索引（由空仓挂机流程接管）
-## 同时清空膛内弹状态：新弹匣的顶弹在 reload() 流程中由 prepare_next_round()/chamber_round() 重新进膛
+## 不修改膛内弹状态：战术换弹时应保留已上膛的子弹
+## 仅清空托弹准备状态，新弹匣的顶弹在 reload() 流程中由 prepare_next_round()/chamber_round() 重新进膛
 func swap_magazine() -> void:
-	chambered_round = false
 	_next_round_ready = false
 
 	for i in magazines.size():
