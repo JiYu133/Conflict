@@ -11,6 +11,10 @@ export/
 
 user/
 
+# IDE/agent working files
+.continue/
+
 Thumbs.db
 *.tmp
 *.log
+

@@ -44,7 +44,7 @@ func set_aiming(aiming: bool) -> void:
 	
 ## 根据配置和模型路径创建武器实例并装备
 func load_and_equip(config: WeaponConfig) -> void:
-	print("装备武器 " + config.weapon_name)
+	GlobalLogger.info("WeaponManager", "Equipping weapon: " + config.weapon_name)
 	var weapon_scene = config.weapon_scene
 	var weapon = weapon_scene.instantiate() as BaseWeapon
 	if not weapon:

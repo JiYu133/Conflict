@@ -16,7 +16,7 @@ func initialize(cfg: WeaponConfig) -> void:
 	config = cfg
 	bolt_speed_open = cfg.muzzle_velocity * 0.15
 	bolt_speed_close = cfg.recoil_spring_strength / cfg.bolt_mass * 0.02
-	print("BoltComponent 初始化完成")
+	GlobalLogger.debug("BoltComponent", "BoltComponent initialized")
 
 func is_locked() -> bool:
 	return _is_locked

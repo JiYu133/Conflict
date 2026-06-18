@@ -43,7 +43,6 @@ enum Faction { RU, UA, None }
 # 生命周期
 
 func _ready() -> void:
-	print("base_player.gd 已激活")
 	_initialize_subsystems()
 	
 	# 加载配置中的模型
@@ -56,7 +55,7 @@ func _ready() -> void:
 # 子系统初始化
 
 func _initialize_subsystems() -> void:
-	print("初始化玩家类子系统")
+	GlobalLogger.info("Player", "Initializing player subsystems.")
 	# 创建子系统
 	model_manager = _create_subsystem(PlayerModelManager.new(), "ModelManager")
 	camera_controller = _create_subsystem(PlayerCameraController.new(),"CameraController")
@@ -93,7 +92,7 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 
 func _connect_signals() -> void:
 	model_manager.model_loaded.connect(_on_model_loaded)
-	print("ModelManager已连接信号")
+	GlobalLogger.debug("Player", "Signals have been connected. ")
 		
 func _on_model_loaded(_model: Node3D) -> void:
 	
@@ -111,15 +110,16 @@ func _on_model_loaded(_model: Node3D) -> void:
 	camera_controller._find_camera_nodes()
 	camera_controller.enable_camera()
 	
-	var mount = model_manager.find_node_by_names(["WeaponMount", "RightHand"], "Node3D")
+	var mount = model_manager.find_node_by_names(["WeaponMount"], "Node3D")
 	if mount:
 		weapon_manager.set_mount(mount)
-		print("武器挂载点已设置: ", mount.name)
+		GlobalLogger.info("Player", "Weapon mount has been set: " + mount.name)
 	else:
-		push_error("未找到武器挂载点，武器将无法显示")
+		GlobalLogger.error("Player", "Cannot find any weapon mount,the weapon will be not visible.")
+		GlobalLogger.error("Player", "If there's already a weapon mount,try to check if its name is \"WeaponMount\" ")
 
 	if player_config and player_config.starting_weapon:
-		print("test")
+		GlobalLogger.debug("Player", "Initializing player's starting weapon...")
 		weapon_manager.load_and_equip(player_config.starting_weapon)
 
 # 公共API
@@ -133,7 +133,7 @@ func die() -> void:
 	controllable = false
 	ragdoll_system.enable()
 	died.emit()
-	print("玩家死亡")
+	GlobalLogger.info("Player", "Player " + get_parent().name + "has died.")
 
 func revive() -> void:
 	if is_alive:
@@ -143,11 +143,11 @@ func revive() -> void:
 	controllable = true
 	ragdoll_system.disable()
 	revived.emit()
-	print("玩家复活")
+	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
 
 func set_controllable(enabled: bool) -> void:
 	controllable = enabled
-	print("玩家控制: ", "启用" if enabled else "禁用")
+	GlobalLogger.info("Player", "Controller of player " + get_parent().name + " has been" + ("ENABLED" if enabled else "DISABLED"))
 
 
 # Mod热重载

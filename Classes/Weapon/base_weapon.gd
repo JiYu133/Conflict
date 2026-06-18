@@ -35,39 +35,39 @@ var ejection_component: EjectionComponent ## 抛壳组件:抛壳挺 + 抛壳窗
 
 # 初始化枪械组件
 func _initialize_components() -> void:
-	print("开始初始化武器部件")
+	GlobalLogger.debug("Weapon", "开始初始化武器部件")
 	bolt_component = BoltComponent.new()
 	bolt_component.name = "BoltComponent"
 	add_child(bolt_component)
-	print("bolt_component 创建成功: ", bolt_component is BoltComponent)
+	GlobalLogger.debug("Weapon", "bolt_component created: " + str(bolt_component is BoltComponent))
 
 	ammo_component = AmmoComponent.new()
 	ammo_component.name = "AmmoComponent"
 	add_child(ammo_component)
-	print("ammo_component 创建成功: ", ammo_component is AmmoComponent)
+	GlobalLogger.debug("Weapon", "ammo_component created: " + str(ammo_component is AmmoComponent))
 
 	fire_control = FireControlComponent.new()
 	fire_control.name = "FireControl"
 	add_child(fire_control)
-	print("fire_control 创建成功: ", fire_control is FireControlComponent)
+	GlobalLogger.debug("Weapon", "fire_control created: " + str(fire_control is FireControlComponent))
 
 	gas_component = GasComponent.new()
 	gas_component.name = "GasComponent"
 	add_child(gas_component)
-	print("gas_component 创建成功: ", gas_component is GasComponent)
+	GlobalLogger.debug("Weapon", "gas_component created: " + str(gas_component is GasComponent))
 	
 	recoil_component = RecoilComponent.new()
 	recoil_component.name = "RecoilComponent"
 	add_child(recoil_component)
-	print("recoil_component 创建成功: ", recoil_component is RecoilComponent)
+	GlobalLogger.debug("Weapon", "recoil_component created: " + str(recoil_component is RecoilComponent))
 
 	ejection_component = EjectionComponent.new()
 	ejection_component.name = "EjectionComponent"
 	add_child(ejection_component)
-	print("ejection_component 创建成功: ", ejection_component is EjectionComponent)
+	GlobalLogger.debug("Weapon", "ejection_component created: " + str(ejection_component is EjectionComponent))
 
 func _setup_from_config() -> void:
-	print("=== " + config.weapon_name + "组件初始化 ===")
+	GlobalLogger.debug("Weapon", "=== " + config.weapon_name + "组件初始化 ===")
 	bolt_component.initialize(config)
 	ammo_component.initialize(config)
 	fire_control.initialize(config)
