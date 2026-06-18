@@ -26,7 +26,10 @@ static func create(cfg: AttachmentConfig, weapon: BaseWeapon) -> BaseAttachment:
 	# 优先用 config 里指定的场景
 	if cfg.attachment_scene:
 		var inst = cfg.attachment_scene.instantiate()
-		if inst is BaseAttachment:
+		if inst == null:
+			# 场景损坏/实例化失败：告警后留空，回退到占位符创建
+			push_warning("配件场景实例化失败: %s" % cfg.attachment_name)
+		elif inst is BaseAttachment:
 			attachment_root = inst
 		else:
 			push_warning("配件场景根节点不是 BaseAttachment: %s" % cfg.attachment_name)
