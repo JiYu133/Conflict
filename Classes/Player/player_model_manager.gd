@@ -32,8 +32,6 @@ func load_model(player_config: PlayerConfig = null) -> void:
 		push_error("模型场景为空")
 		return
 	
-	if model_lookup_config:
-		model_lookup_config
 	
 	_model_lookup_config = model_lookup_config if model_lookup_config else ModelLookupConfig.new()
 	_player_config = player_config if player_config else PlayerConfig.new()
@@ -62,7 +60,7 @@ func load_model(player_config: PlayerConfig = null) -> void:
 	_find_components()
 
 	model_loaded.emit(_model_node)
-	print("模型加载完成: ", _model_node.name)
+	GlobalLogger.info("PlayerModelManager", "模型加载完成: " + _model_node.name)
 	# 设置碰撞体积
 	_create_collision_body() 
 
@@ -81,8 +79,8 @@ func find_node_by_names(names: Array, type: String = "") -> Node:
 	if not _model_node:
 		return null
 	
-	for name in names:
-		var node = _model_node.find_child(name, true, false)
+	for item_name in names:
+		var node = _model_node.find_child(item_name, true, false)
 		if node and (type.is_empty() or node.is_class(type)):
 			return node
 		

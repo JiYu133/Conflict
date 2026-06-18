@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://fxy7esyowvpg"]
 
 [ext_resource type="Script" uid="uid://1pc5r0bqgakj" path="res://Classes/Player/base_player.gd" id="1_jkswc"]
-[ext_resource type="Resource" uid="uid://dlllteybf5vq2" path="res://res/player/config/player/player_config_normal.tres" id="2_jkswc"]
+[ext_resource type="Resource" uid="uid://dlllteybf5vq2" path="res://res/config/player/player_config_normal.tres" id="2_jkswc"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_xrl83"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -88,7 +88,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4083545, 0.6456028, 0)
 shape = SubResource("BoxShape3D_jkswc")
 
 [node name="Box4" type="StaticBody3D" parent="." unique_id=81597899]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5226257, 4.2013493)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5655544, 4.2013493)
 physics_material_override = SubResource("PhysicsMaterial_n2e6q")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Box4" unique_id=1725791051]

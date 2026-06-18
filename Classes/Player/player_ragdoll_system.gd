@@ -49,7 +49,7 @@ func enable() -> void:
 		return
 	
 	ragdoll_enabled.emit()
-	print("布娃娃系统已激活")
+	GlobalLogger.info("RagdollSystem", "布娃娃系统已激活")
 
 ## 禁用布娃娃
 func disable() -> void:
@@ -69,4 +69,4 @@ func disable() -> void:
 		# TODO: 播放站立动画，需要从布娃娃状态恢复到动画状态
 	
 	ragdoll_disabled.emit()
-	print("布娃娃系统已停用")
+	GlobalLogger.info("RagdollSystem", "布娃娃系统已停用")

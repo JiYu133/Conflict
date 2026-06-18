@@ -13,8 +13,6 @@ var _config: PlayerConfig
 var _velocity: Vector3
 var _is_running: bool = false
 
-func _ready() -> void:
-	print("player_movement_controller.gd 已激活")
 
 ## 初始化
 func initialize(player: CharacterBody3D, config: PlayerConfig) -> void:

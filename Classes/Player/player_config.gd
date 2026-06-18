@@ -28,3 +28,8 @@ extends Resource
 ## 武器配置
 @export_group("武器配置")
 @export var starting_weapon:WeaponConfig ## 初始武器
+## 动画配置
+@export_group("Animation")
+@export var walk_speed_threshold: float = 0.5      # 大于此速度进入行走
+@export var run_speed_threshold: float = 3.0       # 大于此速度进入奔跑
+@export var animation_blend_speed: float = 8.0     # 动画混合过渡速度
