@@ -1,4 +1,4 @@
-lass_name PlayerMovementController
+class_name PlayerMovementController
 extends Node
 
 # ============================================================
