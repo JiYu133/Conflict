@@ -1,4 +1,4 @@
-class_name PlayerMovementController
+lass_name PlayerMovementController
 extends Node
 
 # ============================================================
@@ -28,27 +28,14 @@ var _player: CharacterBody3D           # 需要控制的玩家角色
 var _config: PlayerConfig              # 移动参数配置
 var _velocity: Vector3                 # 当前速度向量（每帧持续维护，而非每帧重置）
 var _is_running: bool = false          # 当前是否处于奔跑状态（用于防重复发射 started/stopped 信号）
+var _was_on_floor: bool = true         # 上一帧是否在地面（用于检测落地上升沿）
 
-
-# ============================================================
-# 生命周期
-# ============================================================
-func _ready() -> void:
-	print("player_movement_controller.gd 已激活")
-
-
-# ============================================================
-# 初始化
-# ============================================================
 func initialize(player: CharacterBody3D, config: PlayerConfig) -> void:
 	_player = player
 	_config = config
 	_velocity = Vector3.ZERO
 
 
-# ============================================================
-# 物理帧移动逻辑（每帧执行）
-# ============================================================
 func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
@@ -132,3 +119,9 @@ func _physics_process(delta: float) -> void:
 	_player.velocity = _velocity
 	_player.move_and_slide()
 	_velocity = _player.velocity  # 同步碰撞后的实际速度
+
+	# landed detection: rising edge of is_on_floor
+	var on_floor := _player.is_on_floor()
+	if on_floor and not _was_on_floor:
+		landed.emit()
+	_was_on_floor = on_floor
