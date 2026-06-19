@@ -3,7 +3,7 @@
 [ext_resource type="Resource" uid="uid://v1h5icka80bd" path="res://res/player/config/player/player_model_lookup_default.tres" id="1_3dwgo"]
 [ext_resource type="Script" uid="uid://bue10h7xqqc1a" path="res://Classes/Player/player_config.gd" id="1_qskwu"]
 [ext_resource type="PackedScene" uid="uid://t8q1u3kyd0ib" path="res://res/models/scenes/player/player_model.tscn" id="2_lmthd"]
-[ext_resource type="Resource" uid="uid://du4wf2wpd2j8k" path="res://res/player/config/weapons/ak74m_config.tres" id="4_pb41n"]
+[ext_resource type="Resource" uid="uid://bak74m001" path="res://res/player/config/weapons/ak74m_config.tres" id="4_pb41n"]
 
 [resource]
 script = ExtResource("1_qskwu")
