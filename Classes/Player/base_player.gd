@@ -37,6 +37,7 @@ var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
 var foot_ik_controller: FootIKController
 var weapon_manager: WeaponManager
+var animation_controller: PlayerAnimationController
 
 # 信号
 
@@ -72,6 +73,7 @@ func _initialize_subsystems() -> void:
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
+	animation_controller = _create_subsystem(PlayerAnimationController.new(), "AnimationController")
 	
 	# 初始化子系统
 	
@@ -110,6 +112,9 @@ func _on_model_loaded(_model: Node3D) -> void:
 		model_manager.skeleton,
 		model_manager.animator
 	)
+
+	# 初始化动画控制器（需要 AnimationPlayer，模型加载后才可用）
+	animation_controller.initialize(self, movement_controller, model_manager)
 
 	# 将模型从 ModelManager 移到自己身下，确保变换跟随
 	if _model.get_parent():
