@@ -11,9 +11,18 @@ extends CharacterBody3D
 @export var player_config: PlayerConfig
 
 @export_group("State")
-@export var is_alive: bool = true: # 玩家存活状态设置 
+@export var is_alive: bool = true: # 玩家存活状态设置
 	set(value):
+		if is_alive == value:
+			return
 		is_alive = value
+		# 外部直接赋值时，状态翻转自动广播信号
+		if not is_alive:
+			controllable = false
+			died.emit()
+		else:
+			controllable = true
+			revived.emit()
 @export var controllable: bool = true
 @export var faction: Faction = Faction.None # 玩家阵营
 
@@ -96,21 +105,20 @@ func _connect_signals() -> void:
 	print("ModelManager已连接信号")
 		
 func _on_model_loaded(_model: Node3D) -> void:
-	
+
 	# 初始化布娃娃系统（需要骨骼）
-	#ragdoll_system.initialize(
-	#	model_manager.skeleton,
-	#	model_manager.animator
-	#)
-	
-	# 启用第一人称摄像机
+	ragdoll_system.initialize(
+		model_manager.skeleton,
+		model_manager.animator
+	)
+
 	# 将模型从 ModelManager 移到自己身下，确保变换跟随
-	camera_controller.enable_camera()
 	if _model.get_parent():
 		_model.get_parent().remove_child(_model)
 	add_child(_model)
 	
 	camera_controller._find_camera_nodes()
+	camera_controller.enable_camera()
 	
 	var mount = model_manager.find_node_by_names(["WeaponMount", "RightHand"], "Node3D")
 	if mount:
@@ -130,20 +138,18 @@ func die() -> void:
 	if not is_alive:
 		return
 	
+	# is_alive 的 setter 已负责设 controllable=false 并 emit died，避免重复发射
 	is_alive = false
-	controllable = false
 	ragdoll_system.enable()
-	died.emit()
 	print("玩家死亡")
 
 func revive() -> void:
 	if is_alive:
 		return
 	
+	# is_alive 的 setter 已负责设 controllable=true 并 emit revived，避免重复发射
 	is_alive = true
-	controllable = true
 	ragdoll_system.disable()
-	revived.emit()
 	print("玩家复活")
 
 func set_controllable(enabled: bool) -> void:
