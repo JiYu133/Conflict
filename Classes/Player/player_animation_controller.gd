@@ -73,7 +73,7 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 # 每帧检测 ──────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
-	if not _player or not _animator:
+	if not _player:
 		return
 
 	# 落地过渡计时
@@ -134,9 +134,10 @@ func _resolve_ground_state() -> State:
 func _transition(new_state: State) -> void:
 	if _state == new_state:
 		return
+	_state = new_state
+
 	if not _animator:
 		return
-	_state = new_state
 
 	var anim_name := _state_to_anim(new_state)
 	if _animator.has_animation(anim_name):

@@ -75,6 +75,8 @@ var model_camera: Camera3D:
 var _camera_mount: Node3D                  # 摄像机挂载点（Marker3D / Node3D）
 var _model_camera: Camera3D               # 模型自带的摄像机
 var _active_camera: Camera3D              # 当前实际使用的摄像机
+var _active_base_position: Vector3 = Vector3.ZERO
+var _active_base_rotation: Vector3 = Vector3.ZERO
 var _model_manager: PlayerModelManager    # 模型管理器引用
 var _model_lookup_config: ModelLookupConfig  # 模型节点查找配置
 var _camera_config: CameraConfig          # 摄像机配置
@@ -170,6 +172,7 @@ func enable_camera() -> void:
 	elif _model_camera:
 		_model_camera.current = true
 		_active_camera = _model_camera
+		_capture_active_camera_base()
 	else:
 		_create_mount_from_skeleton(viewport_camera)
 
@@ -211,6 +214,7 @@ func _find_camera_nodes() -> void:
 	elif _model_camera:
 		_model_camera.current = true
 		_active_camera = _model_camera
+		_capture_active_camera_base()
 	else:
 		push_warning("未找到摄像机挂载点")
 
@@ -241,6 +245,7 @@ func _attach_to_mount(camera: Camera3D, mount: Node3D) -> void:
 		camera.rotation = Vector3.ZERO
 		camera.current = true
 		_active_camera = camera
+		_capture_active_camera_base()
 
 ## 从头部骨骼创建挂载点（回退方案）
 ## 当模型既没有 CameraMount 也没有自带摄像机时使用
@@ -319,19 +324,18 @@ func _process(delta: float) -> void:
 	pos_offset += _update_breathing(delta)
 	pos_offset += _update_land_impact(delta)
 
-	_active_camera.position = pos_offset
+	_active_camera.position = _active_base_position + pos_offset
 
 	# 垂直视角 = 鼠标控制角度 + 垂直后座 + pitch 弹簧（跳跃/落地动画）
 	var recoil_pitch: float = _get_recoil_pitch()
 	var pitch_spring_offset: float = 0.0
 	if _pitch_spring:
 		pitch_spring_offset = _pitch_spring.update(delta, 0.0)
-	_active_camera.rotation.x = _vertical_angle + recoil_pitch + pitch_spring_offset
+	_active_camera.rotation.x = _active_base_rotation.x + _vertical_angle + recoil_pitch + pitch_spring_offset
 
-	# 水平后座
+	# 水平后座作为局部相机偏移叠加，避免把临时后座永久写入玩家朝向
 	var recoil_yaw: float = _get_recoil_yaw()
-	if recoil_yaw != 0.0 and _player:
-		_player.rotate_y(recoil_yaw * delta)
+	_active_camera.rotation.y = _active_base_rotation.y + recoil_yaw
 
 	_update_weapon_sway(delta)
 	_update_tilt(delta)
@@ -464,14 +468,14 @@ func set_recoil_component(rc: RecoilComponent) -> void:
 func _get_recoil_pitch() -> float:
 	if not _recoil_component:
 		return 0.0
-	return _recoil_component.get_recoil_offset()
+	return deg_to_rad(_recoil_component.get_recoil_offset())
 
 
-## 返回当前帧应叠加到玩家 yaw 的水平后座角度（弧度/秒，由调用方乘 delta）
+## 返回当前帧应叠加到摄像机 yaw 的水平后座角度（弧度）
 func _get_recoil_yaw() -> float:
 	if not _recoil_component:
 		return 0.0
-	return _recoil_component.get_recoil_horizontal_offset()
+	return deg_to_rad(_recoil_component.get_recoil_horizontal_offset())
 
 
 # ============================================================
@@ -521,7 +525,7 @@ func _update_tilt(delta: float) -> void:
 	if not _camera_config.tilt_enabled:
 		_tilt_angle = 0.0
 		if _active_camera:
-			_active_camera.rotation.z = 0.0
+			_active_camera.rotation.z = _active_base_rotation.z
 		return
 
 	# 将世界空间速度转换到玩家局部坐标系，取 X 分量（向右为正）
@@ -534,7 +538,7 @@ func _update_tilt(delta: float) -> void:
 
 	# 平滑插值到目标角度
 	_tilt_angle = lerp(_tilt_angle, target_tilt, clamp(delta * _camera_config.tilt_speed, 0.0, 1.0))
-	_active_camera.rotation.z = _tilt_angle
+	_active_camera.rotation.z = _active_base_rotation.z + _tilt_angle
 
 
 # ============================================================
@@ -547,7 +551,10 @@ func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
 	if not weapon_mount:
 		return null
 	if _sway_pivot and is_instance_valid(_sway_pivot):
-		return _sway_pivot
+		if _sway_pivot.get_parent() == weapon_mount:
+			return _sway_pivot
+		_sway_pivot.queue_free()
+		_sway_pivot = null
 
 	var pivot: Node3D = Node3D.new()
 	pivot.name = "WeaponSwayPivot"
@@ -568,6 +575,13 @@ func connect_movement_signals(movement: PlayerMovementController) -> void:
 ## 返回当前活动摄像机，供 WeaponObstructionDetector 等外部系统使用
 func get_active_camera() -> Camera3D:
 	return _active_camera
+
+
+func _capture_active_camera_base() -> void:
+	if not _active_camera:
+		return
+	_active_base_position = _active_camera.position
+	_active_base_rotation = _active_camera.rotation
 
 
 # ============================================================

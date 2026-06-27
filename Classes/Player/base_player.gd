@@ -38,6 +38,7 @@ var movement_controller: PlayerMovementController
 var foot_ik_controller: FootIKController
 var weapon_manager: WeaponManager
 var animation_controller: PlayerAnimationController
+var obstruction_detector: WeaponObstructionDetector
 
 # 信号
 
@@ -129,6 +130,8 @@ func _on_model_loaded(_model: Node3D) -> void:
 	
 	camera_controller._find_camera_nodes()
 	camera_controller.enable_camera()
+
+	_clear_obstruction_detector()
 	
 	var mount = model_manager.find_node_by_names(["WeaponMount"], "Node3D")
 	if mount:
@@ -139,7 +142,7 @@ func _on_model_loaded(_model: Node3D) -> void:
 			GlobalLogger.info("Player", "Weapon sway pivot created, weapons attach under: " + sway_pivot.name)
 
 			# 初始化武器遮挡检测（需要摄像机和晃动支点就绪后才可用）
-			var obstruction_detector: WeaponObstructionDetector = \
+			obstruction_detector = \
 				_create_subsystem(WeaponObstructionDetector.new(), "ObstructionDetector") as WeaponObstructionDetector
 			obstruction_detector.initialize(self, camera_controller.get_active_camera(), weapon_manager, sway_pivot)
 		else:
@@ -162,6 +165,14 @@ func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
 		camera_controller.set_recoil_component(new_weapon.recoil_component)
 	else:
 		camera_controller.set_recoil_component(null)
+
+
+func _clear_obstruction_detector() -> void:
+	if obstruction_detector and is_instance_valid(obstruction_detector):
+		if obstruction_detector.get_parent() == self:
+			remove_child(obstruction_detector)
+		obstruction_detector.queue_free()
+	obstruction_detector = null
 
 
 func die() -> void:
