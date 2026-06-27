@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="PlayerConfig" format=3 uid="uid://6j1op088306v"]
+
+[ext_resource type="Resource" uid="uid://v1h5icka80bd" path="res://res/config/player/player_model_lookup_default.tres" id="1_6gouf"]
+[ext_resource type="Script" uid="uid://bue10h7xqqc1a" path="res://Classes/Player/player_config.gd" id="1_vyh63"]
+[ext_resource type="PackedScene" uid="uid://t8q1u3kyd0ib" path="res://res/models/scenes/player/player_model.tscn" id="2_jaqi4"]
+[ext_resource type="Resource" uid="uid://bak74m001" path="res://res/config/weapons/ak74m_config.tres" id="4_f37k6"]
+[ext_resource type="Resource" path="res://res/config/player/camera_config_default.tres" id="5_camcfg"]
+
+[resource]
+script = ExtResource("1_vyh63")
+model_scene = ExtResource("2_jaqi4")
+model_config = ExtResource("1_6gouf")
+camera_config = ExtResource("5_camcfg")
+starting_weapon = ExtResource("4_f37k6")
+metadata/_custom_type_script = "uid://bue10h7xqqc1a"

@@ -1,14 +1,16 @@
 [gd_scene format=3 uid="uid://t8q1u3kyd0ib"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_jo7y0"]
+radius = 0.3
+height = 1.8
 
 [node name="PlayerModel" type="Node3D" unique_id=1113221465]
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=353656722]
 mesh = SubResource("CapsuleMesh_jo7y0")
 
-[node name="Camera" type="Marker3D" parent="." unique_id=312178935]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.41737795, -0.36196375)
+[node name="Camera" type="Camera3D" parent="." unique_id=784758532]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.51777977, -0.25301778)
 
 [node name="WeaponMount" type="Node3D" parent="." unique_id=157479528]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.5792587, -0.22042343, -1.0998446)
+transform = Transform3D(-1, 0, -8.742277e-08, 0, 0.9999999, 0, 8.742278e-08, 0, -0.99999994, 0.31273627, 0.14012304, 0.16520283)

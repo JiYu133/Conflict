@@ -72,6 +72,10 @@ func suppresses_muzzle_flash() -> bool:
 func suppresses_sound() -> bool:
 	return config.suppresses_sound
 
+## 返回枪口长度修正（m），消音器等枪口装置有值
+func get_length_modifier() -> float:
+	return config.length_modifier
+
 ## 获取放大倍率
 func get_magnification() -> float:
 	return config.magnification

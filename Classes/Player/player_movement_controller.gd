@@ -2,21 +2,18 @@ class_name PlayerMovementController
 extends Node
 
 # ============================================================
-# 玩家移动控制器
-# 功能：处理玩家（CharacterBody3D）的全部移动逻辑：
-#       WASD 输入转换 → 惯性平滑 / 跳跃 / 重力 / 奔跑。
-# 用法：由 BasePlayer 初始化并每帧执行，独立于动画系统。
-# 依赖：PlayerConfig（需要 walk_speed / run_speed / 加速度等参数）
-# 设计要点：
-#   - 加速度/减速度分离：地面和空中有不同的摩擦系数
-#   - move_and_slide() 后同步 _velocity，避免碰撞后漂移
+# 玩家移动控制器（新运动系统）
+# 功能：处理玩家（CharacterBody3D）的全部移动逻辑。
+# 新增机制：起步爆发、步态波动、转向减速（dot product）、
+#           停止卸力、方向速度上限（横向/后退）。
+# 跳跃、重力、空中逻辑与旧版保持不变。
 # ============================================================
 
 # 信号 ────────────────────────────────────────────────────
 signal jumped
 ## 起跳
 signal landed
-## 落地（当前未实现，后续可通过检查 is_on_floor 的上升沿触发）
+## 落地（is_on_floor 上升沿触发）
 signal started_running
 ## 开始奔跑
 signal stopped_running
@@ -24,11 +21,20 @@ signal stopped_running
 
 
 # 私有变量 ────────────────────────────────────────────────
-var _player: CharacterBody3D           # 需要控制的玩家角色
-var _config: PlayerConfig              # 移动参数配置
-var _velocity: Vector3                 # 当前速度向量（每帧持续维护，而非每帧重置）
-var _is_running: bool = false          # 当前是否处于奔跑状态（用于防重复发射 started/stopped 信号）
-var _was_on_floor: bool = true         # 上一帧是否在地面（用于检测落地上升沿）
+var _player: CharacterBody3D
+var _config: PlayerConfig
+var _velocity: Vector3
+var _is_running: bool = false
+var _was_on_floor: bool = true
+
+var _gait_phase: float = 0.0   # 步态相位（0~1 循环），每帧按步频累加
+var _burst_timer: float = 0.0  # 起步爆发剩余时间（秒）
+var _had_input: bool = false   # 上一帧是否有移动输入，用于检测起步边沿
+
+
+func is_running() -> bool:
+	return _is_running
+
 
 func initialize(player: CharacterBody3D, config: PlayerConfig) -> void:
 	_player = player
@@ -40,88 +46,131 @@ func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
 
-	# ——————————————————————————————————————————
-	# 1. 获取输入方向
-	#    Input.get_vector 返回一个 Vector2：
-	#    x = 左右（-1~1），y = 前后（-1~1）
-	# ——————————————————————————————————————————
-	var input_dir = Input.get_vector(
+	# ──────────────────────────────────────────────────────
+	# 1. 读取输入方向
+	# ──────────────────────────────────────────────────────
+	var input_dir := Input.get_vector(
 		"move_left", "move_right",
 		"move_forward", "move_backward"
 	)
+	var has_input := input_dir.length() > 0.1
 
-	# ——————————————————————————————————————————
-	# 2. 计算目标水平速度
-	#    奔跑判定：在地面 + 按着 sprint + 按着前（w）
-	# ——————————————————————————————————————————
-	var speed = _config.walk_speed
+	# ──────────────────────────────────────────────────────
+	# 2. Sprint 信号检测（移出 is_on_floor 块，空中松开也能正确重置）
+	# ──────────────────────────────────────────────────────
+	var sprint_active := Input.is_action_pressed("sprint") and Input.is_action_pressed("move_forward")
+	if _is_running and not sprint_active:
+		_is_running = false
+		stopped_running.emit()
+
+	# ──────────────────────────────────────────────────────
+	# 3. 地面水平速度
+	# ──────────────────────────────────────────────────────
 	if _player.is_on_floor():
-		if Input.is_action_pressed("sprint"):
-			if Input.is_action_pressed("move_forward"):
-				speed = _config.run_speed
-				if not _is_running:
-					_is_running = true
-					started_running.emit()
-			else:
-				if _is_running:
-					_is_running = false
-					stopped_running.emit()
+		# 3a. 确定基础目标速度
+		var speed := _config.run_speed if sprint_active else _config.walk_speed
 
-	# 将 2D 输入方向转换成 3D 世界空间方向
-	var target_velocity = Vector3.ZERO
-	if input_dir.length() > 0.1:
-		var direction = _player.transform.basis.x * input_dir.x
-		direction += _player.transform.basis.z * input_dir.y
-		direction = direction.normalized()
-		target_velocity = direction * speed
+		if has_input:
+			var basis := _player.transform.basis
+			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()
 
-	# ——————————————————————————————————————————
-	# 3. 惯性平滑过渡
-	#    地面：高加速度 + 高减速度（响应灵敏）
-	#    空中：低加速度 + 低减速度（空气阻力小，惯性大）
-	# ——————————————————————————————————————————
-	var accel = _config.acceleration if _player.is_on_floor() else _config.air_acceleration
-	var decel = _config.deceleration if _player.is_on_floor() else _config.air_deceleration
+			# 3b. 方向速度上限：横向 80%、后退 70%
+			var forward_dot: float = direction.dot(-basis.z)
+			var side_dot: float    = abs(direction.dot(basis.x))
+			if forward_dot < -0.3:
+				speed *= _config.backward_speed_ratio
+			elif side_dot > 0.7:
+				speed *= _config.lateral_speed_ratio
 
-	if target_velocity.length() > 0.1:
-		# 有输入：向目标速度加速
+			# 3c. 转向减速（dot product，世界空间对比）
+			var h_vel_2d := Vector2(_velocity.x, _velocity.z)
+			if h_vel_2d.length_squared() > 0.01:
+				var vel_dir  := h_vel_2d.normalized()
+				var inp_dir  := Vector2(direction.x, direction.z)
+				var alignment: float = vel_dir.dot(inp_dir)
+				var speed_keep: float = lerp(
+					1.0 - _config.turn_decel_factor,
+					1.0,
+					(alignment + 1.0) * 0.5
+				)
+				speed *= speed_keep
+
+			# 3d. 起步爆发
+			if not _had_input:
+				_burst_timer = _config.burst_duration
+			_burst_timer = max(_burst_timer - delta, 0.0)
+			var burst_mult: float = 1.0
+			if _config.burst_duration > 0.0:
+				burst_mult = 1.0 + (_config.burst_strength - 1.0) * (_burst_timer / _config.burst_duration)
+
+			# 3e. 用 move_toward 向目标速度加速
+			var target_x := direction.x * speed * burst_mult
+			var target_z := direction.z * speed * burst_mult
+			_velocity.x = move_toward(_velocity.x, target_x, _config.ground_acceleration * delta)
+			_velocity.z = move_toward(_velocity.z, target_z, _config.ground_acceleration * delta)
+
+			# 3f. 步态波动：在速度方向叠加 sin 波动，模拟重心摆动（±振幅）
+			var freq: float = _config.gait_frequency_run if _is_running else _config.gait_frequency_walk
+			var amp: float  = _config.gait_amplitude_run if _is_running else _config.gait_amplitude_walk
+			_gait_phase = fmod(_gait_phase + delta * freq, 1.0)
+			var move_dir_2d := Vector2(_velocity.x, _velocity.z).normalized()
+			var gait_mod := sin(_gait_phase * TAU) * amp
+			_velocity.x += move_dir_2d.x * gait_mod
+			_velocity.z += move_dir_2d.y * gait_mod
+
+			# 3g. 地面上奔跑起步信号
+			if sprint_active and not _is_running:
+				_is_running = true
+				started_running.emit()
+
+		else:
+			# 3h. 停止卸力：无输入时使用制动强度快速站稳，重置步态相位
+			_velocity.x = move_toward(_velocity.x, 0.0, _config.stop_brake_strength * delta)
+			_velocity.z = move_toward(_velocity.z, 0.0, _config.stop_brake_strength * delta)
+			_burst_timer = 0.0
+			_gait_phase  = 0.0
+
+	else:
+		# ──────────────────────────────────────────────────
+		# 4. 空中水平速度（保持原有空气阻力手感）
+		# ──────────────────────────────────────────────────
+		var basis := _player.transform.basis
+		var target_velocity := Vector3.ZERO
+		if has_input:
+			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()
+			target_velocity = direction * _config.walk_speed
+
+		var accel: float = _config.air_acceleration if target_velocity.length() > 0.1 else _config.air_deceleration
 		_velocity.x = move_toward(_velocity.x, target_velocity.x, accel * delta)
 		_velocity.z = move_toward(_velocity.z, target_velocity.z, accel * delta)
-	else:
-		# 无输入：减速到零
-		_velocity.x = move_toward(_velocity.x, 0.0, decel * delta)
-		_velocity.z = move_toward(_velocity.z, 0.0, decel * delta)
 
-	# ——————————————————————————————————————————
-	# 4. 跳跃
-	#    仅在地面时响应跳跃指令
-	# ——————————————————————————————————————————
+	# ──────────────────────────────────────────────────────
+	# 5. 跳跃（不变）
+	# ──────────────────────────────────────────────────────
 	if Input.is_action_just_pressed("jump") and _player.is_on_floor():
 		_velocity.y = _config.jump_force
 		jumped.emit()
 
-	# ——————————————————————————————————————————
-	# 5. 重力
-	#    空中持续受重力影响；地面时将 y 速度钳制为 -0.5 保持贴地
-	# ——————————————————————————————————————————
+	# ──────────────────────────────────────────────────────
+	# 6. 重力（不变）
+	# ──────────────────────────────────────────────────────
 	if not _player.is_on_floor():
 		_velocity.y -= _config.gravity * delta
 	elif _velocity.y < 0:
 		_velocity.y = -0.5
 
-	# ——————————————————————————————————————————
-	# 6. 应用移动
-	#    move_and_slide() 是 CharacterBody3D 的标准移动方法，
-	#    自动处理碰撞检测和滑动。
-	#    注意：碰撞后 _player.velocity 会被引擎修改，
-	#    因此需要同步回 _velocity 避免下一帧重新加速。
-	# ——————————————————————————————————————————
+	# ──────────────────────────────────────────────────────
+	# 7. 应用移动，同步碰撞后实际速度
+	# ──────────────────────────────────────────────────────
 	_player.velocity = _velocity
 	_player.move_and_slide()
-	_velocity = _player.velocity  # 同步碰撞后的实际速度
+	_velocity = _player.velocity
 
-	# landed detection: rising edge of is_on_floor
+	# ──────────────────────────────────────────────────────
+	# 8. 落地检测（is_on_floor 上升沿）及帧末状态更新
+	# ──────────────────────────────────────────────────────
 	var on_floor := _player.is_on_floor()
 	if on_floor and not _was_on_floor:
 		landed.emit()
 	_was_on_floor = on_floor
+	_had_input = has_input

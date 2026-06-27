@@ -17,6 +17,8 @@ func equip_weapon(weapon: BaseWeapon) -> void:
 		weapon_mount.add_child(weapon)
 		weapon.position = Vector3.ZERO
 		weapon.rotation = Vector3.ZERO
+	else:
+		push_error("WeaponManager: weapon_mount 为 null，武器 '%s' 已创建但不会显示" % weapon.name)
 	weapon_changed.emit(current_weapon)
 
 ## 设置武器挂载点(从调用处获取)

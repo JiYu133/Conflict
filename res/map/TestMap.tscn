@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://fxy7esyowvpg"]
 
 [ext_resource type="Script" uid="uid://1pc5r0bqgakj" path="res://Classes/Player/base_player.gd" id="1_jkswc"]
-[ext_resource type="Resource" uid="uid://dlllteybf5vq2" path="res://res/config/player/player_config_normal.tres" id="2_jkswc"]
+[ext_resource type="Resource" uid="uid://6j1op088306v" path="res://res/config/player/player_config.tres" id="5_config"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_xrl83"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -102,4 +102,4 @@ shape = SubResource("BoxShape3D_cgqpe")
 [node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1095234307]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.646346, -2.4987323)
 script = ExtResource("1_jkswc")
-player_config = ExtResource("2_jkswc")
+player_config = ExtResource("5_config")

@@ -23,7 +23,7 @@ var _current_recoil_horizontal: float = 0.0
 func initialize(cfg: WeaponConfig, am: AttachmentManager = null) -> void:
 	config = cfg
 	attachment_manager = am
-	print("RecoilComponent 初始化完成")
+	GlobalLogger.debug("RecoilComponent", "Initialized for: " + cfg.weapon_name)
 
 
 # ============================================================

@@ -50,15 +50,21 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 	_movement = movement
 	_animator = model_manager.animator
 
-	# 连接移动控制器信号
-	movement.jumped.connect(_on_jumped)
-	movement.landed.connect(_on_landed)
-	movement.started_running.connect(_on_started_running)
-	movement.stopped_running.connect(_on_stopped_running)
+	# 连接移动控制器信号（guard 防止 reload_model 重复连接）
+	if not movement.jumped.is_connected(_on_jumped):
+		movement.jumped.connect(_on_jumped)
+	if not movement.landed.is_connected(_on_landed):
+		movement.landed.connect(_on_landed)
+	if not movement.started_running.is_connected(_on_started_running):
+		movement.started_running.connect(_on_started_running)
+	if not movement.stopped_running.is_connected(_on_stopped_running):
+		movement.stopped_running.connect(_on_stopped_running)
 
 	# 连接玩家死亡/复活信号
-	player.died.connect(_on_died)
-	player.revived.connect(_on_revived)
+	if not player.died.is_connected(_on_died):
+		player.died.connect(_on_died)
+	if not player.revived.is_connected(_on_revived):
+		player.revived.connect(_on_revived)
 
 	GlobalLogger.info("AnimationController", "Initialized.")
 	_transition(State.IDLE)
@@ -73,6 +79,7 @@ func _process(delta: float) -> void:
 	# 落地过渡计时
 	if _state == State.LAND:
 		_land_timer -= delta
+		_was_on_floor = _player.is_on_floor()
 		if _land_timer <= 0.0:
 			_transition(_resolve_ground_state())
 		return
@@ -109,32 +116,32 @@ func _on_died() -> void:
 	_transition(State.DEATH)
 
 func _on_revived() -> void:
-	_transition(State.IDLE)
+	_transition(_resolve_ground_state())
 
 
 # 内部工具 ──────────────────────────────────────────────────
 
-# 根据当前速度决定地面状态应该是 IDLE 还是 WALK
+# 根据当前速度和奔跑状态决定地面应处于哪个状态
 func _resolve_ground_state() -> State:
 	if not _player:
 		return State.IDLE
-	var h_speed := Vector2(_player.velocity.x, _player.velocity.z).length()
-	return State.WALK if h_speed > 0.2 else State.IDLE
+	if _movement and _movement.is_running():
+		return State.RUN
+	var h_speed_sq := Vector2(_player.velocity.x, _player.velocity.z).length_squared()
+	return State.WALK if h_speed_sq > 0.04 else State.IDLE
 
 
 func _transition(new_state: State) -> void:
 	if _state == new_state:
 		return
+	if not _animator:
+		return
 	_state = new_state
 
 	var anim_name := _state_to_anim(new_state)
-	if not _animator:
-		return
-
 	if _animator.has_animation(anim_name):
 		_animator.play(anim_name)
 	else:
-		# 动画资源尚未添加时静默跳过，避免运行时报错
 		GlobalLogger.debug("AnimationController", "Animation not found: " + anim_name)
 
 

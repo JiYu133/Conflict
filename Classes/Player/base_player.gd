@@ -78,10 +78,10 @@ func _initialize_subsystems() -> void:
 	# 初始化子系统
 	
 	camera_controller.initialize(
-		self, 
-		model_manager, 
-		player_config.model_config if player_config else null, 
-		player_config
+		self,
+		model_manager,
+		player_config.model_config if player_config else null,
+		player_config.camera_config if player_config else null
 		)
 		
 	movement_controller.initialize(
@@ -90,9 +90,13 @@ func _initialize_subsystems() -> void:
 		)
 		
 	foot_ik_controller.initialize(
-		model_manager, 
+		model_manager,
 		player_config.model_config if player_config else null
 		)
+
+	# 连接落地/起跳信号到摄像机控制器，用于落地冲击弹簧效果
+	camera_controller.connect_movement_signals(movement_controller)
+
 	# 连接信号
 	_connect_signals()
 
@@ -103,6 +107,8 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 
 func _connect_signals() -> void:
 	model_manager.model_loaded.connect(_on_model_loaded)
+	# 武器切换时将新武器的 RecoilComponent 注入摄像机控制器
+	weapon_manager.weapon_changed.connect(_on_weapon_changed)
 	GlobalLogger.debug("Player", "Signals have been connected. ")
 		
 func _on_model_loaded(_model: Node3D) -> void:
@@ -126,8 +132,18 @@ func _on_model_loaded(_model: Node3D) -> void:
 	
 	var mount = model_manager.find_node_by_names(["WeaponMount"], "Node3D")
 	if mount:
-		weapon_manager.set_mount(mount)
 		GlobalLogger.info("Player", "Weapon mount has been set: " + mount.name)
+		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(mount)
+		if sway_pivot:
+			weapon_manager.set_mount(sway_pivot)
+			GlobalLogger.info("Player", "Weapon sway pivot created, weapons attach under: " + sway_pivot.name)
+
+			# 初始化武器遮挡检测（需要摄像机和晃动支点就绪后才可用）
+			var obstruction_detector: WeaponObstructionDetector = \
+				_create_subsystem(WeaponObstructionDetector.new(), "ObstructionDetector") as WeaponObstructionDetector
+			obstruction_detector.initialize(self, camera_controller.get_active_camera(), weapon_manager, sway_pivot)
+		else:
+			weapon_manager.set_mount(mount)
 	else:
 		GlobalLogger.error("Player", "Cannot find any weapon mount,the weapon will be not visible.")
 		GlobalLogger.error("Player", "If there's already a weapon mount,try to check if its name is \"WeaponMount\" ")
@@ -139,24 +155,29 @@ func _on_model_loaded(_model: Node3D) -> void:
 # 公共API
 
 
+func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
+	# 将新装备武器的 RecoilComponent 注入摄像机控制器
+	# 摄像机每帧从中读取后座偏移并叠加到垂直视角
+	if new_weapon and new_weapon.recoil_component:
+		camera_controller.set_recoil_component(new_weapon.recoil_component)
+	else:
+		camera_controller.set_recoil_component(null)
+
+
 func die() -> void:
 	if not is_alive:
 		return
 	
-	# is_alive 的 setter 已负责设 controllable=false 并 emit died，避免重复发射
 	is_alive = false
 	ragdoll_system.enable()
-	died.emit()
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has died.")
 
 func revive() -> void:
 	if is_alive:
 		return
 	
-	# is_alive 的 setter 已负责设 controllable=true 并 emit revived，避免重复发射
 	is_alive = true
 	ragdoll_system.disable()
-	revived.emit()
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
 
 
