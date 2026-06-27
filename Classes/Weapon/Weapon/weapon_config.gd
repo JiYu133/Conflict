@@ -86,6 +86,8 @@ extends Resource
 @export_group("视觉效果")
 @export var weapon_scene: PackedScene
 ## 武器 3D 模型场景，需要包含 AnimationPlayer 和必要的挂载点
+@export var weapon_length: float = 0.75
+## 武器全长（枪托末端到枪口），单位：m。用于顶墙收枪的射线检测距离
 
 # 配件槽位声明 ────────────────────────────────────────────
 @export_group("配件槽位")

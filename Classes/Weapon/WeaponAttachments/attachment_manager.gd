@@ -171,7 +171,12 @@ func get_magnification() -> float:
 			mag = max(mag, att.get_magnification())
 	return mag
 
-## 获取已装备弹匣附件的额外容量总和
+## 计算枪口装置的长度修正总和（m），用于顶墙收枪射线检测
+func get_total_length_modifier() -> float:
+	var total: float = 0.0
+	for att in get_all_attachments():
+		total += att.get_length_modifier()
+	return total
 ## （AmmoComponent 用它在 initialize 后调整弹匣大小）
 func get_total_magazine_capacity_bonus() -> int:
 	var total = 0

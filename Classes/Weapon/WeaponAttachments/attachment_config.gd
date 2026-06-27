@@ -83,6 +83,9 @@ extends Resource
 @export var suppresses_sound: bool = false
 ## 是否抑制枪声（消音器特有）
 
+@export var length_modifier: float = 0.0
+## 枪口长度修正（m）。消音器填正值，比如 0.2 = 增加 20cm 检测长度
+
 @export var damage_modifier: float = 0.0
 ## 伤害修正：消音器亚音速弹可能 -10%
 
