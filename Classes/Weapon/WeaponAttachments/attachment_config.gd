@@ -20,83 +20,82 @@ extends Resource
 
 # ──────────────────────────── 基础信息 ────────────────────────────
 @export_group("基础信息")
+## 配件显示名（例："Trijicon TA31 ACOG 4x32"）/ Attachment display name
 @export var attachment_name: String = "Unnamed Attachment"
-## 配件显示名（例："Trijicon TA31 ACOG 4x32"）
 
+## 配件类型，决定能装到哪个槽位 / Attachment type, determines which slot it fits
 @export var attachment_type: AttachmentType = AttachmentType.OPTIC
-## 配件类型，决定能装到哪个槽位
 
 # ──────────────────────────── 槽位约束 ────────────────────────────
 @export_group("槽位约束")
+## 允许装入的挂载点类型 / Allowed slot type for this attachment
 @export var allowed_slot: AttachmentSlot.SlotType = AttachmentSlot.SlotType.OPTIC_RAIL
-## 允许装入的挂载点类型。瞄具只能装瞄具槽，握把只能装握把槽
 
+## 是否需要先有某个配件 / Whether a prerequisite attachment is required
 @export var requires_existing_attachment: bool = false
-## 是否需要先有某个配件（例如：消音器可装在枪口；某些瞄具需要先拆除机械瞄具）
 
 # ──────────────────────────── 数值修正 ────────────────────────────
 @export_group("散布修正")
+## 腰射散布修正：负值 = 减少散布 / Hip-fire spread modifier; negative = tighter
 @export var hipfire_spread_modifier: float = 0.0
-## 腰射散布修正：负值 = 减少散布（更准）。例：红点 -0.5°
 
+## 机瞄散布修正：负值 = 减少散布 / ADS spread modifier; negative = tighter
 @export var ads_spread_modifier: float = 0.0
-## 机瞄散布修正：负值 = 减少散布。例：ACOG -0.05°
 
 # ──────────────────────────── 后座修正 ────────────────────────────
 @export_group("后座修正")
+## 垂直后座修正：负值 = 减少上跳 / Vertical recoil modifier; negative = less climb
 @export var recoil_vertical_modifier: float = 0.0
-## 垂直后座修正：负值 = 减少上跳。例：垂直握把 -0.3°
 
+## 水平后座修正：负值 = 减少左右偏移 / Horizontal recoil modifier; negative = less drift
 @export var recoil_horizontal_modifier: float = 0.0
-## 水平后座修正：负值 = 减少左右偏移
 
+## 后座回正速度修正：正值 = 更快回正 / Recoil recovery speed modifier; positive = faster
 @export var recoil_recovery_modifier: float = 0.0
-## 后座回正速度修正：正值 = 更快回正。例：握把 +1.0°/s
 
 # ──────────────────────────── 重量与机动 ────────────────────────────
 @export_group("重量与机动")
+## 配件重量（kg），叠加到武器总重量 / Attachment weight in kg, added to weapon total
 @export var weight_kg: float = 0.1
-## 配件重量（kg），叠加到武器总重量上影响移动速度
 
+## 瞄准速度修正：正值 = 更快瞄准 / ADS speed modifier; positive = faster aim
 @export var ads_speed_modifier: float = 0.0
-## 瞄准速度修正：正值 = 更快的瞄准。例：红点 +0.3
 
 # ──────────────────────────── 视野与光学 ────────────────────────────
 @export_group("视野与光学")
+## 放大倍率，1.0 = 无放大 / Magnification; 1.0 = no zoom
 @export var magnification: float = 1.0
-## 放大倍率。1.0=无放大，4.0=ACOG 4x
 
+## 强制 FOV（-1 = 沿用摄像机 FOV）/ Forced FOV (-1 = use camera default)
 @export var fov_override: float = -1.0
-## 强制FOV（-1表示沿用摄像机FOV）。狙击镜会缩小FOV模拟远距离
 
+## 是否有准星图案 / Whether this optic has a reticle
 @export var has_reticle: bool = true
-## 是否有准星图案（机械瞄具无，瞄具有）
 
+## 准星颜色 / Reticle color
 @export var reticle_color: Color = Color(1, 0, 0)
-## 准星颜色（红点常用红/橙，全息常用红）
 
 # ──────────────────────────── 特殊效果 ────────────────────────────
 @export_group("特殊效果")
+## 是否抑制枪口火光 / Whether muzzle flash is suppressed
 @export var suppresses_flash: bool = false
-## 是否抑制枪口火光（消音器特有）
 
+## 是否抑制枪声 / Whether gunshot sound is suppressed
 @export var suppresses_sound: bool = false
-## 是否抑制枪声（消音器特有）
 
+## 枪口长度修正（m），消音器填正值 / Muzzle length modifier in m; positive for suppressors
 @export var length_modifier: float = 0.0
-## 枪口长度修正（m）。消音器填正值，比如 0.2 = 增加 20cm 检测长度
 
+## 伤害修正，消音器亚音速弹可能为负 / Damage modifier; subsonic suppressors may be negative
 @export var damage_modifier: float = 0.0
-## 伤害修正：消音器亚音速弹可能 -10%
 
 # ──────────────────────────── 视觉 ────────────────────────────
 @export_group("视觉")
+## 配件 3D 模型场景 / Attachment 3D model scene
 @export var attachment_scene: PackedScene
-## 配件 3D 模型场景，挂在武器的指定 Marker3D 上
 
+## 挂在武器哪个 Marker3D 节点下 / Marker3D node name on the weapon to attach to
 @export var mount_point_name: String = ""
-## 挂在武器哪个 Marker3D 节点下（例："OpticMount"、"MuzzleMount"）
-## 留空则使用挂载点的默认位置
 
 # ════════════════════════════════════════════════════════════════════════
 # 枚举类型定义

@@ -4,5 +4,8 @@
 
 [resource]
 script = ExtResource("1_camcfg")
+sway_look_amount = 0.005
+sway_look_amount_pitch = 0.005
+weapon_lag_return_speed = 6.0
 breathe_enabled = true
 metadata/_custom_type_script = "uid://h27r465digmw"

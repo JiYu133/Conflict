@@ -54,7 +54,7 @@
    - 无输入时以 `stop_brake_strength` 快速制动并重置步态相位
 4. **空中水平速度** — 使用 `air_acceleration` / `air_deceleration` 进行有限空中控制
 5. **跳跃** — `jump` 动作刚按下且在地面时，设置 `_velocity.y` 并发出 `jumped`
-6. **重力** — 不在地面时每帧累减 `gravity * delta`；落地后将 `_velocity.y` 钳制到 `-0.5`
+6. **重力** — 不在地面时每帧累减 `gravity * delta`；落地后将 `_velocity.y` 钳制到 `PlayerConfig.floor_snap_velocity`（默认 `-0.5`），防止下坡时向下速度持续累积
 7. **应用移动** — 写入 `_player.velocity` 并调用 `move_and_slide()`，再将碰撞后实际速度同步回 `_velocity`
 8. **落地检测** — 检测 `is_on_floor()` 上升沿并发出 `landed`
 

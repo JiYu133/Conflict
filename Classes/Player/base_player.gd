@@ -116,7 +116,8 @@ func _on_model_loaded(_model: Node3D) -> void:
 	# 初始化布娃娃系统（需要骨骼）
 	ragdoll_system.initialize(
 		model_manager.skeleton,
-		model_manager.animator
+		model_manager.animator,
+		model_manager.animation_tree
 	)
 
 	# 初始化动画控制器（需要 AnimationPlayer，模型加载后才可用）

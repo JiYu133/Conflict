@@ -13,12 +13,14 @@ var is_active: bool:
 var _is_active: bool = false
 var _skeleton: Skeleton3D
 var _animator: AnimationPlayer
+var _animation_tree: AnimationTree
 var _physical_simulator: Node  # PhysicalBoneSimulator3D
 
 ## 初始化
-func initialize(skeleton: Skeleton3D, animator: AnimationPlayer = null) -> void:
+func initialize(skeleton: Skeleton3D, animator: AnimationPlayer = null, animation_tree: AnimationTree = null) -> void:
 	_skeleton = skeleton
 	_animator = animator
+	_animation_tree = animation_tree
 	
 	# 查找物理骨骼模拟器（Godot 4.x 自动生成的那个节点）
 	if skeleton and skeleton.get_parent():
@@ -38,6 +40,9 @@ func enable() -> void:
 	if _animator:
 		_animator.stop()
 		_animator.active = false
+	# AnimationTree 必须同步禁用，否则它会继续覆盖物理骨骼的姿态
+	if is_instance_valid(_animation_tree):
+		_animation_tree.active = false
 	
 	# 启动物理模拟
 	if _physical_simulator:
@@ -67,6 +72,8 @@ func disable() -> void:
 	if _animator:
 		_animator.active = true
 		# TODO: 播放站立动画，需要从布娃娃状态恢复到动画状态
+	if is_instance_valid(_animation_tree):
+		_animation_tree.active = true
 	
 	ragdoll_disabled.emit()
 	GlobalLogger.info("RagdollSystem", "布娃娃系统已停用")
