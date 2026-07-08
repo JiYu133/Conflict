@@ -2,24 +2,28 @@ class_name PlayerAnimationController
 extends Node
 
 # ============================================================
-# 玩家动画控制器
-# 功能：根据玩家运动状态驱动 AnimationPlayer，
-#       维护一个显式状态机以避免动画抖动。
+# 玩家动画控制器（AnimationTree 版本）
+# 功能：通过 AnimationTree + AnimationNodeStateMachine 驱动动画，
+#       Walk / Run 状态使用 BlendSpace2D 实现 8 方向混合。
 # 用法：由 BasePlayer 初始化，传入 movement_controller 和 model_manager。
-#       动画资源通过 AnimationPlayer 中的动画名称对应，名称见下方常量。
+#       状态机节点名称见下方常量，必须与编辑器里的节点名完全一致。
 # ============================================================
 
-# 动画名称常量 ─────────────────────────────────────────────
-# 后续在 AnimationPlayer 中创建同名动画即可自动生效
-const ANIM_IDLE        := "idle"
-const ANIM_WALK        := "walk"
-const ANIM_RUN         := "run"
-const ANIM_JUMP        := "jump"
-const ANIM_FALL        := "fall"
-const ANIM_LAND        := "land"
-const ANIM_DEATH       := "death"
+# 状态机节点名称（必须与 AnimationTree 编辑器中的节点名一致）──────
+const SM_IDLE  := "Idle"
+const SM_WALK  := "Walk"
+const SM_RUN   := "Run"
+const SM_JUMP  := "Jump"
+const SM_FALL  := "Fall"
+const SM_LAND  := "Land"
+const SM_DEATH := "Death"
 
-# 落地过渡动画播放完毕后自动切回 idle/walk/run 的等待时间（秒）
+# AnimationTree 参数路径 ──────────────────────────────────────
+const PARAM_PLAYBACK   := "parameters/playback"
+const PARAM_WALK_BLEND := "parameters/Walk/blend_position"
+const PARAM_RUN_BLEND  := "parameters/Run/blend_position"
+
+# 落地动画播放完毕后自动切回地面状态的等待时间（秒）
 const LAND_RECOVERY_TIME := 0.3
 
 # 状态枚举 ─────────────────────────────────────────────────
@@ -34,7 +38,8 @@ enum State {
 }
 
 # 私有变量 ─────────────────────────────────────────────────
-var _animator: AnimationPlayer
+var _animation_tree: AnimationTree
+var _playback: AnimationNodeStateMachinePlayback
 var _movement: PlayerMovementController
 var _player: CharacterBody3D
 
@@ -48,9 +53,8 @@ var _was_on_floor: bool = true
 func initialize(player: CharacterBody3D, movement: PlayerMovementController, model_manager: PlayerModelManager) -> void:
 	_player = player
 	_movement = movement
-	_animator = model_manager.animator
 
-	# 连接移动控制器信号（guard 防止 reload_model 重复连接）
+	# 信号连接与 AnimationTree 无关，始终建立，防止提前返回导致信号缺失
 	if not movement.jumped.is_connected(_on_jumped):
 		movement.jumped.connect(_on_jumped)
 	if not movement.landed.is_connected(_on_landed):
@@ -59,22 +63,34 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		movement.started_running.connect(_on_started_running)
 	if not movement.stopped_running.is_connected(_on_stopped_running):
 		movement.stopped_running.connect(_on_stopped_running)
-
-	# 连接玩家死亡/复活信号
 	if not player.died.is_connected(_on_died):
 		player.died.connect(_on_died)
 	if not player.revived.is_connected(_on_revived):
 		player.revived.connect(_on_revived)
 
-	GlobalLogger.info("AnimationController", "Initialized.")
+	_animation_tree = model_manager.animation_tree
+
+	if not is_instance_valid(_animation_tree):
+		GlobalLogger.debug("AnimationController", "未找到 AnimationTree，动画禁用。")
+		return
+
+	_playback = _animation_tree.get(PARAM_PLAYBACK) as AnimationNodeStateMachinePlayback
+	if not _playback:
+		GlobalLogger.warn("AnimationController", "无法获取状态机 playback，请确认 AnimationTree 根节点为 AnimationNodeStateMachine。")
+		return
+
+	GlobalLogger.info("AnimationController", "Initialized with AnimationTree.")
 	_transition(State.IDLE)
 
 
 # 每帧检测 ──────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
-	if not _player or not _animator:
+	if not _player or not is_instance_valid(_animation_tree) or not _playback:
 		return
+
+	# 每帧更新 BlendSpace2D 混合坐标（无论当前状态，保持同步）
+	_update_blend_positions()
 
 	# 落地过渡计时
 	if _state == State.LAND:
@@ -93,6 +109,28 @@ func _process(delta: float) -> void:
 	if not on_floor and _was_on_floor and _state != State.JUMP:
 		_transition(State.FALL)
 	_was_on_floor = on_floor
+
+
+# BlendSpace2D 混合坐标更新 ───────────────────────────────────
+
+func _update_blend_positions() -> void:
+	# 用实际速度驱动混合坐标，确保被动位移（击退、传送带等）也能正确播放动画
+	# 将世界速度转换到玩家局部坐标系，取水平分量
+	var local_vel: Vector3 = _player.global_transform.basis.inverse() * _player.velocity
+	# 局部坐标：X = 右，-Z = 前；BlendSpace2D 约定 Y 轴正方向 = 前进
+	var blend_pos := Vector2(local_vel.x, -local_vel.z)
+
+	# 按最大速度归一化，让混合坐标保持在 [-1, 1] 范围内
+	var max_speed: float = _movement.get_max_speed() if _movement.has_method("get_max_speed") else 4.0
+	if max_speed > 0.0:
+		blend_pos /= max_speed
+
+	# 超出单位圆时归一化
+	if blend_pos.length_squared() > 1.0:
+		blend_pos = blend_pos.normalized()
+
+	_animation_tree.set(PARAM_WALK_BLEND, blend_pos)
+	_animation_tree.set(PARAM_RUN_BLEND, blend_pos)
 
 
 # 信号回调 ──────────────────────────────────────────────────
@@ -134,24 +172,19 @@ func _resolve_ground_state() -> State:
 func _transition(new_state: State) -> void:
 	if _state == new_state:
 		return
-	if not _animator:
+	if not _playback:
 		return
 	_state = new_state
-
-	var anim_name := _state_to_anim(new_state)
-	if _animator.has_animation(anim_name):
-		_animator.play(anim_name)
-	else:
-		GlobalLogger.debug("AnimationController", "Animation not found: " + anim_name)
+	_playback.travel(_state_to_sm_name(new_state))
 
 
-func _state_to_anim(state: State) -> String:
+func _state_to_sm_name(state: State) -> String:
 	match state:
-		State.IDLE:  return ANIM_IDLE
-		State.WALK:  return ANIM_WALK
-		State.RUN:   return ANIM_RUN
-		State.JUMP:  return ANIM_JUMP
-		State.FALL:  return ANIM_FALL
-		State.LAND:  return ANIM_LAND
-		State.DEATH: return ANIM_DEATH
-	return ANIM_IDLE
+		State.IDLE:  return SM_IDLE
+		State.WALK:  return SM_WALK
+		State.RUN:   return SM_RUN
+		State.JUMP:  return SM_JUMP
+		State.FALL:  return SM_FALL
+		State.LAND:  return SM_LAND
+		State.DEATH: return SM_DEATH
+	return SM_IDLE

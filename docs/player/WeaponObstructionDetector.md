@@ -1,6 +1,6 @@
 # WeaponObstructionDetector
 
-**文件路径：** `Classes/Player/weapon_obstruction_detector.gd`
+**文件路径：** `Classes/Weapon/Weapon/weapon_obstruction_detector.gd`
 **继承自：** `Node`
 
 ## 功能概述
@@ -49,7 +49,8 @@
 
 ## 注意事项
 
+- **文件已从 `Classes/Player/` 迁移至 `Classes/Weapon/Weapon/`。** 脚本以 `class_name WeaponObstructionDetector` 全局注册，外部通过 `class_name` 引用，与物理路径无关。但 `.uid` 文件需同步提交，否则 Godot 的 UID 注册表会在资源重新导入时失效。
 - 此节点在 `_on_model_loaded()` 中动态创建，比其他子系统晚初始化，无法在模型加载前访问。
-- 缩进效果直接修改 `sway_pivot.position.z`，与 `PlayerCameraController` 中的武器晃动（sway）叠加作用，两者均作用于同一个支点节点。
+- 缩进效果直接修改 `sway_pivot.position.z`，与 `PlayerCameraController` 的武器晃动共用同一个支点。`PlayerCameraController` 只写 X/Y，Z 轴专属于此节点；两者不可互相写入 Z，否则会产生抖动冲突。
 - 射线排除仅排除玩家自身（通过 `get_rid()`），队友或其他动态物体均会触发缩进。
 - `lerp` 的第三个参数被 `clamp(delta * RETRACT_SPEED, 0.0, 1.0)` 限制在 `[0, 1]`，在极低帧率下不会产生过冲。

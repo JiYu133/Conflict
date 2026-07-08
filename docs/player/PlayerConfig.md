@@ -20,6 +20,12 @@
 | `gravity` | `float` | `9.8` | 重力加速度（m/s²） |
 | `air_acceleration` | `float` | `1.0` | 空中加速度（m/s²） |
 | `air_deceleration` | `float` | `2.0` | 空中减速度（m/s²） |
+| `input_dead_zone` | `float` | `0.1` | 输入死区阈值，低于此长度的方向向量视为无输入（适用于摇杆/键盘） |
+| `floor_snap_velocity` | `float` | `-0.5` | 落地时 Y 速度钳制值，防止下坡累积下冲速度；不宜设为 0（会导致台阶弹跳）或过大负值（会穿地） |
+| `backward_dot_threshold` | `float` | `-0.3` | 后退判定 dot product 阈值，低于此值视为向后移动，乘以 `backward_speed_ratio` 限速 |
+| `lateral_dot_threshold` | `float` | `0.7` | 横移判定 dot product 阈值，高于此值视为纯侧移，乘以 `lateral_speed_ratio` 限速 |
+| `turn_decel_min_speed` | `float` | `0.01` | 启用转向减速的最低速度（m/s）；**注意**：代码中比较的是 `length_squared() > value²`，因此此字段的语义是速度（m/s），不是 length_squared |
+| `air_input_threshold` | `float` | `0.1` | 空中加速/减速切换的目标速度阈值（m/s）；低于此值使用 `air_deceleration`，高于则用 `air_acceleration` |
 
 ### 运动手感
 
@@ -61,3 +67,5 @@
 
 - `walk_speed` 和 `run_speed` 的值需与 `CameraConfig.walk_speed_reference` / `max_speed_reference` 保持一致，否则头部摆动的频率切换和振幅归一化会出现偏差。
 - `model_scene` 为空时 `BasePlayer._ready()` 不会调用 `load_model()`，所有依赖模型加载完成后才初始化的子系统（布娃娃、动画控制器、武器挂载）将不可用。
+- `turn_decel_min_speed` 是速度单位（m/s），代码中比较 `h_vel_2d.length_squared() > turn_decel_min_speed²`，因此将此值设为 `0.1` 表示 0.1 m/s 阈值，而不是 `0.01`（0.01 的平方 = 0.0001，等效于 0.01 m/s，几乎任何移动都会触发转向减速）。
+- `floor_snap_velocity` 不应设为正值或 0；它的唯一作用是防止 `move_and_slide` 在楼梯/斜坡上因连续落地帧而累积向下速度。

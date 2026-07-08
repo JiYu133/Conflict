@@ -45,7 +45,7 @@ func initialize(
 
 | 信号 | 参数 | 说明 |
 |------|------|------|
-| `camera_ready` | `camera: Camera3D` | 摄像机挂载完毕、视角控制就绪时发出，订阅方可在此时安全访问活动摄像机 |
+| `camera_ready` | `camera: Camera3D` | 摄像机挂载完毕、视角控制就绪时发出，订阅方可在此时安全访问活动摄像机。**若模型无任何可识别的摄像机挂载点（无 CameraMount、无 Camera3D、无头骨），参数可能为 null，订阅方应做非空检查** |
 
 ---
 
@@ -92,20 +92,20 @@ func initialize(
 
 ## 程序化摄像机效果层
 
-所有效果在 `_process(delta)` 中独立计算，最终以加法合成到摄像机变换。位置偏移（`pos_offset`）由层 1、2、3 求和后写入 `_active_camera.position`；旋转偏移由层 4 叠加到 `_vertical_angle` 后写入 `_active_camera.rotation.x`；Z 轴倾斜由层 5 独立写入 `_active_camera.rotation.z`。
+所有效果在 `_process(delta)` 中独立计算，最终以加法合成到摄像机变换。位置偏移（`pos_offset`）由层 1、2、3 求和后写入 `_active_camera.position`；旋转偏移由层 4 叠加到 `_vertical_angle` 后写入 `_active_camera.rotation.x`；Z 轴倾斜由层 5 在 `_process` 末尾统一写入 `_active_camera.rotation.z`（不在 `_update_tilt` 内部写，统一由 `_process` 负责）。
 
 ### 层 1：头部摆动（Head Bob）
 
 **控制开关：** `CameraConfig.bob_enabled`
 
-基于角色水平速度驱动 Lissajous（figure-8）轨迹，模拟步伐重心起伏：
+基于角色水平速度驱动垂直正弦轨迹，模拟步伐重心起伏：
 
-- 垂直分量使用全频 `sin(phase × TAU)`，水平分量使用半频 `sin(phase × PI)`，合成自然的 8 字步态。
-- 相位累加速率根据速度自动切换行走频率（`bob_frequency_walk`）和奔跑频率（`bob_frequency_run`）。
+- 相位累加速率根据速度自动切换行走频率（`bob_frequency_walk`）和奔跑频率（`bob_frequency_run`）；切换阈值为 `walk_speed_reference × bob_run_threshold_multiplier`。
 - 振幅随水平速度线性缩放（`speed_t = h_speed / max_speed_reference`），低速轻微、高速明显。
-- 离地或速度低于 0.1 m/s 时，偏移以 `bob_return_speed` 速率 lerp 归零，相位同步重置，避免下次落地时跳跃。
+- 离地或速度低于 `bob_min_speed` 时，偏移以 `bob_return_speed` 速率 lerp 归零，相位同步重置，避免下次落地时跳跃。
+- **注意：** `bob_return_speed` 的 lerp 无 clamp 保护，帧率极低时可能产生过冲，见 `CameraConfig` 注意事项。
 
-相关配置键：`bob_frequency_walk`、`bob_frequency_run`、`bob_amplitude_vertical`、`bob_amplitude_horizontal`、`bob_return_speed`、`walk_speed_reference`、`max_speed_reference`
+相关配置键：`bob_enabled`、`bob_min_speed`、`bob_run_threshold_multiplier`、`bob_frequency_walk`、`bob_frequency_run`、`bob_amplitude_vertical`、`bob_return_speed`、`walk_speed_reference`、`max_speed_reference`
 
 ### 层 2：呼吸摆动（Breathing）
 
@@ -147,7 +147,7 @@ func initialize(
 
 - 将世界空间速度转换到玩家局部坐标系，取 X 分量（向右为正）。
 - 目标倾斜角：`-clamp(lateral_speed / max_speed_reference, -1, 1) × tilt_max_angle`（方向取反：向右跑 → 相机左倾）。
-- 以 `tilt_speed` 平滑 lerp 到目标角度，结果写入 `_active_camera.rotation.z`。
+- 以 `tilt_speed` 平滑 lerp 到目标角度，结果存入 `_tilt_angle`；`_process` 末尾统一将其写入 `_active_camera.rotation.z`。
 
 相关配置键：`tilt_max_angle`、`tilt_speed`、`max_speed_reference`
 
@@ -156,12 +156,15 @@ func initialize(
 **控制开关：** `CameraConfig.sway_enabled`  
 **作用节点：** `_sway_pivot`（`WeaponSwayPivot`），不影响摄像机旋转
 
-双层效果，作用于 `WeaponMount` 下的支点节点：
+三层效果叠加，作用于 `WeaponMount` 下的支点节点：
 
-- **层 A（look sway）：** 鼠标移动量 `_mouse_delta` 乘以 `sway_look_amount` 驱动支点旋转目标（X/Z 轴），lerp 平滑归位，模拟武器惯性滞后。
-- **层 B（move sway）：** 角色速度转换到局部坐标系后乘以 `sway_move_amount`，驱动支点位置偏移（X/Y 轴），模拟持枪重量在运动中的晃动。
+- **层 A（look sway）：** 鼠标移动量 `_mouse_delta` 分别乘以 `sway_look_amount`（横滚/Z 轴）和 `sway_look_amount_pitch`（俯仰/X 轴）驱动支点旋转目标，lerp 平滑归位，模拟武器惯性滞后。
+- **层 B（move sway）：** 角色速度转换到局部坐标系后乘以 `sway_move_amount × sway_move_scale_*`，驱动支点位置偏移（X/Y 轴），模拟持枪重量在运动中的晃动。空中时 Y 速度非零，会产生额外垂直偏移。
+- **层 C（weapon lag）：** 由 `weapon_lag_enabled` 独立控制。鼠标输入乘以灵敏度后叠加到 yaw/pitch 积累量，每帧钳制到 `weapon_lag_max` 后再 lerp 归零，产生转头时武器的惯性滞后感。**仅在 `sway_enabled = true` 时生效**；`look sway` 使用原始像素输入，`weapon lag` 乘以 `mouse_sensitivity`，两者量纲不同，调整灵敏度时 lag 效果会同步缩放但 sway 不会。
 
-相关配置键：`sway_look_amount`、`sway_move_amount`、`sway_speed`
+Z 轴（`position.z`）保留给 `WeaponObstructionDetector` 控制收枪偏移，本控制器仅写 X/Y。
+
+相关配置键：`sway_enabled`、`sway_look_amount`、`sway_look_amount_pitch`、`sway_move_amount`、`sway_move_scale_horizontal`、`sway_move_scale_vertical`、`sway_speed`、`weapon_lag_enabled`、`weapon_lag_scale`、`weapon_lag_max`、`weapon_lag_return_speed`
 
 ---
 

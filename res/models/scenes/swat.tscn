@@ -1,0 +1,63 @@
+[gd_scene format=3 uid="uid://b56qxlux3spui"]
+
+[ext_resource type="PackedScene" uid="uid://dnvj07nseis8r" path="res://res/models/player/test_model/Swat.fbx" id="1_wbk7e"]
+[ext_resource type="AnimationLibrary" uid="uid://dc06ylsl0iqmy" path="res://res/animations/player/idle.fbx" id="2_us46y"]
+[ext_resource type="AnimationLibrary" uid="uid://c028h0kk3p3ux" path="res://res/animations/player/walk backward.fbx" id="3_fohhv"]
+[ext_resource type="AnimationLibrary" uid="uid://ca0ea5ff46fbb" path="res://res/animations/player/walk forward.fbx" id="4_gfxw0"]
+[ext_resource type="AnimationLibrary" uid="uid://bktttbh30o7xj" path="res://res/animations/player/walk left.fbx" id="5_5diqx"]
+[ext_resource type="AnimationLibrary" uid="uid://cf67h8mopqh4m" path="res://res/animations/player/walk right.fbx" id="6_1n0kr"]
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_idle"]
+animation = &"idle/mixamo.com"
+
+[sub_resource type="AnimationNodeBlendSpace2D" id="ANBlend_walk"]
+
+[sub_resource type="AnimationNodeStateMachine" id="ANStateMachine"]
+states/Idle/node = SubResource("ANAnim_idle")
+states/Idle/position = Vector2(0, 0)
+states/Walk/node = SubResource("ANBlend_walk")
+states/Walk/position = Vector2(-250, 0)
+
+[node name="Swat" unique_id=727840838 instance=ExtResource("1_wbk7e")]
+
+[node name="Skeleton3D" parent="." index="0" unique_id=2066017944]
+bones/2/rotation = Quaternion(-0.042125665, -5.7344693e-09, 1.3600686e-07, 0.9991123)
+bones/6/rotation = Quaternion(0, 6.4623485e-27, 5.169879e-26, 1)
+bones/13/rotation = Quaternion(3e-45, 3.0092655e-36, 0, 1)
+bones/14/rotation = Quaternion(1e-45, -3.0092655e-36, 0, 1)
+bones/16/rotation = Quaternion(-6.705429e-17, -3.0025065e-17, -2.7755576e-17, 1)
+bones/17/rotation = Quaternion(3.1728332e-17, 1.0065846e-18, 0, 1)
+bones/19/rotation = Quaternion(0, 3.0092655e-36, 0, 1)
+bones/20/rotation = Quaternion(1e-45, -3.0092655e-36, 0, 1)
+bones/21/rotation = Quaternion(1e-45, 3.0092655e-36, 6.4623485e-27, 1)
+bones/27/rotation = Quaternion(1.5709682e-06, 9.362197e-11, 6.202322e-05, 1)
+bones/28/rotation = Quaternion(-3.8756957e-06, 5.920343e-10, -0.00015275569, 1)
+bones/29/rotation = Quaternion(2.6781206e-06, 2.1560473e-10, 8.050602e-05, 1)
+bones/32/rotation = Quaternion(0, 3.0092655e-36, 0, 1)
+bones/33/rotation = Quaternion(0, -3.0092655e-36, 0, 1)
+bones/37/rotation = Quaternion(3e-45, -3.0092655e-36, 0, 1)
+bones/38/rotation = Quaternion(-1e-45, 0, 0, 1)
+bones/39/rotation = Quaternion(0, 0, 0, 1)
+bones/40/rotation = Quaternion(-1e-45, 0, 0, 1)
+bones/41/rotation = Quaternion(-6.353108e-05, 7.370071e-11, -1.2200995e-06, 1)
+bones/43/rotation = Quaternion(0, 0, 0, 1)
+bones/44/rotation = Quaternion(0, -3.0092655e-36, 0, 1)
+bones/45/rotation = Quaternion(-6.39917e-05, -4.4290727e-10, 6.8617296e-06, 1)
+bones/47/rotation = Quaternion(0, 0, 0, 1)
+bones/49/rotation = Quaternion(-6.309877e-05, -3.3220438e-10, 5.204394e-06, 1)
+bones/51/rotation = Quaternion(0, 8.2655804e-17, -8.8599215e-08, 1)
+bones/52/rotation = Quaternion(-7.34684e-39, 1.2325952e-32, 6.617445e-24, 1)
+bones/53/rotation = Quaternion(-6.356673e-05, 5.51722e-10, -8.739407e-06, 1)
+bones/56/rotation = Quaternion(1.0197909e-17, 2.8176478e-17, -9.7144515e-17, 1)
+
+[node name="AnimationPlayer" parent="." index="2" unique_id=171564609]
+libraries/idle = ExtResource("2_us46y")
+libraries/walk_bwd = ExtResource("3_fohhv")
+libraries/walk_fwd = ExtResource("4_gfxw0")
+libraries/walk_left = ExtResource("5_5diqx")
+libraries/walk_right = ExtResource("6_1n0kr")
+
+[node name="AnimationTree" type="AnimationTree" parent="." index="3" unique_id=1816569920]
+tree_root = SubResource("ANStateMachine")
+anim_player = NodePath("../AnimationPlayer")
+parameters/Walk/blend_position = Vector2(0, 0)

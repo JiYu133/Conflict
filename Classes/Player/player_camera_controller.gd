@@ -86,7 +86,7 @@ var _max_vertical_angle: float           # 最大垂直角度，约 80 度（1.4
 
 # 头部摆动（Head Bob）─────────────────────────────────────
 var _bob_phase: float = 0.0              # Lissajous 相位累加器（完整周期数）
-var _bob_offset: Vector3 = Vector3.ZERO  # 当前摆动偏移量（局部空间，供 lerp 归零用）
+var _bob_offset: Vector3 = Vector3.ZERO  # 当前摆动位置偏移（局部空间，供 lerp 归零用）
 
 # 武器晃动（Weapon Sway）──────────────────────────────────
 var _sway_pivot: Node3D = null                 # 晃动支点节点（挂在 WeaponMount 下）
@@ -108,6 +108,10 @@ var _tilt_angle: float = 0.0               # 当前 Z 轴倾斜角度（弧度�
 # 后座引用（Recoil）────────────────────────────────────────
 ## 由外部在武器加载后通过 set_recoil_component() 注入
 var _recoil_component: RecoilComponent = null
+
+# 武器转动延迟（Weapon Lag）────────────────────────────────
+var _weapon_lag_yaw: float = 0.0    # 武器 pivot 水平滞后偏移（弧度）
+var _weapon_lag_pitch: float = 0.0  # 武器 pivot 垂直滞后偏移（弧度）
 
 
 # ============================================================
@@ -333,8 +337,13 @@ func _process(delta: float) -> void:
 	if recoil_yaw != 0.0 and _player:
 		_player.rotate_y(recoil_yaw * delta)
 
-	_update_weapon_sway(delta)
-	_update_tilt(delta)
+	# 缓存局部速度，_update_weapon_sway 和 _update_tilt 都需要，避免重复矩阵求逆
+	var local_velocity: Vector3 = _player.global_transform.basis.inverse() * _player.velocity
+	_update_weapon_sway(delta, local_velocity)
+	_update_tilt(delta, local_velocity)
+
+	# Z 轴：速度倾斜写入
+	_active_camera.rotation.z = _tilt_angle
 
 
 # ============================================================
@@ -351,8 +360,8 @@ func _update_head_bob(delta: float) -> Vector3:
 	var h_speed: float = h_vel.length()
 	var is_on_floor: bool = _player.is_on_floor()
 
-	if is_on_floor and h_speed > 0.1:
-		var is_running: bool = h_speed > _camera_config.walk_speed_reference * 1.1
+	if is_on_floor and h_speed > _camera_config.bob_min_speed:
+		var is_running: bool = h_speed > _camera_config.walk_speed_reference * _camera_config.bob_run_threshold_multiplier
 		var freq: float = _camera_config.bob_frequency_run if is_running else _camera_config.bob_frequency_walk
 
 		# fmod 防止长时间运行浮点精度劣化
@@ -360,16 +369,13 @@ func _update_head_bob(delta: float) -> Vector3:
 
 		# 振幅随速度线性缩放：低速时摆动小，奔跑时摆动大
 		var speed_t: float = clamp(h_speed / max(_camera_config.max_speed_reference, 0.001), 0.0, 1.0)
-		var amp_v: float = _camera_config.bob_amplitude_vertical   * speed_t
-		var amp_h: float = _camera_config.bob_amplitude_horizontal * speed_t
+		var amp_v: float = _camera_config.bob_amplitude_vertical * speed_t
 
-		# figure-8 轨迹：垂直全频，水平半频
-		var vert:  float = sin(_bob_phase * TAU) * amp_v
-		var horiz: float = sin(_bob_phase * PI)  * amp_h
+		var vert: float = sin(_bob_phase * TAU) * amp_v
 
-		_bob_offset = Vector3(horiz, vert, 0.0)
+		_bob_offset = Vector3(0.0, vert, 0.0)
 	else:
-		_bob_offset = _bob_offset.lerp(Vector3.ZERO, delta * _camera_config.bob_return_speed)
+		_bob_offset = _bob_offset.lerp(Vector3.ZERO, clamp(delta * _camera_config.bob_return_speed, 0.0, 1.0))
 		if _bob_offset.length_squared() < 0.000001:
 			_bob_phase = 0.0
 
@@ -481,31 +487,63 @@ func _get_recoil_yaw() -> float:
 #   层 B（move sway）：移动速度在武器局部空间产生位置偏移，模拟持枪重量
 # ============================================================
 
-func _update_weapon_sway(delta: float) -> void:
+func _update_weapon_sway(delta: float, local_velocity: Vector3) -> void:
 	if not _camera_config.sway_enabled or not _sway_pivot:
 		_mouse_delta = Vector2.ZERO
+		# 同步清零 lag，防止 sway 重新启用时产生跳变
+		_weapon_lag_yaw   = 0.0
+		_weapon_lag_pitch = 0.0
 		return
 
-	# 层 A：look sway — 鼠标输入驱动旋转目标
-	var look_amount: float = _camera_config.sway_look_amount
+	# 层 A：look sway — 俯仰和横滚分别读取独立字段
 	_sway_target_rot = Vector3(
-		_mouse_delta.y * look_amount,
+		_mouse_delta.y * _camera_config.sway_look_amount_pitch,
 		0.0,
-		_mouse_delta.x * look_amount
+		_mouse_delta.x * _camera_config.sway_look_amount
 	)
+
+	# 武器延迟：用相机实际旋转量（弧度）驱动滞后，避免二次灵敏度缩放
+	# _mouse_delta 是原始像素，乘以 _mouse_sensitivity 得到与相机转角相同的量纲
+	if _camera_config.weapon_lag_enabled:
+		_weapon_lag_yaw   += _mouse_delta.x * _camera_config.weapon_lag_scale
+		_weapon_lag_pitch -= _mouse_delta.y * _camera_config.weapon_lag_scale
+		_weapon_lag_yaw   = clamp(_weapon_lag_yaw,   -_camera_config.weapon_lag_max, _camera_config.weapon_lag_max)
+		_weapon_lag_pitch = clamp(_weapon_lag_pitch, -_camera_config.weapon_lag_max, _camera_config.weapon_lag_max)
+
 	_mouse_delta = Vector2.ZERO
 
-	# 层 B：move sway — 水平速度在武器局部坐标系产生位置偏移
+	# 层 B：move sway — 缩放系数来自配置，不再硬编码
 	var move_amount: float = _camera_config.sway_move_amount
-	var local_vel: Vector3 = _player.global_transform.basis.inverse() * _player.velocity
 	_sway_target_pos = Vector3(
-		-local_vel.x * move_amount * 0.01,
-		-local_vel.y * move_amount * 0.005,
+		-local_velocity.x * move_amount * _camera_config.sway_move_scale_horizontal,
+		-local_velocity.y * move_amount * _camera_config.sway_move_scale_vertical,
 		0.0
 	)
 
 	var t: float = clamp(delta * _camera_config.sway_speed, 0.0, 1.0)
-	_sway_pivot.rotation = _sway_pivot.rotation.lerp(_sway_target_rot, t)
+
+	# 延迟偏移逐帧弹回零
+	var lag_t: float = clamp(delta * _camera_config.weapon_lag_return_speed, 0.0, 1.0)
+	if _camera_config.weapon_lag_enabled:
+		_weapon_lag_yaw   = lerp(_weapon_lag_yaw,   0.0, lag_t)
+		_weapon_lag_pitch = lerp(_weapon_lag_pitch, 0.0, lag_t)
+	else:
+		_weapon_lag_yaw   = 0.0
+		_weapon_lag_pitch = 0.0
+
+	# look sway lerp：从去掉 lag 偏移的旋转基准出发插值，避免 lag 污染 sway 收敛目标
+	var pure_sway: Vector3 = Vector3(
+		_sway_pivot.rotation.x - _weapon_lag_pitch,
+		_sway_pivot.rotation.y - _weapon_lag_yaw,
+		_sway_pivot.rotation.z
+	)
+	var sway_rot: Vector3 = pure_sway.lerp(_sway_target_rot, t)
+	_sway_pivot.rotation = Vector3(
+		sway_rot.x + _weapon_lag_pitch,
+		sway_rot.y + _weapon_lag_yaw,
+		sway_rot.z
+	)
+
 	# 只插值 X/Y，Z 轴留给 WeaponObstructionDetector 控制收枪偏移
 	_sway_pivot.position.x = lerp(_sway_pivot.position.x, _sway_target_pos.x, t) as float
 	_sway_pivot.position.y = lerp(_sway_pivot.position.y, _sway_target_pos.y, t) as float
@@ -517,24 +555,20 @@ func _update_weapon_sway(delta: float) -> void:
 # 向右跑 → 相机左倾，向左跑 → 相机右倾，模拟重心偏移感
 # ============================================================
 
-func _update_tilt(delta: float) -> void:
+func _update_tilt(delta: float, local_velocity: Vector3) -> void:
 	if not _camera_config.tilt_enabled:
 		_tilt_angle = 0.0
-		if _active_camera:
-			_active_camera.rotation.z = 0.0
 		return
 
 	# 将世界空间速度转换到玩家局部坐标系，取 X 分量（向右为正）
-	var local_vel: Vector3 = _player.global_transform.basis.inverse() * _player.velocity
-	var lateral_speed: float = local_vel.x
+	var lateral_speed: float = local_velocity.x
 
 	# 速度越大倾斜越大，钳制在最大角度内；方向取反（向右跑 → 左倾）
 	var max_speed: float = max(_camera_config.max_speed_reference, 0.001)
 	var target_tilt: float = -clamp(lateral_speed / max_speed, -1.0, 1.0) * _camera_config.tilt_max_angle
 
-	# 平滑插值到目标角度
+	# 平滑插值到目标角度（写入由 _process 统一完成）
 	_tilt_angle = lerp(_tilt_angle, target_tilt, clamp(delta * _camera_config.tilt_speed, 0.0, 1.0))
-	_active_camera.rotation.z = _tilt_angle
 
 
 # ============================================================

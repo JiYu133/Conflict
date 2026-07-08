@@ -36,6 +36,10 @@ func is_running() -> bool:
 	return _is_running
 
 
+func get_max_speed() -> float:
+	return _config.run_speed if _config else 4.0
+
+
 func initialize(player: CharacterBody3D, config: PlayerConfig) -> void:
 	_player = player
 	_config = config
@@ -53,7 +57,7 @@ func _physics_process(delta: float) -> void:
 		"move_left", "move_right",
 		"move_forward", "move_backward"
 	)
-	var has_input := input_dir.length() > 0.1
+	var has_input := input_dir.length() > _config.input_dead_zone
 
 	# ──────────────────────────────────────────────────────
 	# 2. Sprint 信号检测（移出 is_on_floor 块，空中松开也能正确重置）
@@ -77,14 +81,14 @@ func _physics_process(delta: float) -> void:
 			# 3b. 方向速度上限：横向 80%、后退 70%
 			var forward_dot: float = direction.dot(-basis.z)
 			var side_dot: float    = abs(direction.dot(basis.x))
-			if forward_dot < -0.3:
+			if forward_dot < _config.backward_dot_threshold:
 				speed *= _config.backward_speed_ratio
-			elif side_dot > 0.7:
+			elif side_dot > _config.lateral_dot_threshold:
 				speed *= _config.lateral_speed_ratio
 
 			# 3c. 转向减速（dot product，世界空间对比）
 			var h_vel_2d := Vector2(_velocity.x, _velocity.z)
-			if h_vel_2d.length_squared() > 0.01:
+			if h_vel_2d.length_squared() > _config.turn_decel_min_speed * _config.turn_decel_min_speed:
 				var vel_dir  := h_vel_2d.normalized()
 				var inp_dir  := Vector2(direction.x, direction.z)
 				var alignment: float = vel_dir.dot(inp_dir)
@@ -140,7 +144,7 @@ func _physics_process(delta: float) -> void:
 			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()
 			target_velocity = direction * _config.walk_speed
 
-		var accel: float = _config.air_acceleration if target_velocity.length() > 0.1 else _config.air_deceleration
+		var accel: float = _config.air_acceleration if target_velocity.length() > _config.air_input_threshold else _config.air_deceleration
 		_velocity.x = move_toward(_velocity.x, target_velocity.x, accel * delta)
 		_velocity.z = move_toward(_velocity.z, target_velocity.z, accel * delta)
 
@@ -157,7 +161,7 @@ func _physics_process(delta: float) -> void:
 	if not _player.is_on_floor():
 		_velocity.y -= _config.gravity * delta
 	elif _velocity.y < 0:
-		_velocity.y = -0.5
+		_velocity.y = _config.floor_snap_velocity
 
 	# ──────────────────────────────────────────────────────
 	# 7. 应用移动，同步碰撞后实际速度

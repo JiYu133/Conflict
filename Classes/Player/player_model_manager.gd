@@ -30,11 +30,16 @@ var animator: AnimationPlayer:
 	get: return _animator
 ## 模型中的 AnimationPlayer（用于播放走路、奔跑、换弹等动画）
 
+var animation_tree: AnimationTree:
+	get: return _animation_tree
+## 模型中的 AnimationTree（用于 BlendSpace2D 多方向动画混合）
+
 
 # 私有变量 ────────────────────────────────────────────────
 var _model_node: Node3D               # 当前加载的模型实例
 var _skeleton: Skeleton3D             # 缓存的骨骼系统引用
 var _animator: AnimationPlayer        # 缓存的动画播放器引用
+var _animation_tree: AnimationTree    # 缓存的动画树引用
 var _model_lookup_config: ModelLookupConfig  # 节点查找规则配置
 var _player_config: PlayerConfig             # 玩家配置（碰撞体参数等）
 
@@ -98,6 +103,7 @@ func unload_model() -> void:
 		_model_node = null
 		_skeleton = null
 		_animator = null
+		_animation_tree = null
 		model_unloaded.emit()
 
 
@@ -128,11 +134,14 @@ func find_node_by_names(names: Array, type: String = "") -> Node:
 func _find_components() -> void:
 	_skeleton = find_node_by_names([_model_lookup_config.skeleton_name])
 	_animator = find_node_by_names([_model_lookup_config.animator_name])
+	_animation_tree = find_node_by_names([_model_lookup_config.animation_tree_name])
 
 	if not _skeleton:
 		push_warning("未找到骨骼系统，部分功能将不可用")
 	if not _animator:
 		push_warning("未找到动画系统")
+	if not _animation_tree:
+		push_warning("未找到 AnimationTree，动画混合将不可用")
 
 ## 为玩家创建碰撞体
 ## 使用胶囊体碰撞形状（CapsuleShape3D），参数来自 PlayerConfig
