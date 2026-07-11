@@ -2,120 +2,78 @@ class_name PlayerCameraController
 extends Node
 
 # ============================================================
-# 玩家摄像机控制器
-# 功能：管理第一人称视角的摄像机挂载、鼠标视角控制。
-#       支持三种相机位置获取方式（优先级递减）：
-#         1. 模型场景中预设的 CameraMount 节点（挂载点）
-#         2. 模型场景自带 Camera3D
-#         3. 从头部骨骼动态创建 Marker3D 挂载点（回退方案）
-#
-#       程序化摄像机效果（均可通过 CameraConfig 单独开关）：
-#         - 头部摆动（Head Bob）：基于水平速度的 sine 波叠加，
-#           产生 figure-8 轨迹模拟步伐重心起伏
-#         - 武器晃动（Weapon Sway）：鼠标运动 + 移动速度双层
-#           偏移，经 lerp 平滑归位，模拟持枪惯性
-#         - 落地冲击（Landing Impact）：落地/起跳时对摄像机施加
-#           弹簧冲量，产生自然衰减的下沉/回弹
-#         - 呼吸摆动（Breathing）：静止或低速时叠加低频 sine 漂移，
-#           模拟持枪自然呼吸感
-#         - 后座（Recoil）：从 RecoilComponent 读取累积后座角度，
-#           叠加到摄像机垂直与水平旋转
-#
-#       所有效果均为独立层，最终做加法合成到摄像机变换，
-#       互不干扰，可单独调整或关闭。
-#
-# 依赖：PlayerModelManager / ModelLookupConfig / CameraConfig
-#       依赖 CharacterBody3D 的 rotate_y 实现水平视角
+# 玩家摄像机控制器（弹簧稳定器版本）
+# 功能：
+#   - 摄像机位置通过弹簧低通滤波跟随头部骨骼
+#   - 摄像机旋转由鼠标单独控制
+#   - 武器独立弹簧跟踪摄像机，产生延迟感
+#   - ADS 系统：平滑 FOV 缩放 + 武器居中
 # ============================================================
 
 
-# ============================================================
-# 内部弹簧阻尼工具类
-# 用于落地冲击等需要物理感衰减的摄像机效果
-# ============================================================
-class CameraSpring:
-	var position: float = 0.0   # 当前位移（m）
-	var velocity: float = 0.0   # 当前速度（m/s）
-	var stiffness: float = 180.0
-	var damping: float = 16.0
+# 弹簧跟踪器（1D 临界阻尼弹簧，用于低通滤波）
+class CameraSpring1D:
+	var position: float = 0.0
+	var velocity: float = 0.0
+	var stiffness: float = 120.0
+	var damping: float = 20.0
 
-	## 每帧更新弹簧状态，返回当前位移
-	func update(delta: float, target: float = 0.0) -> float:
+	func update(delta: float, target: float) -> float:
 		var force: float = -stiffness * (position - target) - damping * velocity
 		velocity += force * delta
 		position += velocity * delta
 		return position
 
-	## 施加瞬时速度冲量（正值向上，负值向下）
-	func add_impulse(impulse: float) -> void:
-		velocity += impulse
-
-	## 重置弹簧到静止状态
-	func reset() -> void:
-		position = 0.0
-		velocity = 0.0
-
 
 # 信号 ────────────────────────────────────────────────────
 signal camera_ready(camera: Camera3D)
-## 摄像机就绪，可以开始接收视角输入
 
 
-# 公开属性（只读）──────────────────────────────────────────
+# 公开属性 ────────────────────────────────────────────────
 var camera_mount: Node3D:
 	get: return _camera_mount
-## 当前活动的摄像机挂载点
-
-var model_camera: Camera3D:
-	get: return _model_camera
-## 模型自带的摄像机（如有）
 
 
 # 私有变量 ────────────────────────────────────────────────
-var _camera_mount: Node3D                  # 摄像机挂载点（Marker3D / Node3D）
-var _model_camera: Camera3D               # 模型自带的摄像机
-var _active_camera: Camera3D              # 当前实际使用的摄像机
-var _model_manager: PlayerModelManager    # 模型管理器引用
-var _model_lookup_config: ModelLookupConfig  # 模型节点查找配置
-var _camera_config: CameraConfig          # 摄像机配置
-var _player: CharacterBody3D             # 玩家角色
+var _camera_mount: Node3D
+var _model_camera: Camera3D
+var _active_camera: Camera3D
+var _model_manager: PlayerModelManager
+var _model_lookup_config: ModelLookupConfig
+var _camera_config: CameraConfig
+var _player: CharacterBody3D
+var _bone_attachment: BoneAttachment3D  # 头部骨骼挂载点，用于读取原始头部位置
 
-var _mouse_sensitivity: float             # 鼠标灵敏度（弧度/像素）
-var _vertical_angle: float = 0.0         # 当前垂直视角角度（弧度）
-var _max_vertical_angle: float           # 最大垂直角度，约 80 度（1.4 弧度）
+var _mouse_sensitivity: float
+var _vertical_angle: float = 0.0
+var _max_vertical_angle: float
 
-# 头部摆动（Head Bob）─────────────────────────────────────
-var _bob_phase: float = 0.0              # Lissajous 相位累加器（完整周期数）
-var _bob_offset: Vector3 = Vector3.ZERO  # 当前摆动位置偏移（局部空间，供 lerp 归零用）
+# 弹簧系统 - 3 轴独立弹簧，对头部位置做低通滤波
+var _spring_x: CameraSpring1D
+var _spring_y: CameraSpring1D
+var _spring_z: CameraSpring1D
+var _stiffness_h: float = 500.0
+var _stiffness_v: float = 120.0
 
-# 武器晃动（Weapon Sway）──────────────────────────────────
-var _sway_pivot: Node3D = null                 # 晃动支点节点（挂在 WeaponMount 下）
-var _sway_target_rot: Vector3 = Vector3.ZERO   # 目标旋转（由鼠标输入驱动）
-var _sway_target_pos: Vector3 = Vector3.ZERO   # 目标位置偏移（由移动速度驱动）
-var _mouse_delta: Vector2 = Vector2.ZERO       # 当前帧累积鼠标移动量
+# 武器弹簧 - 跟踪摄像机旋转，产生延迟感
+var _weapon_spring_pitch: CameraSpring1D
+var _weapon_spring_yaw: CameraSpring1D
+var _sway_pivot: Node3D = null
 
-# 落地冲击（Landing Impact Spring）───────────────────────
-var _land_spring: CameraSpring             # 垂直位置弹簧，落地/起跳时施加冲量
-var _pitch_spring: CameraSpring            # 俯仰旋转弹簧，产生头部前点/后仰动画
-var _air_y_velocity: float = 0.0          # 空中最大下落速度（落地时用于缩放冲击幅度）
-
-# 呼吸摆动（Breathing）────────────────────────────────────
-var _breathe_phase: float = 0.0            # 呼吸相位累加器（完整周期数）
-
-# 速度倾斜（Tilt）────────────────────────────────────────
-var _tilt_angle: float = 0.0               # 当前 Z 轴倾斜角度（弧度）
-
-# 后座引用（Recoil）────────────────────────────────────────
-## 由外部在武器加载后通过 set_recoil_component() 注入
+# 后座
 var _recoil_component: RecoilComponent = null
 
-# 武器转动延迟（Weapon Lag）────────────────────────────────
-var _weapon_lag_yaw: float = 0.0    # 武器 pivot 水平滞后偏移（弧度）
-var _weapon_lag_pitch: float = 0.0  # 武器 pivot 垂直滞后偏移（弧度）
+# ADS
+var _is_ads: bool = false
+var _ads_progress: float = 0.0
+var _ads_transition_time: float = 0.25
+var _hip_fov: float = 90.0
+var _ads_fov: float = 60.0
+var _ads_center_offset: Vector3 = Vector3.ZERO
 
 
 # ============================================================
-# 初始化（由 BasePlayer 调用）
+# 初始化
 # ============================================================
 func initialize(
 	player: CharacterBody3D,
@@ -128,47 +86,54 @@ func initialize(
 	_camera_config = camera_config if camera_config else CameraConfig.new()
 	_player = player
 
-	# 初始化落地弹簧（参数来自配置；initialize 时配置已赋值）
-	_land_spring = CameraSpring.new()
-	_land_spring.stiffness = _camera_config.land_impact_stiffness
-	_land_spring.damping   = _camera_config.land_impact_damping
+	# 初始化位置弹簧（3 轴）
+	_spring_x = CameraSpring1D.new()
+	_spring_y = CameraSpring1D.new()
+	_spring_z = CameraSpring1D.new()
+	_update_spring_params()
 
-	_pitch_spring = CameraSpring.new()
-	_pitch_spring.stiffness = _camera_config.land_pitch_stiffness
-	_pitch_spring.damping   = _camera_config.land_pitch_damping
+	# 初始化武器旋转弹簧（pitch/yaw 两轴）
+	_weapon_spring_pitch = CameraSpring1D.new()
+	_weapon_spring_yaw = CameraSpring1D.new()
+	_weapon_spring_pitch.stiffness = 10.0
+	_weapon_spring_pitch.damping = 6.0
+	_weapon_spring_yaw.stiffness = 10.0
+	_weapon_spring_yaw.damping = 6.0
 
-	# 创建备用摄像机防止 Godot 视口空窗
-	# 在真实摄像机挂载前，先用这个占位
+	_hip_fov = _camera_config.fov
+
+	# 创建备用 SeedCamera
 	var seed: Camera3D = Camera3D.new()
 	seed.name = "SeedCamera"
 	seed.current = true
 	_player.add_child(seed)
 
-	# 默认捕获鼠标（FPS 标准操作）
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
-	# 监听模型加载完成事件，加载后自动查找摄像机节点
-	# 【注意】需要外部连接 model_manager.model_loaded 信号到 _on_model_loaded
+
+func _update_spring_params() -> void:
+	_stiffness_h = _camera_config.spring_stiffness_h
+	_stiffness_v = _camera_config.spring_stiffness_v
+	_spring_x.stiffness = _stiffness_h
+	_spring_x.damping = _camera_config.spring_damping_h
+	_spring_z.stiffness = _stiffness_h
+	_spring_z.damping = _camera_config.spring_damping_h
+	_spring_y.stiffness = _stiffness_v
+	_spring_y.damping = _camera_config.spring_damping_v
 
 
 # ============================================================
-# 摄像机激活
+# 摄像机激活与挂载
 # ============================================================
-
-## 启用摄像机视角控制
-## 调用时机：模型加载完成后，需要正式开始游戏视角时
 func enable_camera() -> void:
 	_mouse_sensitivity = _camera_config.mouse_sensitivity
 	_max_vertical_angle = _camera_config.max_vertical_angle
 
 	var viewport: Viewport = get_viewport()
 	if not viewport:
-		push_warning("没有找到有效视口")
 		return
 
-	# 优先级：挂载点 > 模型摄像机 > 从骨骼创建
 	var viewport_camera: Camera3D = viewport.get_camera_3d()
-
 	if _camera_mount:
 		_attach_to_mount(viewport_camera, _camera_mount)
 	elif _model_camera:
@@ -178,36 +143,35 @@ func enable_camera() -> void:
 		_create_mount_from_skeleton(viewport_camera)
 
 	camera_ready.emit(_active_camera)
-
-	# 应用 FOV（摄像机就绪后才能设置）
 	if _active_camera:
 		_active_camera.fov = _camera_config.fov
 
+	# 查找头部骨骼挂载点（用于读取原始头部位置）
+	_bone_attachment = _find_bone_attachment()
+	# 同步弹簧初始位置到头部位置，防止第一帧跳到原点
+	var _sync_head = _get_head_position()
+	_spring_x.position = _sync_head.x
+	_spring_y.position = _sync_head.y
+	_spring_z.position = _sync_head.z
 
-# ============================================================
-# 模型加载回调
-# ============================================================
 
-## 模型加载完成时查找摄像机相关节点
 func _on_model_loaded() -> void:
 	_find_camera_nodes()
 
-## 递归查找模型节点树中的摄像机挂载点和自带摄像机
 func _find_camera_nodes() -> void:
 	if not _model_manager.model_node:
-		push_warning("模型节点不存在，无法查找摄像机挂载点")
 		return
 
-	# 查找挂载点（按 ModelLookupConfig 中的候选名称列表匹配）
 	_camera_mount = _model_manager.find_node_by_names(
 		_model_lookup_config.camera_mount_names, "Node3D"
 	)
+	# 排除 Camera3D 类型（它们是摄像机本身，不是挂载点）
+	if _camera_mount and _camera_mount is Camera3D:
+		_camera_mount = null
 
-	# 查找模型自带的 Camera3D
 	var cameras: Array = _model_manager.model_node.find_children("*", "Camera3D", true, false)
 	_model_camera = cameras[0] if cameras.size() > 0 else null
 
-	# 找到后立即挂载
 	if _camera_mount:
 		var cam: Camera3D = get_viewport().get_camera_3d()
 		if cam:
@@ -219,261 +183,186 @@ func _find_camera_nodes() -> void:
 		push_warning("未找到摄像机挂载点")
 
 
-# ============================================================
-# 挂载与创建
-# ============================================================
-
-## 将摄像机重新挂载到指定挂载点
-## 同时清理之前创建的备用摄像机
 func _attach_to_mount(camera: Camera3D, mount: Node3D) -> void:
-	# 清理备用摄像机（初始创建的 SeedCamera）
-	# 注意：必须用 owned=false（非递归），否则会把"挂在玩家下面的真摄像机"也匹配上
-	# 同时校验 camera 自身不是 seed，否则就是"释放当前相机"了
-	if _player:
+	if is_instance_valid(_player):
 		var seed: Node = _player.find_child("SeedCamera", false, false)
 		if seed and seed != camera:
 			seed.queue_free()
-
-	# 从原父节点移除，挂载到新的挂载点
 	if camera and camera.get_parent():
 		camera.get_parent().remove_child(camera)
 	if mount and camera:
 		mount.add_child(camera)
-
-	# 重置摄像机在挂载点下的局部位置/旋转
 	if camera:
 		camera.rotation = Vector3.ZERO
 		camera.current = true
 		_active_camera = camera
 
-## 从头部骨骼创建挂载点（回退方案）
-## 当模型既没有 CameraMount 也没有自带摄像机时使用
+
 func _create_mount_from_skeleton(camera: Camera3D) -> void:
 	var skeleton: Skeleton3D = _model_manager.skeleton
 	if not skeleton:
-		push_warning("无法从骨骼创建挂载点：没有骨骼系统")
 		return
-
-	# 遍历候选头部骨骼名称列表，找到第一个存在的骨骼
 	for bone_name in _model_lookup_config.head_bone_names:
 		var bone_idx: int = skeleton.find_bone(bone_name)
 		if bone_idx != -1:
-			# 在骨骼下创建 Marker3D 作为挂载点
 			var mount: Marker3D = Marker3D.new()
 			mount.name = "CameraMount_Auto"
 			skeleton.add_child(mount)
-
-			# 将挂载点定位到骨骼的世界空间位置
 			var bone_pose: Transform3D = skeleton.get_bone_global_pose(bone_idx)
 			mount.global_position = skeleton.global_transform * bone_pose.origin
-
 			_camera_mount = mount
 			_attach_to_mount(camera, mount)
 			return
 
-	push_warning("未找到合适的头部骨骼")
+
+func _find_bone_attachment() -> BoneAttachment3D:
+	if not _model_manager.model_node:
+		return null
+	var nodes: Array = _model_manager.model_node.find_children("*", "BoneAttachment3D", true, false)
+	for node in nodes:
+		var attachment := node as BoneAttachment3D
+		if not attachment:
+			continue
+		for bone_name in _model_lookup_config.head_bone_names:
+			if attachment.bone_name == bone_name:
+				return attachment
+	return null
 
 
 # ============================================================
-# 视角控制（每帧处理鼠标输入）
+# 鼠标输入
 # ============================================================
-
 func _input(event: InputEvent) -> void:
-	var active_camera: Camera3D = get_viewport().get_camera_3d()
-	if not active_camera:
-		return
-
 	if event is not InputEventMouseMotion:
 		return
-
-	# 水平旋转：绕 Y 轴旋转整个 BasePlayer
-	# 这样可以保持移动方向与视角方向一致
-	var player: Node = get_parent()  # CameraController 的父节点是 BasePlayer
-	if player and player is CharacterBody3D:
-		player.rotate_y(-event.relative.x * _mouse_sensitivity)
-	else:
-		push_warning("玩家不存在或类型错误！")
-
-	# 垂直旋转：绕 X 轴旋转摄像机本身
-	# 限制范围防止翻转（-max ~ +max 弧度）
+	if not is_instance_valid(_player):
+		return
+	_player.rotate_y(-event.relative.x * _mouse_sensitivity)
 	_vertical_angle -= event.relative.y * _mouse_sensitivity
 	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
 
-	# 累积鼠标移动量，供武器晃动在 _process 中使用
-	_mouse_delta += event.relative
-
 
 # ============================================================
-# 程序化摄像机效果（每帧更新）
-# 所有效果各自计算增量，最后加法合成到摄像机变换，互不干扰
+# 每帧更新（核心）
 # ============================================================
-
 func _process(delta: float) -> void:
 	if not _active_camera or not _camera_config:
-		_mouse_delta = Vector2.ZERO
 		return
 
-	# 空中时追踪下落速度，落地时用于缩放冲击幅度
-	if not _player.is_on_floor():
-		_air_y_velocity = min(_air_y_velocity, _player.velocity.y)
+	# 1. 读取原始头部位置（从 BoneAttachment3D）
+	var head_pos := _get_head_position()
 
-	# 各层独立计算位置偏移
-	var pos_offset: Vector3 = Vector3.ZERO
-	pos_offset += _update_head_bob(delta)
-	pos_offset += _update_breathing(delta)
-	pos_offset += _update_land_impact(delta)
+	# 2. 弹簧低通滤波——位置
+	#    骨骼动画的快速晃动被弹簧过滤，产生平滑的跟随感
+	if _is_ads:
+		var ads_mult: float = _camera_config.ads_stiffness_multiplier
+		_spring_x.stiffness = _stiffness_h * (1.0 + (ads_mult - 1.0) * _ads_progress)
+		_spring_y.stiffness = _stiffness_v * (1.0 + (ads_mult - 1.0) * _ads_progress)
+		_spring_z.stiffness = _stiffness_h * (1.0 + (ads_mult - 1.0) * _ads_progress)
+	else:
+		_spring_x.stiffness = _stiffness_h
+		_spring_y.stiffness = _stiffness_v
+		_spring_z.stiffness = _stiffness_h
 
-	_active_camera.position = pos_offset
+	_active_camera.global_position = Vector3(
+		_spring_x.update(delta, head_pos.x),
+		_spring_y.update(delta, head_pos.y),
+		_spring_z.update(delta, head_pos.z)
+	)
 
-	# 垂直视角 = 鼠标控制角度 + 垂直后座 + pitch 弹簧（跳跃/落地动画）
+	# 3. 旋转由鼠标控制（显式设置 global_rotation，不依赖场景层级）
+	var player_yaw: float = _player.rotation.y if _player else 0.0
 	var recoil_pitch: float = _get_recoil_pitch()
-	var pitch_spring_offset: float = 0.0
-	if _pitch_spring:
-		pitch_spring_offset = _pitch_spring.update(delta, 0.0)
-	_active_camera.rotation.x = _vertical_angle + recoil_pitch + pitch_spring_offset
+	_active_camera.global_rotation = Vector3(
+		_vertical_angle + recoil_pitch,
+		player_yaw,
+		0.0
+	)
 
 	# 水平后座
 	var recoil_yaw: float = _get_recoil_yaw()
 	if recoil_yaw != 0.0 and _player:
 		_player.rotate_y(recoil_yaw * delta)
 
-	# 缓存局部速度，_update_weapon_sway 和 _update_tilt 都需要，避免重复矩阵求逆
-	var local_velocity: Vector3 = _player.global_transform.basis.inverse() * _player.velocity
-	_update_weapon_sway(delta, local_velocity)
-	_update_tilt(delta, local_velocity)
+	# 4. ADS 更新
+	_update_ads(delta)
 
-	# Z 轴：速度倾斜写入
-	_active_camera.rotation.z = _tilt_angle
+	# 5. 武器弹簧（跟踪摄像机旋转，带延迟）
+	_update_weapon_spring(delta)
 
 
 # ============================================================
-# 层 1：头部摆动（Head Bob）
-# 基于水平速度驱动 sine 波，产生 figure-8 轨迹
-# 垂直分量使用全频，水平分量使用半频，合成自然步伐感
+# 头部位置读取
 # ============================================================
 
-func _update_head_bob(delta: float) -> Vector3:
-	if not _camera_config.bob_enabled:
-		return Vector3.ZERO
-
-	var h_vel: Vector2 = Vector2(_player.velocity.x, _player.velocity.z)
-	var h_speed: float = h_vel.length()
-	var is_on_floor: bool = _player.is_on_floor()
-
-	if is_on_floor and h_speed > _camera_config.bob_min_speed:
-		var is_running: bool = h_speed > _camera_config.walk_speed_reference * _camera_config.bob_run_threshold_multiplier
-		var freq: float = _camera_config.bob_frequency_run if is_running else _camera_config.bob_frequency_walk
-
-		# fmod 防止长时间运行浮点精度劣化
-		_bob_phase = fmod(_bob_phase + delta * freq, 1.0)
-
-		# 振幅随速度线性缩放：低速时摆动小，奔跑时摆动大
-		var speed_t: float = clamp(h_speed / max(_camera_config.max_speed_reference, 0.001), 0.0, 1.0)
-		var amp_v: float = _camera_config.bob_amplitude_vertical * speed_t
-
-		var vert: float = sin(_bob_phase * TAU) * amp_v
-
-		_bob_offset = Vector3(0.0, vert, 0.0)
+func _get_head_position() -> Vector3:
+	var raw_pos: Vector3
+	if _bone_attachment and is_instance_valid(_bone_attachment):
+		raw_pos = _bone_attachment.global_position
+	elif is_instance_valid(_player):
+		raw_pos = _player.global_position + Vector3(0, 1.6, 0)
 	else:
-		_bob_offset = _bob_offset.lerp(Vector3.ZERO, clamp(delta * _camera_config.bob_return_speed, 0.0, 1.0))
-		if _bob_offset.length_squared() < 0.000001:
-			_bob_phase = 0.0
-
-	return _bob_offset
-
-
-# ============================================================
-# 层 2：呼吸摆动（Breathing）
-# 静止或低速时叠加低频 sine 漂移，模拟持枪呼吸感
-# 速度超过 breathe_max_speed 时线性淡出，与步态摆动平滑交接
-# ============================================================
-
-func _update_breathing(delta: float) -> Vector3:
-	if not _camera_config.breathe_enabled:
 		return Vector3.ZERO
 
-	var h_speed: float = Vector2(_player.velocity.x, _player.velocity.z).length()
-	# breathe_max_speed 时权重为 0，静止时权重为 1
-	# max(…, 0.001) 防止除零（若配置值为 0 则效果始终全强度）
-	var weight: float = 1.0 - clamp(h_speed / max(_camera_config.breathe_max_speed, 0.001), 0.0, 1.0)
-	if weight <= 0.0:
-		return Vector3.ZERO
-
-	_breathe_phase = fmod(_breathe_phase + delta * _camera_config.breathe_frequency, 1.0)
-
-	var vert:  float = sin(_breathe_phase * TAU)       * _camera_config.breathe_amplitude_vertical
-	var horiz: float = sin(_breathe_phase * TAU * 0.5) * _camera_config.breathe_amplitude_horizontal
-
-	return Vector3(horiz, vert, 0.0) * weight
+	# 应用可配置的前向偏移（玩家局部空间）
+	if is_instance_valid(_player):
+		raw_pos += _player.global_transform.basis * _camera_config.head_offset
+	return raw_pos
 
 
 # ============================================================
-# 层 3：落地冲击（Landing Impact）
-# 落地/起跳时对弹簧施加冲量，弹簧自然衰减产生下沉/回弹
-# 冲量由 PlayerMovementController 的信号触发（在 connect_movement_signals 中绑定）
+# ADS
 # ============================================================
-
-func _update_land_impact(delta: float) -> Vector3:
-	if not _camera_config.land_impact_enabled or not _land_spring:
-		return Vector3.ZERO
-
-	# 更新弹簧朝静止位置收敛，返回当前 Y 偏移
-	var spring_y: float = _land_spring.update(delta, 0.0)
-	return Vector3(0.0, spring_y, 0.0)
+func _update_ads(delta: float) -> void:
+	var target: float = 1.0 if _is_ads else 0.0
+	_ads_progress = move_toward(_ads_progress, target, delta / max(_ads_transition_time, 0.001))
+	_active_camera.fov = lerp(_hip_fov, _ads_fov, _ads_progress)
 
 
-## 落地时由外部信号调用，给弹簧施加向下冲量 + 头部前点
-func on_landed() -> void:
-	if not _camera_config or not _camera_config.land_impact_enabled:
-		_air_y_velocity = 0.0
+func set_ads_state(ads: bool, ads_time: float, zoom_fov: float, center_offset: Vector3) -> void:
+	_is_ads = ads
+	_ads_transition_time = ads_time
+	_ads_fov = zoom_fov if zoom_fov > 0.0 else _hip_fov
+	_ads_center_offset = center_offset
+
+
+
+
+# ============================================================
+# 武器弹簧（跟踪摄像机旋转，有延迟）
+# ============================================================
+func _update_weapon_spring(delta: float) -> void:
+	if not _sway_pivot:
 		return
 
-	# 按下落速度缩放冲击幅度（落得越重动静越大），最小保留基础值
-	var velocity_scale: float = 1.0 + abs(_air_y_velocity) * _camera_config.land_impact_velocity_scale
-	_air_y_velocity = 0.0
+	# 武器旋转跟踪摄像机旋转（pitch/yaw）
+	var target_pitch: float = _active_camera.rotation.x if _active_camera else 0.0
 
-	# 位置弹簧：向下冲量（负值 = 摄像机下沉）
-	_land_spring.add_impulse(-_camera_config.land_impact_impulse * velocity_scale)
+	var spring_pitch: float = _weapon_spring_pitch.update(delta, target_pitch)
+	var spring_yaw: float = _weapon_spring_yaw.update(delta, 0.0)
 
-	# pitch 弹簧：向前点头（正值 = pitch 前倾）
-	if _pitch_spring:
-		_pitch_spring.add_impulse(_camera_config.land_pitch_impulse * velocity_scale)
+	_sway_pivot.rotation = Vector3(spring_pitch, spring_yaw, 0.0)
 
+	# 位置：ADS 居中偏移
+	var pos_target := Vector3.ZERO
+	pos_target += _ads_center_offset * _ads_progress
 
-## 起跳时由外部信号调用，给位置弹簧上抬 + 头部轻微后仰
-func on_jumped() -> void:
-	if not _camera_config or not _camera_config.land_impact_enabled:
-		return
-	_air_y_velocity = 0.0
-
-	# 位置弹簧：向上轻推
-	_land_spring.add_impulse(_camera_config.jump_lift_impulse)
-
-	# pitch 弹簧：轻微后仰（负值 = pitch 后仰）
-	if _pitch_spring:
-		_pitch_spring.add_impulse(-_camera_config.jump_pitch_impulse)
+	# 只写 X/Y，Z 留给 WeaponObstructionDetector
+	_sway_pivot.position.x = pos_target.x
+	_sway_pivot.position.y = pos_target.y
 
 
 # ============================================================
-# 层 4：后座（Recoil）
-# 从 RecoilComponent 读取已累积的后座角度，叠加到垂直视角
-# 不修改 _vertical_angle，仅在写入摄像机时临时偏移，
-# 确保后座视觉效果与准星控制解耦
+# 后座
 # ============================================================
-
-## 注入 RecoilComponent 引用（在武器装备后由 BasePlayer 调用）
 func set_recoil_component(rc: RecoilComponent) -> void:
 	_recoil_component = rc
 
-
-## 返回当前帧应叠加到摄像机 pitch 的后座角度（弧度）
 func _get_recoil_pitch() -> float:
 	if not _recoil_component:
 		return 0.0
 	return _recoil_component.get_recoil_offset()
 
-
-## 返回当前帧应叠加到玩家 yaw 的水平后座角度（弧度/秒，由调用方乘 delta）
 func _get_recoil_yaw() -> float:
 	if not _recoil_component:
 		return 0.0
@@ -481,145 +370,18 @@ func _get_recoil_yaw() -> float:
 
 
 # ============================================================
-# 武器晃动（Weapon Sway）
-# 双层效果，作用于 _sway_pivot，不影响摄像机旋转
-#   层 A（look sway）：鼠标移动时武器向反方向微微倾斜，模拟惯性滞后
-#   层 B（move sway）：移动速度在武器局部空间产生位置偏移，模拟持枪重量
-# ============================================================
-
-func _update_weapon_sway(delta: float, local_velocity: Vector3) -> void:
-	if not _camera_config.sway_enabled or not _sway_pivot:
-		_mouse_delta = Vector2.ZERO
-		# 同步清零 lag，防止 sway 重新启用时产生跳变
-		_weapon_lag_yaw   = 0.0
-		_weapon_lag_pitch = 0.0
-		return
-
-	# 层 A：look sway — 俯仰和横滚分别读取独立字段
-	_sway_target_rot = Vector3(
-		_mouse_delta.y * _camera_config.sway_look_amount_pitch,
-		0.0,
-		_mouse_delta.x * _camera_config.sway_look_amount
-	)
-
-	# 武器延迟：用相机实际旋转量（弧度）驱动滞后，避免二次灵敏度缩放
-	# _mouse_delta 是原始像素，乘以 _mouse_sensitivity 得到与相机转角相同的量纲
-	if _camera_config.weapon_lag_enabled:
-		_weapon_lag_yaw   += _mouse_delta.x * _camera_config.weapon_lag_scale
-		_weapon_lag_pitch -= _mouse_delta.y * _camera_config.weapon_lag_scale
-		_weapon_lag_yaw   = clamp(_weapon_lag_yaw,   -_camera_config.weapon_lag_max, _camera_config.weapon_lag_max)
-		_weapon_lag_pitch = clamp(_weapon_lag_pitch, -_camera_config.weapon_lag_max, _camera_config.weapon_lag_max)
-
-	_mouse_delta = Vector2.ZERO
-
-	# 层 B：move sway — 缩放系数来自配置，不再硬编码
-	var move_amount: float = _camera_config.sway_move_amount
-	_sway_target_pos = Vector3(
-		-local_velocity.x * move_amount * _camera_config.sway_move_scale_horizontal,
-		-local_velocity.y * move_amount * _camera_config.sway_move_scale_vertical,
-		0.0
-	)
-
-	var t: float = clamp(delta * _camera_config.sway_speed, 0.0, 1.0)
-
-	# 延迟偏移逐帧弹回零
-	var lag_t: float = clamp(delta * _camera_config.weapon_lag_return_speed, 0.0, 1.0)
-	if _camera_config.weapon_lag_enabled:
-		_weapon_lag_yaw   = lerp(_weapon_lag_yaw,   0.0, lag_t)
-		_weapon_lag_pitch = lerp(_weapon_lag_pitch, 0.0, lag_t)
-	else:
-		_weapon_lag_yaw   = 0.0
-		_weapon_lag_pitch = 0.0
-
-	# look sway lerp：从去掉 lag 偏移的旋转基准出发插值，避免 lag 污染 sway 收敛目标
-	var pure_sway: Vector3 = Vector3(
-		_sway_pivot.rotation.x - _weapon_lag_pitch,
-		_sway_pivot.rotation.y - _weapon_lag_yaw,
-		_sway_pivot.rotation.z
-	)
-	var sway_rot: Vector3 = pure_sway.lerp(_sway_target_rot, t)
-	_sway_pivot.rotation = Vector3(
-		sway_rot.x + _weapon_lag_pitch,
-		sway_rot.y + _weapon_lag_yaw,
-		sway_rot.z
-	)
-
-	# 只插值 X/Y，Z 轴留给 WeaponObstructionDetector 控制收枪偏移
-	_sway_pivot.position.x = lerp(_sway_pivot.position.x, _sway_target_pos.x, t) as float
-	_sway_pivot.position.y = lerp(_sway_pivot.position.y, _sway_target_pos.y, t) as float
-
-
-# ============================================================
-# 层 5：速度倾斜（Tilt）
-# 根据角色局部坐标系的横向速度，将摄像机沿 Z 轴轻微倾斜
-# 向右跑 → 相机左倾，向左跑 → 相机右倾，模拟重心偏移感
-# ============================================================
-
-func _update_tilt(delta: float, local_velocity: Vector3) -> void:
-	if not _camera_config.tilt_enabled:
-		_tilt_angle = 0.0
-		return
-
-	# 将世界空间速度转换到玩家局部坐标系，取 X 分量（向右为正）
-	var lateral_speed: float = local_velocity.x
-
-	# 速度越大倾斜越大，钳制在最大角度内；方向取反（向右跑 → 左倾）
-	var max_speed: float = max(_camera_config.max_speed_reference, 0.001)
-	var target_tilt: float = -clamp(lateral_speed / max_speed, -1.0, 1.0) * _camera_config.tilt_max_angle
-
-	# 平滑插值到目标角度（写入由 _process 统一完成）
-	_tilt_angle = lerp(_tilt_angle, target_tilt, clamp(delta * _camera_config.tilt_speed, 0.0, 1.0))
-
-
-# ============================================================
 # 公开 API
 # ============================================================
-
-## 创建武器晃动支点节点，返回该支点以便调用方重定向武器挂载
-## 由外部（BasePlayer._on_model_loaded）在 WeaponMount 就绪后调用
 func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
 	if not weapon_mount:
 		return null
 	if _sway_pivot and is_instance_valid(_sway_pivot):
 		return _sway_pivot
-
 	var pivot: Node3D = Node3D.new()
 	pivot.name = "WeaponSwayPivot"
 	weapon_mount.add_child(pivot)
 	_sway_pivot = pivot
 	return pivot
 
-
-## 连接移动控制器信号，用于接收落地/起跳事件
-## 由 BasePlayer 在子系统初始化完成后调用
-func connect_movement_signals(movement: PlayerMovementController) -> void:
-	if not movement.landed.is_connected(on_landed):
-		movement.landed.connect(on_landed)
-	if not movement.jumped.is_connected(on_jumped):
-		movement.jumped.connect(on_jumped)
-
-
-## 返回当前活动摄像机，供 WeaponObstructionDetector 等外部系统使用
 func get_active_camera() -> Camera3D:
 	return _active_camera
-
-
-# ============================================================
-# 辅助工具（可按需移除，仅调试时使用）
-# ============================================================
-
-## 递归查找指定名称的节点
-func _find_node_recursive(parent: Node, target_name: String) -> Node:
-	for child in parent.get_children():
-		if child.name == target_name:
-			return child
-		var found: Node = _find_node_recursive(child, target_name)
-		if found:
-			return found
-	return null
-
-## 打印节点树（调试用）
-func _print_node_tree(node: Node, indent: String) -> void:
-	print(indent + node.name + " (" + node.get_class() + ")")
-	for child in node.get_children():
-		_print_node_tree(child, indent + "  ")

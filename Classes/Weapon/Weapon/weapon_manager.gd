@@ -6,6 +6,7 @@ signal weapon_fired(weapon: BaseWeapon)
 
 var current_weapon: BaseWeapon
 var weapon_mount: Node3D
+var camera_controller: PlayerCameraController
 var is_aiming: bool = false
 
 
@@ -25,6 +26,9 @@ func equip_weapon(weapon: BaseWeapon) -> void:
 func set_mount(mount: Node3D) -> void:
 	weapon_mount = mount
 
+func set_camera_controller(controller: PlayerCameraController) -> void:
+	camera_controller = controller
+
 func press_trigger() -> void:
 	if current_weapon:
 		current_weapon.press_trigger()
@@ -43,6 +47,7 @@ func cycle_fire_mode() -> void:
 
 func set_aiming(aiming: bool) -> void:
 	is_aiming = aiming
+	_apply_ads_state()
 	
 ## 根据配置和模型路径创建武器实例并装备
 func load_and_equip(config: WeaponConfig) -> void:
@@ -60,4 +65,17 @@ func load_and_equip(config: WeaponConfig) -> void:
 		return
 	weapon.initialize(config)
 	equip_weapon(weapon)
+	_apply_ads_state()
+
+
+func _apply_ads_state() -> void:
+	if not camera_controller or not current_weapon or not current_weapon.config:
+		return
+	var config := current_weapon.config
+	camera_controller.set_ads_state(
+		is_aiming,
+		config.ads_time,
+		config.ads_fov_override,
+		config.ads_center_offset
+	)
 	

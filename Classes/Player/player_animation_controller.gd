@@ -23,8 +23,6 @@ const PARAM_PLAYBACK   := "parameters/playback"
 const PARAM_WALK_BLEND := "parameters/Walk/blend_position"
 const PARAM_RUN_BLEND  := "parameters/Run/blend_position"
 
-# 落地动画播放完毕后自动切回地面状态的等待时间（秒）
-const LAND_RECOVERY_TIME := 0.3
 
 # 状态枚举 ─────────────────────────────────────────────────
 enum State {
@@ -42,6 +40,7 @@ var _animation_tree: AnimationTree
 var _playback: AnimationNodeStateMachinePlayback
 var _movement: PlayerMovementController
 var _player: CharacterBody3D
+var _config: PlayerConfig
 
 var _state: State = State.IDLE
 var _land_timer: float = 0.0
@@ -50,9 +49,10 @@ var _was_on_floor: bool = true
 
 # 初始化 ────────────────────────────────────────────────────
 
-func initialize(player: CharacterBody3D, movement: PlayerMovementController, model_manager: PlayerModelManager) -> void:
+func initialize(player: CharacterBody3D, movement: PlayerMovementController, model_manager: PlayerModelManager, anim_config: PlayerConfig = null) -> void:
 	_player = player
 	_movement = movement
+	_config = anim_config if anim_config else PlayerConfig.new()
 
 	# 信号连接与 AnimationTree 无关，始终建立，防止提前返回导致信号缺失
 	if not movement.jumped.is_connected(_on_jumped):
@@ -80,54 +80,131 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		return
 
 	GlobalLogger.info("AnimationController", "Initialized with AnimationTree.")
+	_setup_animations()
 	_transition(State.IDLE)
+
+
+# 初始化动画资源设置 ────────────────────────────────────
+# 遍历所有动画库，设为循环并剥离根骨骼位置轨迹（root motion）
+
+func _setup_animations() -> void:
+	var player_path: NodePath = _animation_tree.anim_player
+	if player_path.is_empty():
+		return
+	var anim_player := _animation_tree.get_node(player_path) as AnimationPlayer
+	if not anim_player:
+		return
+
+	# 只会被设为循环的动画库名关键词
+	const LOOPING_KEYWORDS := ["idle", "walk_", "run_"]
+
+	for lib_name in anim_player.get_animation_library_list():
+		var lib: AnimationLibrary = anim_player.get_animation_library(lib_name)
+		if not lib:
+			continue
+
+		# 判断是否为需要循环的动画
+		var should_loop := false
+		for key in LOOPING_KEYWORDS:
+			if lib_name.contains(key):
+				should_loop = true
+				break
+
+		for anim_name in lib.get_animation_list():
+			var anim: Animation = lib.get_animation(anim_name)
+			if not anim:
+				continue
+
+			if should_loop and anim.loop_mode != Animation.LOOP_LINEAR:
+				anim.loop_mode = Animation.LOOP_LINEAR
+
+			# 剥离根骨骼位置轨迹
+			var i := anim.get_track_count() - 1
+			while i >= 0:
+				if anim.track_get_type(i) == Animation.TYPE_POSITION_3D and _is_root_motion_track(anim.track_get_path(i)):
+					anim.remove_track(i)
+				i -= 1
 
 
 # 每帧检测 ──────────────────────────────────────────────────
 
+func _is_root_motion_track(track_path: NodePath) -> bool:
+	var path_text := str(track_path)
+	var root_position_track_names := [
+		"Root", "root", "Armature", "Hips", "mixamorig_Hips"
+	]
+	for root_name in root_position_track_names:
+		if path_text == root_name:
+			return true
+		if path_text.ends_with("/" + root_name) or path_text.ends_with(":" + root_name):
+			return true
+		if path_text.contains("/" + root_name + ":") or path_text.contains(":" + root_name + ":"):
+			return true
+	return false
+
+
 func _process(delta: float) -> void:
-	if not _player or not is_instance_valid(_animation_tree) or not _playback:
+	if not is_instance_valid(_player) or not is_instance_valid(_animation_tree) or not _playback:
 		return
 
 	# 每帧更新 BlendSpace2D 混合坐标（无论当前状态，保持同步）
 	_update_blend_positions()
 
-	# 落地过渡计时
+	# 落地过渡计时：倒计时结束后按地面速度决定切回 IDLE/WALK/RUN
 	if _state == State.LAND:
 		_land_timer -= delta
-		_was_on_floor = _player.is_on_floor()
 		if _land_timer <= 0.0:
-			_transition(_resolve_ground_state())
+			var next_state := _resolve_ground_state()
+			_was_on_floor = true  # 来自落地状态，确保后续坠落检测能正确触发
+			_transition(next_state)
 		return
 
 	# 死亡状态不做任何自动切换
 	if _state == State.DEATH:
 		return
 
-	# 检测离地 → 进入 FALL（跳跃由信号处理，这里只捕获被动坠落）
 	var on_floor := _player.is_on_floor()
+
+	# 跳跃完成后（垂直速度变为负值/下降中）自动进入 FALL
+	if _state == State.JUMP and not on_floor and _player.velocity.y < 0:
+		_transition(State.FALL)
+		_was_on_floor = false
+		return
+
+	# 检测离地 → 进入 FALL（跳跃由信号处理，这里只捕获被动坠落）
 	if not on_floor and _was_on_floor and _state != State.JUMP:
 		_transition(State.FALL)
+		_was_on_floor = false
+		return
+
 	_was_on_floor = on_floor
+
+	# 地面状态：每帧主动驱动 IDLE ↔ WALK 切换
+	# RUN 由信号和 is_running() 协同驱动
+	if on_floor and _state != State.JUMP:
+		_transition(_resolve_ground_state())
 
 
 # BlendSpace2D 混合坐标更新 ───────────────────────────────────
 
 func _update_blend_positions() -> void:
-	# 用实际速度驱动混合坐标，确保被动位移（击退、传送带等）也能正确播放动画
+	if not is_instance_valid(_player) or not _movement:
+		return
+
 	# 将世界速度转换到玩家局部坐标系，取水平分量
 	var local_vel: Vector3 = _player.global_transform.basis.inverse() * _player.velocity
 	# 局部坐标：X = 右，-Z = 前；BlendSpace2D 约定 Y 轴正方向 = 前进
 	var blend_pos := Vector2(local_vel.x, -local_vel.z)
 
 	# 按最大速度归一化，让混合坐标保持在 [-1, 1] 范围内
-	var max_speed: float = _movement.get_max_speed() if _movement.has_method("get_max_speed") else 4.0
+	var max_speed: float = _movement.get_max_speed()
 	if max_speed > 0.0:
 		blend_pos /= max_speed
 
 	# 超出单位圆时归一化
-	if blend_pos.length_squared() > 1.0:
-		blend_pos = blend_pos.normalized()
+	var len_sq := blend_pos.length_squared()
+	if len_sq > 1.0:
+		blend_pos /= sqrt(len_sq)
 
 	_animation_tree.set(PARAM_WALK_BLEND, blend_pos)
 	_animation_tree.set(PARAM_RUN_BLEND, blend_pos)
@@ -136,10 +213,14 @@ func _update_blend_positions() -> void:
 # 信号回调 ──────────────────────────────────────────────────
 
 func _on_jumped() -> void:
+	if _state == State.DEATH:
+		return
 	_transition(State.JUMP)
 
 func _on_landed() -> void:
-	_land_timer = LAND_RECOVERY_TIME
+	if _state == State.DEATH:
+		return
+	_land_timer = _config.land_recovery_time
 	_transition(State.LAND)
 
 func _on_started_running() -> void:
@@ -151,9 +232,17 @@ func _on_stopped_running() -> void:
 		_transition(_resolve_ground_state())
 
 func _on_died() -> void:
-	_transition(State.DEATH)
+	# 直接设置状态为 DEATH，不调用 _transition()。
+	# 原因：AnimationTree 状态机中不存在 Death 节点，
+	# travel("Death") 会静默失败。死亡动画由 RagdollSystem
+	# 直接通过 AnimationPlayer 播放，此处仅阻止 _process()
+	# 进行自动状态切换。
+	_state = State.DEATH
 
 func _on_revived() -> void:
+	if not _playback:
+		return
+	_was_on_floor = _player.is_on_floor() if is_instance_valid(_player) else false
 	_transition(_resolve_ground_state())
 
 
@@ -165,8 +254,20 @@ func _resolve_ground_state() -> State:
 		return State.IDLE
 	if _movement and _movement.is_running():
 		return State.RUN
-	var h_speed_sq := Vector2(_player.velocity.x, _player.velocity.z).length_squared()
-	return State.WALK if h_speed_sq > 0.04 else State.IDLE
+	# 显式标量计算，避免临时 Vector2 分配
+	var h_speed_sq := _player.velocity.x * _player.velocity.x + _player.velocity.z * _player.velocity.z
+	# 滞后阈值来自 PlayerConfig，默认值适用于步态波动约 0.06 m/s、walk_speed 约 1.5 m/s：
+	#   进入 WALK：速度 > 0.5 m/s（远大于步态波动，不会因波动误触发）
+	#   离开 WALK：速度 < 0.15 m/s（给制动足够空间，避免停步时抖动）
+	if _state == State.WALK:
+		return State.IDLE if h_speed_sq < _config.walk_exit_speed_sq else State.WALK
+	else:
+		return State.WALK if h_speed_sq > _config.walk_enter_speed_sq else State.IDLE
+
+
+
+
+
 
 
 func _transition(new_state: State) -> void:
@@ -174,8 +275,9 @@ func _transition(new_state: State) -> void:
 		return
 	if not _playback:
 		return
-	_state = new_state
+	# 先 travel 再更新 _state，防止 travel 失败时状态失同步
 	_playback.travel(_state_to_sm_name(new_state))
+	_state = new_state
 
 
 func _state_to_sm_name(state: State) -> String:

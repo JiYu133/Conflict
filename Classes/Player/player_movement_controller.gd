@@ -163,6 +163,14 @@ func _physics_process(delta: float) -> void:
 	elif _velocity.y < 0:
 		_velocity.y = _config.floor_snap_velocity
 
+		# -----------------------------------------------------
+		# 7. 速度死区：无输入时微速直接归零，防止浮点滑动
+		# -----------------------------------------------------
+		const VEL_DEAD_ZONE_SQ := 0.001
+		if not has_input and Vector2(_velocity.x, _velocity.z).length_squared() < VEL_DEAD_ZONE_SQ:
+			_velocity.x = 0.0
+			_velocity.z = 0.0
+
 	# ──────────────────────────────────────────────────────
 	# 7. 应用移动，同步碰撞后实际速度
 	# ──────────────────────────────────────────────────────
