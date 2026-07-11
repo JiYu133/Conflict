@@ -9,4 +9,5 @@ spring_damping_h = 50.0
 spring_stiffness_v = 200.0
 spring_damping_v = 10.0
 ads_stiffness_multiplier = 2.5
+head_offset = Vector3(0.08, -0.5, -0.15)
 metadata/_custom_type_script = "uid://h27r465digmw"

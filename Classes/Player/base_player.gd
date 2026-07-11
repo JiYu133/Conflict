@@ -44,6 +44,7 @@ var animation_controller: PlayerAnimationController
 
 signal died
 signal revived
+@warning_ignore("unused_signal")
 signal faction_changed(new_faction: Faction)
 
 # 玩家阵营枚举
@@ -121,7 +122,8 @@ func _on_model_loaded(_model: Node3D) -> void:
 		model_manager.skeleton,
 		model_manager.animator,
 		model_manager.animation_tree,
-		player_config.ragdoll_config if player_config else null
+		player_config.ragdoll_config if player_config else null,
+		weapon_manager.weapon_mount
 	)
 
 	# 将模型从 ModelManager 移到自己身下，确保变换跟随
@@ -188,11 +190,13 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 		return
 
 	is_alive = false
+	velocity = Vector3.ZERO
 
 	# 禁用玩家碰撞体，防止物理骨骼与自身胶囊体碰撞导致弹飞
 	_set_collision_enabled(false)
 
 	ragdoll_system.enable(death_type, impact_direction)
+	camera_controller.disable_camera(model_manager.skeleton)
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
 
 func revive() -> void:
@@ -201,6 +205,7 @@ func revive() -> void:
 	
 	is_alive = true
 	ragdoll_system.disable()
+	camera_controller.enable_camera()
 
 	# 恢复玩家碰撞体
 	_set_collision_enabled(true)

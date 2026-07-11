@@ -21,7 +21,7 @@ signal stopped_running
 
 
 # 私有变量 ────────────────────────────────────────────────
-var _player: CharacterBody3D
+var _player: BasePlayer
 var _config: PlayerConfig
 var _velocity: Vector3
 var _is_running: bool = false
@@ -40,7 +40,7 @@ func get_max_speed() -> float:
 	return _config.run_speed if _config else 4.0
 
 
-func initialize(player: CharacterBody3D, config: PlayerConfig) -> void:
+func initialize(player: BasePlayer, config: PlayerConfig) -> void:
 	_player = player
 	_config = config
 	_velocity = Vector3.ZERO
@@ -48,6 +48,9 @@ func initialize(player: CharacterBody3D, config: PlayerConfig) -> void:
 
 func _physics_process(delta: float) -> void:
 	if not _player or not _config:
+		return
+	if not _player.controllable:
+		_velocity = Vector3.ZERO
 		return
 
 	# ──────────────────────────────────────────────────────

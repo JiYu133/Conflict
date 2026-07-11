@@ -61,6 +61,7 @@ var _skeleton: Skeleton3D
 var _animator: AnimationPlayer
 var _animation_tree: AnimationTree
 var _config: RagdollConfig
+var _weapon_mount: Node3D  # 死亡时需要隐藏的武器挂载点
 
 ## 已创建的物理骨骼列表。每项存储 {"bone": PhysicalBone3D, "bone_idx": int}
 var _physical_bone_entries: Array = []
@@ -108,16 +109,19 @@ func _process(delta: float) -> void:
 ## animator:      模型中的 AnimationPlayer，用于播放死亡动画
 ## animation_tree:模型中的 AnimationTree，启用布娃娃时需要关闭
 ## config:        布娃娃配置资源，为 null 时使用代码默认值
+## weapon_mount:  武器挂载点，死亡时隐藏、复活时恢复
 func initialize(
 	skeleton: Skeleton3D,
 	animator: AnimationPlayer = null,
 	animation_tree: AnimationTree = null,
-	config: RagdollConfig = null
+	config: RagdollConfig = null,
+	weapon_mount: Node3D = null
 ) -> void:
 	_skeleton = skeleton
 	_animator = animator
 	_animation_tree = animation_tree
 	_config = config if config else RagdollConfig.new()
+	_weapon_mount = weapon_mount
 
 	if not _skeleton:
 		GlobalLogger.warn("RagdollSystem", "Initialized without skeleton; ragdoll disabled.")
@@ -198,6 +202,10 @@ func disable() -> void:
 	if is_instance_valid(_animation_tree):
 		_animation_tree.active = true
 
+	# 恢复武器可见性
+	if is_instance_valid(_weapon_mount):
+		_weapon_mount.visible = true
+
 	_is_active = false
 	_current_phase = RagdollPhase.INACTIVE
 	set_process(false)
@@ -264,10 +272,11 @@ func _create_physical_bones() -> void:
 
 		# 创建胶囊碰撞形状
 		var capsule := CapsuleShape3D.new()
-		var capsule_radius := max(bone_length * _config.bone_radius_scale, 0.01)
+		var capsule_radius: float = max(bone_length * _config.bone_radius_scale, 0.01)
 		# height 必须 >= radius * 2，否则 Godot 物理引擎会报错
 		capsule.radius = capsule_radius
-		capsule.height = max(bone_length * 0.8, capsule_radius * 2.0, 0.02)
+		var capsule_height: float = max(bone_length * 0.8, capsule_radius * 2.0, 0.02)
+		capsule.height = capsule_height
 
 		var col_shape := CollisionShape3D.new()
 		col_shape.shape = capsule
@@ -297,6 +306,10 @@ func _start_physics_phase() -> void:
 	# 停止 AnimationPlayer（动画已播完）
 	if _animator:
 		_animator.active = false
+
+	# 隐藏武器，避免武器挂载点仍跟骨骼动画而武器竖立不倒
+	if is_instance_valid(_weapon_mount):
+		_weapon_mount.visible = false
 
 	# 启动物理骨骼模拟
 	_skeleton.physical_bones_start_simulation()
