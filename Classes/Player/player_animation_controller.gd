@@ -45,6 +45,8 @@ var _config: PlayerConfig
 var _state: State = State.IDLE
 var _land_timer: float = 0.0
 var _was_on_floor: bool = true
+# 上一帧的局部水平速度，速度不变时跳过 AnimationTree 参数写入（INF 保证首帧必写）
+var _last_blend_vel: Vector2 = Vector2.INF
 
 
 # 初始化 ────────────────────────────────────────────────────
@@ -192,22 +194,24 @@ func _update_blend_positions() -> void:
 		return
 
 	# 将世界速度转换到玩家局部坐标系，取水平分量
-	var local_vel: Vector3 = _player.global_transform.basis.inverse() * _player.velocity
+	# 玩家 basis 只做 yaw 旋转（正交），transposed() 等价于 inverse() 且更便宜
+	var local_vel: Vector3 = _player.global_transform.basis.transposed() * _player.velocity
 	# 局部坐标：X = 右，-Z = 前；BlendSpace2D 约定 Y 轴正方向 = 前进
-	var blend_pos := Vector2(local_vel.x, -local_vel.z)
+	var vel_2d := Vector2(local_vel.x, -local_vel.z)
 
-	# 按最大速度归一化，让混合坐标保持在 [-1, 1] 范围内
-	var max_speed: float = _movement.get_max_speed()
-	if max_speed > 0.0:
-		blend_pos /= max_speed
+	# 速度与上一帧相同（如静止站立）时跳过写入，避免无谓的参数路径解析
+	if vel_2d == _last_blend_vel:
+		return
+	_last_blend_vel = vel_2d
 
-	# 超出单位圆时归一化
-	var len_sq := blend_pos.length_squared()
-	if len_sq > 1.0:
-		blend_pos /= sqrt(len_sq)
+	# 各混合空间按各自步态的最大速度归一化：
+	# 以 walk_speed 行走时 Walk 空间应采样到单位圆上（满幅行走姿态），
+	# 统一除以 run_speed 会让行走姿态被稀释产生滑步
+	var walk_blend := (vel_2d / max(_config.walk_speed, 0.001)).limit_length(1.0)
+	var run_blend := (vel_2d / max(_config.run_speed, 0.001)).limit_length(1.0)
 
-	_animation_tree.set(PARAM_WALK_BLEND, blend_pos)
-	_animation_tree.set(PARAM_RUN_BLEND, blend_pos)
+	_animation_tree.set(PARAM_WALK_BLEND, walk_blend)
+	_animation_tree.set(PARAM_RUN_BLEND, run_blend)
 
 
 # 信号回调 ──────────────────────────────────────────────────

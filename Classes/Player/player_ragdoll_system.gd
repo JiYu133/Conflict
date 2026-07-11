@@ -128,6 +128,11 @@ func initialize(
 		return
 	GlobalLogger.info("RagdollSystem", "Initialized with skeleton: %s" % _skeleton.name)
 
+## 设置武器挂载点（死亡时隐藏、复活时恢复）
+## 挂载点在 initialize() 之后才由 BasePlayer 查找到，因此单独提供设置入口
+func set_weapon_mount(weapon_mount: Node3D) -> void:
+	_weapon_mount = weapon_mount
+
 # 公开方法 ──────────────────────────────────────────────────
 
 ## 启动死亡流程
@@ -259,8 +264,8 @@ func _create_physical_bones() -> void:
 		# 6DOF 关节本身保持骨骼连接，无需线性限制
 
 		# 刚体阻尼（增大防止骨骼过度震荡）
-		phys_bone.set("linear_damp", max(_config.linear_damping, 5.0))
-		phys_bone.set("angular_damp", max(_config.angular_damping, 8.0))
+		phys_bone.set("linear_damp", _config.linear_damping)
+		phys_bone.set("angular_damp", _config.angular_damping)
 
 		# 质量
 		phys_bone.set("mass", _config.mass)
@@ -414,6 +419,7 @@ func _restore_bone_poses() -> void:
 	var bone_count := _skeleton.get_bone_count()
 	for i in bone_count:
 		if _saved_bone_poses.has(i):
-			_skeleton.set_bone_global_pose_override(i, _saved_bone_poses[i], 1.0, true)
+			# persistent=false：只覆盖一帧，避免死亡姿态永久压过复活后的 AnimationTree 输出
+			_skeleton.set_bone_global_pose_override(i, _saved_bone_poses[i], 1.0, false)
 	_saved_bone_poses.clear()
 	GlobalLogger.debug("RagdollSystem", "Restored bone poses.")

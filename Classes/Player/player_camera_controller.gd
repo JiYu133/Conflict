@@ -32,20 +32,20 @@ signal camera_ready(camera: Camera3D)
 # 公开属性 ────────────────────────────────────────────────
 var camera_mount: Node3D:
 	get: return _camera_mount
+# 可控状态以 BasePlayer.controllable 为唯一权威来源，
+# 避免摄像机与移动系统各持一份标志导致状态分叉
 var controllable: bool:
-	get: return _controllable
-	set(value): _controllable = value
+	get: return is_instance_valid(_player) and _player.controllable
 
 
 # 私有变量 ────────────────────────────────────────────────
-var _controllable: bool = true
 var _camera_mount: Node3D
 var _model_camera: Camera3D
 var _active_camera: Camera3D
 var _model_manager: PlayerModelManager
 var _model_lookup_config: ModelLookupConfig
 var _camera_config: CameraConfig
-var _player: CharacterBody3D
+var _player: BasePlayer
 var _bone_attachment: BoneAttachment3D  # 头部骨骼挂载点，用于读取原始头部位置
 
 var _mouse_sensitivity: float
@@ -84,7 +84,7 @@ var _ads_center_offset: Vector3 = Vector3.ZERO
 # 初始化
 # ============================================================
 func initialize(
-	player: CharacterBody3D,
+	player: BasePlayer,
 	model_manager: PlayerModelManager,
 	model_lookup_config: ModelLookupConfig,
 	camera_config: CameraConfig
@@ -120,13 +120,11 @@ func initialize(
 
 
 func _update_spring_params() -> void:
+	# stiffness 由 _process() 每帧根据 ADS 状态写入，这里只需缓存基准值和阻尼
 	_stiffness_h = _camera_config.spring_stiffness_h
 	_stiffness_v = _camera_config.spring_stiffness_v
-	_spring_x.stiffness = _stiffness_h
 	_spring_x.damping = _camera_config.spring_damping_h
-	_spring_z.stiffness = _stiffness_h
 	_spring_z.damping = _camera_config.spring_damping_h
-	_spring_y.stiffness = _stiffness_v
 	_spring_y.damping = _camera_config.spring_damping_v
 
 
@@ -134,7 +132,6 @@ func _update_spring_params() -> void:
 # 摄像机激活与挂载
 # ============================================================
 func enable_camera() -> void:
-	_controllable = true
 	_mouse_sensitivity = _camera_config.mouse_sensitivity
 	_max_vertical_angle = _camera_config.max_vertical_angle
 
@@ -142,10 +139,7 @@ func enable_camera() -> void:
 	if _ragdoll_skeleton:
 		_ragdoll_skeleton = null
 		_ragdoll_bone_idx = -1
-		var head_pos := _get_head_position()
-		_spring_x.position = head_pos.x
-		_spring_y.position = head_pos.y
-		_spring_z.position = head_pos.z
+		_sync_springs_to_head()
 		return
 
 	var viewport: Viewport = get_viewport()
@@ -168,28 +162,36 @@ func enable_camera() -> void:
 	# 查找头部骨骼挂载点（用于读取原始头部位置）
 	_bone_attachment = _find_bone_attachment()
 	# 同步弹簧初始位置到头部位置，防止第一帧跳到原点
-	var _sync_head = _get_head_position()
-	_spring_x.position = _sync_head.x
-	_spring_y.position = _sync_head.y
-	_spring_z.position = _sync_head.z
+	_sync_springs_to_head()
 
 func disable_camera(skeleton: Skeleton3D = null) -> void:
-	_controllable = false
-
 	if not skeleton:
 		return
 
 	# 记录骨骼引用和索引，_process 里直接读全局变换
-	var head_idx: int = -1
-	for bone_name in _model_lookup_config.head_bone_names:
-		head_idx = skeleton.find_bone(bone_name)
-		if head_idx != -1:
-			break
+	var head_idx: int = _find_head_bone_index(skeleton)
 	if head_idx == -1:
 		return
 
 	_ragdoll_skeleton = skeleton
 	_ragdoll_bone_idx = head_idx
+
+
+# 弹簧位置对齐当前头部位置，防止启用/复活瞬间镜头跳变
+func _sync_springs_to_head() -> void:
+	var head_pos := _get_head_position()
+	_spring_x.position = head_pos.x
+	_spring_y.position = head_pos.y
+	_spring_z.position = head_pos.z
+
+
+# 按 head_bone_names 优先级在骨骼中查找头部骨骼索引，未找到返回 -1
+func _find_head_bone_index(skeleton: Skeleton3D) -> int:
+	for bone_name in _model_lookup_config.head_bone_names:
+		var idx: int = skeleton.find_bone(bone_name)
+		if idx != -1:
+			return idx
+	return -1
 
 func _on_model_loaded() -> void:
 	_find_camera_nodes()
@@ -238,17 +240,16 @@ func _create_mount_from_skeleton(camera: Camera3D) -> void:
 	var skeleton: Skeleton3D = _model_manager.skeleton
 	if not skeleton:
 		return
-	for bone_name in _model_lookup_config.head_bone_names:
-		var bone_idx: int = skeleton.find_bone(bone_name)
-		if bone_idx != -1:
-			var mount: Marker3D = Marker3D.new()
-			mount.name = "CameraMount_Auto"
-			skeleton.add_child(mount)
-			var bone_pose: Transform3D = skeleton.get_bone_global_pose(bone_idx)
-			mount.global_position = skeleton.global_transform * bone_pose.origin
-			_camera_mount = mount
-			_attach_to_mount(camera, mount)
-			return
+	var bone_idx: int = _find_head_bone_index(skeleton)
+	if bone_idx == -1:
+		return
+	var mount: Marker3D = Marker3D.new()
+	mount.name = "CameraMount_Auto"
+	skeleton.add_child(mount)
+	var bone_pose: Transform3D = skeleton.get_bone_global_pose(bone_idx)
+	mount.global_position = skeleton.global_transform * bone_pose.origin
+	_camera_mount = mount
+	_attach_to_mount(camera, mount)
 
 
 func _find_bone_attachment() -> BoneAttachment3D:
@@ -257,11 +258,8 @@ func _find_bone_attachment() -> BoneAttachment3D:
 	var nodes: Array = _model_manager.model_node.find_children("*", "BoneAttachment3D", true, false)
 	for node in nodes:
 		var attachment := node as BoneAttachment3D
-		if not attachment:
-			continue
-		for bone_name in _model_lookup_config.head_bone_names:
-			if attachment.bone_name == bone_name:
-				return attachment
+		if attachment and attachment.bone_name in _model_lookup_config.head_bone_names:
+			return attachment
 	return null
 
 
@@ -300,15 +298,13 @@ func _process(delta: float) -> void:
 
 	# 2. 弹簧低通滤波——位置
 	#    骨骼动画的快速晃动被弹簧过滤，产生平滑的跟随感
+	#    ADS 时按进度提高刚度，让镜头更紧地贴住头部
+	var stiffness_mult: float = 1.0
 	if _is_ads:
-		var ads_mult: float = _camera_config.ads_stiffness_multiplier
-		_spring_x.stiffness = _stiffness_h * (1.0 + (ads_mult - 1.0) * _ads_progress)
-		_spring_y.stiffness = _stiffness_v * (1.0 + (ads_mult - 1.0) * _ads_progress)
-		_spring_z.stiffness = _stiffness_h * (1.0 + (ads_mult - 1.0) * _ads_progress)
-	else:
-		_spring_x.stiffness = _stiffness_h
-		_spring_y.stiffness = _stiffness_v
-		_spring_z.stiffness = _stiffness_h
+		stiffness_mult += (_camera_config.ads_stiffness_multiplier - 1.0) * _ads_progress
+	_spring_x.stiffness = _stiffness_h * stiffness_mult
+	_spring_y.stiffness = _stiffness_v * stiffness_mult
+	_spring_z.stiffness = _stiffness_h * stiffness_mult
 
 	_active_camera.global_position = Vector3(
 		_spring_x.update(delta, head_pos.x),
