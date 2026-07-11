@@ -32,20 +32,20 @@ extends Resource
 # 冲击力参数 ─────────────────────────────────────────────────
 @export_group("冲击力参数")
 ## 默认死亡冲击力（牛顿）/ Default death impact force in Newtons
-@export var default_impact_force: float = 500.0
+@export var default_impact_force: float = 80.0
 ## 爆头额外冲击力倍率 / Headshot force multiplier applied on top of default
 @export var headshot_force_multiplier: float = 2.5
 ## 爆炸冲击力（牛顿）/ Explosion force in Newtons
-@export var explosion_force: float = 2000.0
+@export var explosion_force: float = 300.0
 ## 冲击力施加上半身半径（m），仅影响此半径内的上半身骨骼 / Upper body radius for force application in meters
 @export var impact_upper_body_radius: float = 0.8
 
 # 碰撞层 ─────────────────────────────────────────────────
 @export_group("碰撞层")
 ## 布娃娃骨骼碰撞层 / Physics layer for ragdoll bones
-@export_flags_3d_physics var ragdoll_collision_layer: int = 1
+@export_flags_3d_physics var ragdoll_collision_layer: int = 2
 ## 布娃娃碰撞掩码 / Ragdoll collision mask — 必须与地图 StaticBody3D 的 layer 互相匹配
-## （骨骼在 layer 1，地图 layer 1，确保 mask 包含 1 + 地图 mask 包含 1）
+## （骨骼在 layer 2，地图 layer 1，骨骼 mask 包含 1，骨骼间不互相碰撞）
 @export_flags_3d_physics var ragdoll_collision_mask: int = 1
 
 # 骨骼过滤 ─────────────────────────────────────────────────

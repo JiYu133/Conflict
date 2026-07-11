@@ -32,9 +32,13 @@ signal camera_ready(camera: Camera3D)
 # 公开属性 ────────────────────────────────────────────────
 var camera_mount: Node3D:
 	get: return _camera_mount
+var controllable: bool:
+	get: return _controllable
+	set(value): _controllable = value
 
 
 # 私有变量 ────────────────────────────────────────────────
+var _controllable: bool = true
 var _camera_mount: Node3D
 var _model_camera: Camera3D
 var _active_camera: Camera3D
@@ -62,6 +66,10 @@ var _sway_pivot: Node3D = null
 
 # 后座
 var _recoil_component: RecoilComponent = null
+
+# 死亡摄像机跟随（直接读骨骼全局变换，不依赖 BoneAttachment3D）
+var _ragdoll_skeleton: Skeleton3D = null
+var _ragdoll_bone_idx: int = -1
 
 # ADS
 var _is_ads: bool = false
@@ -126,8 +134,19 @@ func _update_spring_params() -> void:
 # 摄像机激活与挂载
 # ============================================================
 func enable_camera() -> void:
+	_controllable = true
 	_mouse_sensitivity = _camera_config.mouse_sensitivity
 	_max_vertical_angle = _camera_config.max_vertical_angle
+
+	# 清除死亡骨骼跟随状态，并同步弹簧防止复活时镜头跳变
+	if _ragdoll_skeleton:
+		_ragdoll_skeleton = null
+		_ragdoll_bone_idx = -1
+		var head_pos := _get_head_position()
+		_spring_x.position = head_pos.x
+		_spring_y.position = head_pos.y
+		_spring_z.position = head_pos.z
+		return
 
 	var viewport: Viewport = get_viewport()
 	if not viewport:
@@ -154,6 +173,23 @@ func enable_camera() -> void:
 	_spring_y.position = _sync_head.y
 	_spring_z.position = _sync_head.z
 
+func disable_camera(skeleton: Skeleton3D = null) -> void:
+	_controllable = false
+
+	if not skeleton:
+		return
+
+	# 记录骨骼引用和索引，_process 里直接读全局变换
+	var head_idx: int = -1
+	for bone_name in _model_lookup_config.head_bone_names:
+		head_idx = skeleton.find_bone(bone_name)
+		if head_idx != -1:
+			break
+	if head_idx == -1:
+		return
+
+	_ragdoll_skeleton = skeleton
+	_ragdoll_bone_idx = head_idx
 
 func _on_model_loaded() -> void:
 	_find_camera_nodes()
@@ -235,7 +271,7 @@ func _find_bone_attachment() -> BoneAttachment3D:
 func _input(event: InputEvent) -> void:
 	if event is not InputEventMouseMotion:
 		return
-	if not is_instance_valid(_player):
+	if not is_instance_valid(_player) or not controllable:
 		return
 	_player.rotate_y(-event.relative.x * _mouse_sensitivity)
 	_vertical_angle -= event.relative.y * _mouse_sensitivity
@@ -247,6 +283,16 @@ func _input(event: InputEvent) -> void:
 # ============================================================
 func _process(delta: float) -> void:
 	if not _active_camera or not _camera_config:
+		return
+
+	# 死亡模式：直接读头骨骼全局变换，摄像机跟随物理骨骼
+	if _ragdoll_skeleton and _ragdoll_bone_idx != -1:
+		if is_instance_valid(_ragdoll_skeleton):
+			var bone_xform: Transform3D = _ragdoll_skeleton.global_transform * _ragdoll_skeleton.get_bone_global_pose(_ragdoll_bone_idx)
+			_active_camera.global_transform = bone_xform
+		return
+
+	if not controllable:
 		return
 
 	# 1. 读取原始头部位置（从 BoneAttachment3D）
