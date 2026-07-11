@@ -54,7 +54,11 @@ enum Faction { RU, UA, None }
 
 func _ready() -> void:
 	_initialize_subsystems()
-	
+
+	# 物理参数：防止无输入时滑行
+	floor_stop_on_slope = true
+	floor_max_angle = deg_to_rad(45.0)
+
 	# 加载配置中的模型
 	if player_config and player_config.model_scene:
 		model_manager.load_model(
@@ -94,8 +98,7 @@ func _initialize_subsystems() -> void:
 		player_config.model_config if player_config else null
 		)
 
-	# 连接落地/起跳信号到摄像机控制器，用于落地冲击弹簧效果
-	camera_controller.connect_movement_signals(movement_controller)
+	weapon_manager.set_camera_controller(camera_controller)
 
 	# 连接信号
 	_connect_signals()
@@ -113,21 +116,25 @@ func _connect_signals() -> void:
 		
 func _on_model_loaded(_model: Node3D) -> void:
 
-	# 初始化布娃娃系统（需要骨骼）
+	# 初始化布娃娃系统（需要骨骼、动画系统及配置）
 	ragdoll_system.initialize(
 		model_manager.skeleton,
 		model_manager.animator,
-		model_manager.animation_tree
+		model_manager.animation_tree,
+		player_config.ragdoll_config if player_config else null
 	)
 
-	# 初始化动画控制器（需要 AnimationPlayer，模型加载后才可用）
-	animation_controller.initialize(self, movement_controller, model_manager)
-
 	# 将模型从 ModelManager 移到自己身下，确保变换跟随
+	# 必须在 animation_controller.initialize() 之前完成，
+	# 否则 travel("Idle") 在模型离开场景树时触发，重挂载后 playback 状态丢失
 	if _model.get_parent():
 		_model.get_parent().remove_child(_model)
 	add_child(_model)
-	
+	# 模型面朝+Z时需旋转180°对齐角色朝向(-Z = forward)
+	_model.rotation.y = PI
+
+		# 模型就位后再初始化动画控制器，确保 AnimationTree 已稳定在场景树中
+	animation_controller.initialize(self, movement_controller, model_manager, player_config)
 	camera_controller._find_camera_nodes()
 	camera_controller.enable_camera()
 	
@@ -165,13 +172,28 @@ func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
 		camera_controller.set_recoil_component(null)
 
 
-func die() -> void:
+func _input(event: InputEvent) -> void:
+	if not OS.is_debug_build():
+		return
+	# Debug: 死亡测试快捷键
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_T: die(PlayerRagdollSystem.DeathType.FRONT)
+			KEY_Y: die(PlayerRagdollSystem.DeathType.FRONT_HEADSHOT)
+			KEY_U: die(PlayerRagdollSystem.DeathType.EXPLOSION)
+
+
+func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathType.GENERIC, impact_direction: Vector3 = Vector3.ZERO) -> void:
 	if not is_alive:
 		return
-	
+
 	is_alive = false
-	ragdoll_system.enable()
-	GlobalLogger.info("Player", "Player " + get_parent().name + "has died.")
+
+	# 禁用玩家碰撞体，防止物理骨骼与自身胶囊体碰撞导致弹飞
+	_set_collision_enabled(false)
+
+	ragdoll_system.enable(death_type, impact_direction)
+	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
 
 func revive() -> void:
 	if is_alive:
@@ -179,6 +201,10 @@ func revive() -> void:
 	
 	is_alive = true
 	ragdoll_system.disable()
+
+	# 恢复玩家碰撞体
+	_set_collision_enabled(true)
+
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
 
 
@@ -190,8 +216,18 @@ func set_controllable(enabled: bool) -> void:
 # Mod热重载
 
 
+
+
 func reload_model() -> void:
 	if player_config and player_config.model_scene:
 		model_manager.load_model(
 			player_config
 		)
+
+
+# 切换所有 CollisionShape3D 子节点的启用状态
+# 布娃娃激活时需禁用，防止物理骨骼与自身碰撞体冲突
+func _set_collision_enabled(enabled: bool) -> void:
+	for child in get_children():
+		if child is CollisionShape3D:
+			child.disabled = not enabled

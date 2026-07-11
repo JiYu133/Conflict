@@ -84,8 +84,23 @@ extends Resource
 @export var collision_shape_height: float = 1.8
 ## 碰撞胶囊体半径（m），约等于角色身体厚度 / Collision capsule radius in meters
 @export var collision_shape_radius: float = 0.4
+## 模型垂直偏移（m），正值上移，负值下移。用于使模型脚部对齐胶囊体底部 / Model vertical offset to align feet with collision capsule bottom
+@export var model_y_offset: float = -0.5
+
+@export_group("布娃娃配置")
+## 布娃娃物理配置（留空则使用代码内默认值）/ Ragdoll physics configuration (uses code defaults if empty)
+@export var ragdoll_config: RagdollConfig
 
 # 武器配置 ─────────────────────────────────────────────────
 @export_group("武器配置")
 ## 初始武器 / Starting weapon config
 @export var starting_weapon: WeaponConfig
+
+# 动画配置 ─────────────────────────────────────────────────
+@export_group("动画配置")
+## 进入行走状态的水平速度平方阈值（m²/s²），默认 0.25 = 0.5 m/s / Walk enter threshold (squared speed)
+@export var walk_enter_speed_sq: float = 0.25
+## 退出行走状态的水平速度平方阈值（m²/s²），默认 0.0225 = 0.15 m/s / Walk exit threshold (squared speed)
+@export var walk_exit_speed_sq: float = 0.0225
+## 落地恢复时间（秒），落地动画播放完毕后自动切回地面状态的等待时间 / Landing recovery time in seconds
+@export var land_recovery_time: float = 0.3

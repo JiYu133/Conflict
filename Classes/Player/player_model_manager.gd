@@ -84,7 +84,8 @@ func load_model(player_config: PlayerConfig = null) -> void:
 
 	# 强制关闭 top_level，确保模型的坐标空间相对 BasePlayer
 	_model_node.top_level = false
-	_model_node.position = Vector3.ZERO
+	# 应用 Y 轴偏移使模型脚部对齐胶囊体底部
+	_model_node.position = Vector3(0, _player_config.model_y_offset, 0)
 
 	# 查找骨骼系统和动画播放器
 	_find_components()

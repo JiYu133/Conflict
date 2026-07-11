@@ -90,6 +90,12 @@ extends Resource
 @export var weapon_scene: PackedScene
 ## 武器全长（m），用于顶墙收枪射线检测 / Full weapon length in m, used for obstruction raycast
 @export var weapon_length: float = 0.75
+## 瞄准时间（秒），从腰射到瞄准的过渡时长 / ADS transition time in seconds
+@export var ads_time: float = 0.25
+## 瞄准时武器居中偏移（m），相对摄像机中心的偏移量 / Weapon center offset when ADS
+@export var ads_center_offset: Vector3 = Vector3(0.0, -0.1, -0.05)
+## 瞄准时 FOV 缩放目标值（度），-1 = 使用摄像机默认 / ADS FOV target; -1 = use camera default
+@export var ads_fov_override: float = -1.0
 
 # 配件槽位声明 ────────────────────────────────────────────
 @export_group("配件槽位")
