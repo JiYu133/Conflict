@@ -91,6 +91,11 @@ extends Resource
 ## 布娃娃物理配置（留空则使用代码内默认值）/ Ragdoll physics configuration (uses code defaults if empty)
 @export var ragdoll_config: RagdollConfig
 
+# 手部 IK 配置 ──────────────────────────────────────────────
+@export_group("手部 IK 配置")
+## 左手 IK 参数（骨骼链、FABRIK、肘部方向等，留空则使用默认值）
+@export var hand_ik_config: HandIKConfig
+
 # 武器配置 ─────────────────────────────────────────────────
 @export_group("武器配置")
 ## 初始武器 / Starting weapon config

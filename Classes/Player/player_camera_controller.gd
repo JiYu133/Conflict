@@ -2,11 +2,10 @@ class_name PlayerCameraController
 extends Node
 
 # ============================================================
-# 玩家摄像机控制器（弹簧稳定器版本）
+# 玩家摄像机控制器
 # 功能：
-#   - 摄像机位置通过弹簧低通滤波跟随头部骨骼
-#   - 摄像机旋转由鼠标单独控制
-#   - 武器独立弹簧跟踪摄像机，产生延迟感
+#   - 摄像机位置在玩家局部空间用弹簧跟随头部骨骼（过滤动画晃动）
+#   - 鼠标旋转绕过弹簧直接应用，不产生延迟感
 #   - ADS 系统：平滑 FOV 缩放 + 武器居中
 # ============================================================
 
@@ -32,8 +31,7 @@ signal camera_ready(camera: Camera3D)
 # 公开属性 ────────────────────────────────────────────────
 var camera_mount: Node3D:
 	get: return _camera_mount
-# 可控状态以 BasePlayer.controllable 为唯一权威来源，
-# 避免摄像机与移动系统各持一份标志导致状态分叉
+# 可控状态以 BasePlayer.controllable 为唯一权威来源
 var controllable: bool:
 	get: return is_instance_valid(_player) and _player.controllable
 
@@ -46,28 +44,25 @@ var _model_manager: PlayerModelManager
 var _model_lookup_config: ModelLookupConfig
 var _camera_config: CameraConfig
 var _player: BasePlayer
-var _bone_attachment: BoneAttachment3D  # 头部骨骼挂载点，用于读取原始头部位置
+var _bone_attachment: BoneAttachment3D
 
 var _mouse_sensitivity: float
 var _vertical_angle: float = 0.0
 var _max_vertical_angle: float
 
-# 弹簧系统 - 3 轴独立弹簧，对头部位置做低通滤波
+# 弹簧系统 - 3 轴独立弹簧，对头部位置在玩家局部空间做低通滤波
 var _spring_x: CameraSpring1D
 var _spring_y: CameraSpring1D
 var _spring_z: CameraSpring1D
 var _stiffness_h: float = 500.0
 var _stiffness_v: float = 120.0
 
-# 武器弹簧 - 跟踪摄像机旋转，产生延迟感
-var _weapon_spring_pitch: CameraSpring1D
-var _weapon_spring_yaw: CameraSpring1D
 var _sway_pivot: Node3D = null
 
 # 后座
 var _recoil_component: RecoilComponent = null
 
-# 死亡摄像机跟随（直接读骨骼全局变换，不依赖 BoneAttachment3D）
+# 死亡摄像机跟随
 var _ragdoll_skeleton: Skeleton3D = null
 var _ragdoll_bone_idx: int = -1
 
@@ -94,23 +89,13 @@ func initialize(
 	_camera_config = camera_config if camera_config else CameraConfig.new()
 	_player = player
 
-	# 初始化位置弹簧（3 轴）
 	_spring_x = CameraSpring1D.new()
 	_spring_y = CameraSpring1D.new()
 	_spring_z = CameraSpring1D.new()
 	_update_spring_params()
 
-	# 初始化武器旋转弹簧（pitch/yaw 两轴）
-	_weapon_spring_pitch = CameraSpring1D.new()
-	_weapon_spring_yaw = CameraSpring1D.new()
-	_weapon_spring_pitch.stiffness = 10.0
-	_weapon_spring_pitch.damping = 6.0
-	_weapon_spring_yaw.stiffness = 10.0
-	_weapon_spring_yaw.damping = 6.0
-
 	_hip_fov = _camera_config.fov
 
-	# 创建备用 SeedCamera
 	var seed: Camera3D = Camera3D.new()
 	seed.name = "SeedCamera"
 	seed.current = true
@@ -120,7 +105,6 @@ func initialize(
 
 
 func _update_spring_params() -> void:
-	# stiffness 由 _process() 每帧根据 ADS 状态写入，这里只需缓存基准值和阻尼
 	_stiffness_h = _camera_config.spring_stiffness_h
 	_stiffness_v = _camera_config.spring_stiffness_v
 	_spring_x.damping = _camera_config.spring_damping_h
@@ -135,7 +119,6 @@ func enable_camera() -> void:
 	_mouse_sensitivity = _camera_config.mouse_sensitivity
 	_max_vertical_angle = _camera_config.max_vertical_angle
 
-	# 清除死亡骨骼跟随状态，并同步弹簧防止复活时镜头跳变
 	if _ragdoll_skeleton:
 		_ragdoll_skeleton = null
 		_ragdoll_bone_idx = -1
@@ -159,33 +142,33 @@ func enable_camera() -> void:
 	if _active_camera:
 		_active_camera.fov = _camera_config.fov
 
-	# 查找头部骨骼挂载点（用于读取原始头部位置）
 	_bone_attachment = _find_bone_attachment()
-	# 同步弹簧初始位置到头部位置，防止第一帧跳到原点
+	if _bone_attachment:
+		GlobalLogger.info("Camera", "Head BoneAttachment found: " + _bone_attachment.bone_name)
+	else:
+		GlobalLogger.warn("Camera", "Head BoneAttachment not found, using fallback position")
 	_sync_springs_to_head()
+
 
 func disable_camera(skeleton: Skeleton3D = null) -> void:
 	if not skeleton:
 		return
-
-	# 记录骨骼引用和索引，_process 里直接读全局变换
 	var head_idx: int = _find_head_bone_index(skeleton)
 	if head_idx == -1:
 		return
-
 	_ragdoll_skeleton = skeleton
 	_ragdoll_bone_idx = head_idx
 
 
-# 弹簧位置对齐当前头部位置，防止启用/复活瞬间镜头跳变
+# 弹簧位置对齐当前头部局部位置，防止启用/复活瞬间镜头跳变
 func _sync_springs_to_head() -> void:
-	var head_pos := _get_head_position()
+	var head_pos := _get_head_local_position()
 	_spring_x.position = head_pos.x
 	_spring_y.position = head_pos.y
 	_spring_z.position = head_pos.z
 
 
-# 按 head_bone_names 优先级在骨骼中查找头部骨骼索引，未找到返回 -1
+# 按 head_bone_names 优先级查找头部骨骼索引，未找到返回 -1
 func _find_head_bone_index(skeleton: Skeleton3D) -> int:
 	for bone_name in _model_lookup_config.head_bone_names:
 		var idx: int = skeleton.find_bone(bone_name)
@@ -193,8 +176,10 @@ func _find_head_bone_index(skeleton: Skeleton3D) -> int:
 			return idx
 	return -1
 
+
 func _on_model_loaded() -> void:
 	_find_camera_nodes()
+
 
 func _find_camera_nodes() -> void:
 	if not _model_manager.model_node:
@@ -203,7 +188,6 @@ func _find_camera_nodes() -> void:
 	_camera_mount = _model_manager.find_node_by_names(
 		_model_lookup_config.camera_mount_names, "Node3D"
 	)
-	# 排除 Camera3D 类型（它们是摄像机本身，不是挂载点）
 	if _camera_mount and _camera_mount is Camera3D:
 		_camera_mount = null
 
@@ -256,10 +240,19 @@ func _find_bone_attachment() -> BoneAttachment3D:
 	if not _model_manager.model_node:
 		return null
 	var nodes: Array = _model_manager.model_node.find_children("*", "BoneAttachment3D", true, false)
+	# 精确匹配优先
 	for node in nodes:
 		var attachment := node as BoneAttachment3D
 		if attachment and attachment.bone_name in _model_lookup_config.head_bone_names:
 			return attachment
+	# 回退：包含匹配（处理 mixamorig_Head 等前缀命名）
+	for node in nodes:
+		var attachment := node as BoneAttachment3D
+		if not attachment:
+			continue
+		for candidate in _model_lookup_config.head_bone_names:
+			if attachment.bone_name.to_lower().contains(candidate.to_lower()):
+				return attachment
 	return null
 
 
@@ -283,7 +276,7 @@ func _process(delta: float) -> void:
 	if not _active_camera or not _camera_config:
 		return
 
-	# 死亡模式：直接读头骨骼全局变换，摄像机跟随物理骨骼
+	# 死亡模式：直接读头骨骼全局变换
 	if _ragdoll_skeleton and _ragdoll_bone_idx != -1:
 		if is_instance_valid(_ragdoll_skeleton):
 			var bone_xform: Transform3D = _ragdoll_skeleton.global_transform * _ragdoll_skeleton.get_bone_global_pose(_ragdoll_bone_idx)
@@ -293,12 +286,10 @@ func _process(delta: float) -> void:
 	if not controllable:
 		return
 
-	# 1. 读取原始头部位置（从 BoneAttachment3D）
-	var head_pos := _get_head_position()
+	# 1. 读取头部在玩家局部空间的位置（弹簧不感知玩家旋转，只过滤动画位移）
+	var head_local := _get_head_local_position()
 
-	# 2. 弹簧低通滤波——位置
-	#    骨骼动画的快速晃动被弹簧过滤，产生平滑的跟随感
-	#    ADS 时按进度提高刚度，让镜头更紧地贴住头部
+	# 2. 弹簧低通滤波——ADS 时提高刚度
 	var stiffness_mult: float = 1.0
 	if _is_ads:
 		stiffness_mult += (_camera_config.ads_stiffness_multiplier - 1.0) * _ads_progress
@@ -306,13 +297,16 @@ func _process(delta: float) -> void:
 	_spring_y.stiffness = _stiffness_v * stiffness_mult
 	_spring_z.stiffness = _stiffness_h * stiffness_mult
 
-	_active_camera.global_position = Vector3(
-		_spring_x.update(delta, head_pos.x),
-		_spring_y.update(delta, head_pos.y),
-		_spring_z.update(delta, head_pos.z)
+	var filtered_local := Vector3(
+		_spring_x.update(delta, head_local.x),
+		_spring_y.update(delta, head_local.y),
+		_spring_z.update(delta, head_local.z)
 	)
 
-	# 3. 旋转由鼠标控制（显式设置 global_rotation，不依赖场景层级）
+	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧
+	_active_camera.global_position = _player.global_transform * filtered_local
+
+	# 4. 旋转由鼠标控制
 	var player_yaw: float = _player.rotation.y if _player else 0.0
 	var recoil_pitch: float = _get_recoil_pitch()
 	_active_camera.global_rotation = Vector3(
@@ -321,35 +315,24 @@ func _process(delta: float) -> void:
 		0.0
 	)
 
-	# 水平后座
 	var recoil_yaw: float = _get_recoil_yaw()
 	if recoil_yaw != 0.0 and _player:
 		_player.rotate_y(recoil_yaw * delta)
 
-	# 4. ADS 更新
 	_update_ads(delta)
-
-	# 5. 武器弹簧（跟踪摄像机旋转，带延迟）
 	_update_weapon_spring(delta)
 
 
 # ============================================================
-# 头部位置读取
+# 头部位置读取（玩家局部空间）
 # ============================================================
-
-func _get_head_position() -> Vector3:
-	var raw_pos: Vector3
-	if _bone_attachment and is_instance_valid(_bone_attachment):
-		raw_pos = _bone_attachment.global_position
+func _get_head_local_position() -> Vector3:
+	if _bone_attachment and is_instance_valid(_bone_attachment) and is_instance_valid(_player):
+		var bone_local := _player.global_transform.affine_inverse() * _bone_attachment.global_position
+		return bone_local + _camera_config.head_offset
 	elif is_instance_valid(_player):
-		raw_pos = _player.global_position + Vector3(0, 1.6, 0)
-	else:
-		return Vector3.ZERO
-
-	# 应用可配置的前向偏移（玩家局部空间）
-	if is_instance_valid(_player):
-		raw_pos += _player.global_transform.basis * _camera_config.head_offset
-	return raw_pos
+		return Vector3(0, 1.6, 0)
+	return Vector3.ZERO
 
 
 # ============================================================
@@ -368,28 +351,13 @@ func set_ads_state(ads: bool, ads_time: float, zoom_fov: float, center_offset: V
 	_ads_center_offset = center_offset
 
 
-
-
 # ============================================================
-# 武器弹簧（跟踪摄像机旋转，有延迟）
+# 武器 ADS 居中偏移
 # ============================================================
-func _update_weapon_spring(delta: float) -> void:
+func _update_weapon_spring(_delta: float) -> void:
 	if not _sway_pivot:
 		return
-
-	# 武器旋转跟踪摄像机旋转（pitch/yaw）
-	var target_pitch: float = _active_camera.rotation.x if _active_camera else 0.0
-
-	var spring_pitch: float = _weapon_spring_pitch.update(delta, target_pitch)
-	var spring_yaw: float = _weapon_spring_yaw.update(delta, 0.0)
-
-	_sway_pivot.rotation = Vector3(spring_pitch, spring_yaw, 0.0)
-
-	# 位置：ADS 居中偏移
-	var pos_target := Vector3.ZERO
-	pos_target += _ads_center_offset * _ads_progress
-
-	# 只写 X/Y，Z 留给 WeaponObstructionDetector
+	var pos_target := _ads_center_offset * _ads_progress
 	_sway_pivot.position.x = pos_target.x
 	_sway_pivot.position.y = pos_target.y
 
@@ -400,10 +368,12 @@ func _update_weapon_spring(delta: float) -> void:
 func set_recoil_component(rc: RecoilComponent) -> void:
 	_recoil_component = rc
 
+
 func _get_recoil_pitch() -> float:
 	if not _recoil_component:
 		return 0.0
 	return _recoil_component.get_recoil_offset()
+
 
 func _get_recoil_yaw() -> float:
 	if not _recoil_component:
@@ -424,6 +394,7 @@ func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
 	weapon_mount.add_child(pivot)
 	_sway_pivot = pivot
 	return pivot
+
 
 func get_active_camera() -> Camera3D:
 	return _active_camera
