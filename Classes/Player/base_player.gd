@@ -186,7 +186,8 @@ func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
 
 
 func _process(delta: float) -> void:
-	hand_ik_controller.process_ik(delta)
+	if is_alive:
+		hand_ik_controller.process_ik(delta)
 
 
 func _input(event: InputEvent) -> void:
@@ -216,7 +217,6 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 
 	is_alive = false
 	velocity = Vector3.ZERO
-	hand_ik_controller.set_suspended(true)
 
 	# 禁用玩家碰撞体，防止物理骨骼与自身胶囊体碰撞导致弹飞
 	_set_collision_enabled(false)
@@ -232,7 +232,6 @@ func revive() -> void:
 	is_alive = true
 	ragdoll_system.disable()
 	camera_controller.enable_camera()
-	hand_ik_controller.set_suspended(false)
 
 	# 恢复玩家碰撞体
 	_set_collision_enabled(true)
