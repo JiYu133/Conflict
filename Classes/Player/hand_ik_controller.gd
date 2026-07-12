@@ -14,6 +14,7 @@ var _total_length: float = 0.0
 
 var _left_hand_grip: Node3D
 var _enabled: bool = false
+var _suspended: bool = false
 var _pending_weapon: BaseWeapon = null
 var _ik_weight: float = 1.0
 
@@ -75,7 +76,7 @@ func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 
 
 func process_ik(_delta: float) -> void:
-	if not _enabled or not _skeleton or not _left_hand_grip or _bone_indices.is_empty():
+	if _suspended or not _enabled or not _skeleton or not _left_hand_grip or _bone_indices.is_empty():
 		return
 
 	var target_global: Vector3 = _left_hand_grip.global_position
@@ -117,6 +118,15 @@ func process_ik(_delta: float) -> void:
 
 	_apply_pole_constraint(positions, ik_lengths)
 	_apply_poses(positions, ik_indices)
+
+
+## Temporarily releases IK ownership of the arm, e.g. while ragdoll physics is active.
+func set_suspended(suspended: bool) -> void:
+	if _suspended == suspended:
+		return
+	_suspended = suspended
+	if _suspended:
+		_clear_overrides()
 
 
 func _apply_pole_constraint(positions: Array[Vector3], lengths: Array[float]) -> void:

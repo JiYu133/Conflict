@@ -40,6 +40,7 @@ var _model_node: Node3D               # 当前加载的模型实例
 var _skeleton: Skeleton3D             # 缓存的骨骼系统引用
 var _animator: AnimationPlayer        # 缓存的动画播放器引用
 var _animation_tree: AnimationTree    # 缓存的动画树引用
+var _collision_shape: CollisionShape3D # Player 下由本管理器创建的碰撞体
 var _model_lookup_config: ModelLookupConfig  # 节点查找规则配置
 var _player_config: PlayerConfig             # 玩家配置（碰撞体参数等）
 
@@ -147,12 +148,13 @@ func _find_components() -> void:
 ## 为玩家创建碰撞体
 ## 使用胶囊体碰撞形状（CapsuleShape3D），参数来自 PlayerConfig
 func _create_collision_body() -> void:
-	var collision = CollisionShape3D.new()
+	if not is_instance_valid(_collision_shape):
+		_collision_shape = CollisionShape3D.new()
+		_collision_shape.name = "PlayerCollisionShape"
+		var player = get_parent()
+		player.add_child(_collision_shape)
 	var shape = CapsuleShape3D.new()
 	shape.height = _player_config.collision_shape_height
 	shape.radius = _player_config.collision_shape_radius
-	collision.shape = shape
-	collision.position = Vector3(0, 0, 0)  # 碰撞体中心置于身体中部
-
-	var player = get_parent()
-	player.add_child(collision)
+	_collision_shape.shape = shape
+	_collision_shape.position = Vector3.ZERO  # 碰撞体中心置于身体中部
