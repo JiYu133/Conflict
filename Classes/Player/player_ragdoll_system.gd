@@ -165,6 +165,10 @@ func enable(death_type: DeathType = DeathType.GENERIC, impact_direction: Vector3
 	if _physical_bone_entries.is_empty():
 		_create_physical_bones()
 
+	# JiYu 的稳定 IK 使用 persistent 骨骼覆盖。死亡后 BasePlayer 停止更新 IK，
+	# 此处一次性释放最后一帧覆盖，再将骨骼所有权交给死亡动画/物理模拟。
+	_skeleton.clear_bones_global_pose_override()
+
 	# Step 1: 保存当前骨骼姿态（供复活恢复）
 	_save_bone_poses()
 
