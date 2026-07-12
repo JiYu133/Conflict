@@ -107,6 +107,8 @@ extends Resource
 @export var left_hand_ik_rotation_offset_degrees: Vector3 = Vector3.ZERO
 ## 手腕朝向目标的混合比例；位置仍由 left_hand_ik_weight 控制
 @export_range(0.0, 1.0) var left_hand_ik_orientation_weight: float = 0.75
+## 武器上下移动时左手跟随的比例；降低可避免前臂被枪口运动过度向上拉伸
+@export_range(0.0, 1.0) var left_hand_ik_vertical_follow: float = 1.0
 
 # 配件槽位声明 ────────────────────────────────────────────
 @export_group("配件槽位")
