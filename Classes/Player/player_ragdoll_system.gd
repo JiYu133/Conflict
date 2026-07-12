@@ -329,10 +329,53 @@ func _create_physical_bones() -> void:
 		col_shape.name = "CollisionShape"
 
 		phys_bone.add_child(col_shape)
-		_physical_bone_entries.append({"bone": phys_bone, "bone_idx": i})
+		_physical_bone_entries.append({
+			"bone": phys_bone,
+			"bone_idx": i,
+			"physical_parent_idx": physical_parent_idx,
+		})
+
+	_configure_self_collision_exceptions()
 
 	GlobalLogger.info("RagdollSystem", "Created %d physical bones (skipped %d excluded/root/tiny)." % \
 		[_physical_bone_entries.size(), bone_count - _physical_bone_entries.size()])
+
+## 非相邻部位互相碰撞以阻止穿模；关节邻居、同父兄弟和祖孙骨骼保持例外，
+## 避免静止姿态中本就重叠的胶囊体产生巨大分离冲量。
+func _configure_self_collision_exceptions() -> void:
+	if not _config.enable_self_collision:
+		return
+	for i in range(_physical_bone_entries.size()):
+		var entry_a: Dictionary = _physical_bone_entries[i]
+		var bone_a: PhysicalBone3D = entry_a["bone"]
+		for j in range(i + 1, _physical_bone_entries.size()):
+			var entry_b: Dictionary = _physical_bone_entries[j]
+			if not _should_ignore_self_collision(entry_a, entry_b):
+				continue
+			var bone_b: PhysicalBone3D = entry_b["bone"]
+			bone_a.add_collision_exception_with(bone_b)
+			bone_b.add_collision_exception_with(bone_a)
+
+func _should_ignore_self_collision(entry_a: Dictionary, entry_b: Dictionary) -> bool:
+	var idx_a: int = entry_a["bone_idx"]
+	var idx_b: int = entry_b["bone_idx"]
+	var parent_a: int = entry_a["physical_parent_idx"]
+	var parent_b: int = entry_b["physical_parent_idx"]
+	if parent_a == idx_b or parent_b == idx_a:
+		return true
+	if parent_a >= 0 and parent_a == parent_b:
+		return true
+	return _is_close_ancestor(idx_a, idx_b, 2) or _is_close_ancestor(idx_b, idx_a, 2)
+
+func _is_close_ancestor(ancestor_idx: int, bone_idx: int, max_steps: int) -> bool:
+	var current := _skeleton.get_bone_parent(bone_idx)
+	for _step in max_steps:
+		if current < 0:
+			return false
+		if current == ancestor_idx:
+			return true
+		current = _skeleton.get_bone_parent(current)
+	return false
 
 ## 找到最近的已生成物理祖先，避免被过滤的辅助骨骼打断关节拓扑。
 func _find_physical_parent(bone_idx: int, simulated_bones: Dictionary) -> int:

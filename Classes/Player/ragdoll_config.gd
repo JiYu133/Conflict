@@ -27,6 +27,8 @@ extends Resource
 @export var angular_damping: float = 8.0
 ## 每块物理骨骼的质量（kg）/ Mass per physical bone in kg
 @export var mass: float = 1.0
+## 启用非相邻身体部位之间的碰撞，防止手臂穿过并卡入躯干
+@export var enable_self_collision: bool = true
 
 # 过渡参数 ─────────────────────────────────────────────────
 @export_group("过渡参数")
@@ -50,8 +52,8 @@ extends Resource
 @export_flags_3d_physics var ragdoll_collision_layer: int = 2
 ## 布娃娃碰撞掩码 / Ragdoll collision mask — 必须与地图 StaticBody3D 的 layer 互相匹配
 ## （骨骼在 layer 2，地图 layer 1，骨骼 mask 包含 1，骨骼间不互相碰撞）
-## 默认碰撞所有层但排除 ragdoll 自身所在的第 2 层，兼容不同地图的环境分层。
-@export_flags_3d_physics var ragdoll_collision_mask: int = 0x7FFFFFFD
+## 默认碰撞所有常用层；相邻骨骼通过 collision exception 避免互相弹飞。
+@export_flags_3d_physics var ragdoll_collision_mask: int = 0x7FFFFFFF
 
 # 骨骼过滤 ─────────────────────────────────────────────────
 @export_group("骨骼过滤")
