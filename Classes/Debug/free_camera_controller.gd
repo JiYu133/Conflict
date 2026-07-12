@@ -32,7 +32,6 @@ func _enter() -> void:
 
 	# 冻结角色和普通摄像机
 	_player.set_controllable(false)
-	_camera_controller.controllable = false
 
 	# 从当前摄像机位置出发创建自由摄像机
 	var current_cam := _camera_controller.get_active_camera()
@@ -61,7 +60,6 @@ func _exit() -> void:
 		_free_cam.queue_free()
 	_free_cam = null
 
-	_camera_controller.controllable = true
 	_player.set_controllable(true)
 
 	GlobalLogger.info("FreeCam", "自由视角已退出")
