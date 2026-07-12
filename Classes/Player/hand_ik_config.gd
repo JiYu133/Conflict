@@ -41,12 +41,6 @@ extends Resource
 ## 调小可提高精度，调大可节省性能。
 @export_range(0.0001, 0.01, 0.0001) var threshold: float = 0.0005
 
-## 允许目标使用的最大臂长比例。低于 1 可保留肘部弯曲并避免关节蒙皮被拉到极限。
-@export_range(0.5, 1.0, 0.01) var max_reach_ratio: float = 0.94
-
-## 目标距离过近时的最小臂长比例，避免前臂反折穿过上臂。
-@export_range(0.0, 0.5, 0.01) var min_reach_ratio: float = 0.18
-
 
 # ── 肘部方向（Pole Vector） ──────────────────────────────────
 @export_group("肘部方向")
