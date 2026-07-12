@@ -16,7 +16,7 @@
 | `camera_mount_names` | `Array[String]` | `["CameraMount", "Camera_Mount", "EyeMount", "Camera", "camera", "Camera3D", "Marker3D"]` | 第一人称摄像机挂载点候选名称列表，按优先级排列 |
 | `left_foot_ray_names` | `Array[String]` | `["RayCast_LeftFoot", "LeftFootRay", "LeftRay", "leftray"]` | 左脚 RayCast 节点候选名称，用于脚步 IK 地面适配 |
 | `right_foot_ray_names` | `Array[String]` | `["RayCast_RightFoot", "RightFootRay", "RightRay", "rightray"]` | 右脚 RayCast 节点候选名称，用于脚步 IK 地面适配 |
-| `head_bone_names` | `Array[String]` | `["Head", "head", "Eye", "eye"]` | 头部骨骼候选名称，当模型没有 CameraMount 时作为回退方案自动创建摄像机挂载点 |
+| `head_bone_names` | `Array[String]` | `["Head", "head", "Eye", "eye", "mixamorig_Head"]` | 头部骨骼候选名称，当模型没有 CameraMount 时作为回退方案自动创建摄像机挂载点 |
 
 ## 依赖关系
 
