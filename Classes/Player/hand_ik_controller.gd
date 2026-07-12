@@ -17,6 +17,9 @@ var _enabled: bool = false
 var _suspended: bool = false
 var _pending_weapon: BaseWeapon = null
 var _ik_weight: float = 1.0
+var _target_position_offset: Vector3 = Vector3.ZERO
+var _target_rotation_offset: Vector3 = Vector3.ZERO
+var _orientation_weight: float = 0.75
 
 
 func initialize(_model_manager: PlayerModelManager, _lookup: ModelLookupConfig) -> void:
@@ -67,6 +70,10 @@ func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 	_pending_weapon = null
 	# ik_weight < 0 表示使用 config 默认值
 	_ik_weight = ik_weight if ik_weight >= 0.0 else (_config.default_ik_weight if _config else 1.0)
+	if weapon.config:
+		_target_position_offset = weapon.config.left_hand_ik_position_offset
+		_target_rotation_offset = weapon.config.left_hand_ik_rotation_offset_degrees
+		_orientation_weight = weapon.config.left_hand_ik_orientation_weight
 	_left_hand_grip = weapon.find_child("LeftHandGrip", true, false) as Node3D
 	if not _left_hand_grip:
 		GlobalLogger.warn("HandIK", "武器 '%s' 没有 LeftHandGrip 节点" % weapon.name)
@@ -82,7 +89,8 @@ func process_ik(_delta: float) -> void:
 	# corrections accumulate into a full forearm twist.
 	_clear_overrides()
 
-	var target_global: Vector3 = _left_hand_grip.global_position
+	var target_transform := _get_target_transform()
+	var target_global: Vector3 = target_transform.origin
 	var skel_xform: Transform3D = _skeleton.global_transform
 
 	# 跳过 bone_chain[0]（LeftShoulder），IK 从 index 1 开始
@@ -130,7 +138,17 @@ func set_suspended(suspended: bool) -> void:
 		return
 	_suspended = suspended
 	if _suspended:
-		_clear_overrides()
+		# Persistent overrides must be removed completely before PhysicalBone3D takes ownership.
+		_skeleton.clear_bones_global_pose_override()
+
+
+func _get_target_transform() -> Transform3D:
+	var offset_basis := Basis.from_euler(Vector3(
+		deg_to_rad(_target_rotation_offset.x),
+		deg_to_rad(_target_rotation_offset.y),
+		deg_to_rad(_target_rotation_offset.z)
+	))
+	return _left_hand_grip.global_transform * Transform3D(offset_basis, _target_position_offset)
 
 
 func _apply_pole_constraint(positions: Array[Vector3], lengths: Array[float]) -> void:
@@ -164,7 +182,8 @@ func _apply_pole_constraint(positions: Array[Vector3], lengths: Array[float]) ->
 func _apply_poses(positions: Array[Vector3], animated_positions: Array[Vector3], ik_indices: Array[int]) -> void:
 	var skel_xform: Transform3D = _skeleton.global_transform
 	var skel_inv: Transform3D   = skel_xform.affine_inverse()
-	var grip_basis: Basis       = _left_hand_grip.global_transform.basis
+	var target_transform := _get_target_transform()
+	var grip_basis: Basis       = target_transform.basis
 	var forearm_local_idx: int  = ik_indices.size() - 2  # LeftForeArm 在 ik_indices 里的位置
 	var roll_align: float       = _config.forearm_roll_align if _config else 0.5
 
@@ -203,9 +222,14 @@ func _apply_poses(positions: Array[Vector3], animated_positions: Array[Vector3],
 		var new_local := skel_inv * Transform3D(rotation, from)
 		_skeleton.set_bone_global_pose_override(bone_idx, new_local, _ik_weight, true)
 
-	# 手腕朝向完全由 LeftHandGrip 的 basis 决定
+	# 手腕位置到达目标，但朝向只部分跟随，保留动画中的自然腕部旋转。
 	var hand_idx: int = ik_indices[-1]
-	var grip_local: Transform3D = skel_inv * _left_hand_grip.global_transform
+	var animated_hand := skel_xform * _skeleton.get_bone_global_pose(hand_idx)
+	var hand_rotation := animated_hand.basis.get_rotation_quaternion().slerp(
+		grip_basis.get_rotation_quaternion(), _orientation_weight
+	)
+	var softened_target := Transform3D(Basis(hand_rotation), target_transform.origin)
+	var grip_local: Transform3D = skel_inv * softened_target
 	_skeleton.set_bone_global_pose_override(hand_idx, grip_local, _ik_weight, true)
 
 
