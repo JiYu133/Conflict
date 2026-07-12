@@ -207,8 +207,8 @@ func _update_blend_positions() -> void:
 	# 各混合空间按各自步态的最大速度归一化：
 	# 以 walk_speed 行走时 Walk 空间应采样到单位圆上（满幅行走姿态），
 	# 统一除以 run_speed 会让行走姿态被稀释产生滑步
-	var walk_blend := (vel_2d / max(_config.walk_speed, 0.001)).limit_length(1.0)
-	var run_blend := (vel_2d / max(_config.run_speed, 0.001)).limit_length(1.0)
+	var walk_blend := (vel_2d / maxf(_config.walk_speed, 0.001)).limit_length(1.0)
+	var run_blend := (vel_2d / maxf(_config.run_speed, 0.001)).limit_length(1.0)
 
 	_animation_tree.set(PARAM_WALK_BLEND, walk_blend)
 	_animation_tree.set(PARAM_RUN_BLEND, run_blend)
