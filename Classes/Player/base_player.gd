@@ -118,12 +118,12 @@ func _connect_signals() -> void:
 func _on_model_loaded(_model: Node3D) -> void:
 
 	# 初始化布娃娃系统（需要骨骼、动画系统及配置）
+	# 武器挂载点此时尚未查找到，待下方定位后通过 set_weapon_mount() 注入
 	ragdoll_system.initialize(
 		model_manager.skeleton,
 		model_manager.animator,
 		model_manager.animation_tree,
-		player_config.ragdoll_config if player_config else null,
-		weapon_manager.weapon_mount
+		player_config.ragdoll_config if player_config else null
 	)
 
 	# 将模型从 ModelManager 移到自己身下，确保变换跟随
@@ -143,6 +143,7 @@ func _on_model_loaded(_model: Node3D) -> void:
 	var mount = model_manager.find_node_by_names(["WeaponMount"], "Node3D")
 	if mount:
 		GlobalLogger.info("Player", "Weapon mount has been set: " + mount.name)
+		ragdoll_system.set_weapon_mount(mount)
 		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(mount)
 		if sway_pivot:
 			weapon_manager.set_mount(sway_pivot)

@@ -39,5 +39,5 @@ extends Resource
 # 头部骨骼候选名称（自动创建挂载点时的回退方案）────────────────
 ## 当模型没有 CameraMount 时，从头部骨骼自动创建挂载点 / Head bone candidates used to auto-create camera mount when none exists
 @export var head_bone_names: Array[String] = [
-	"Head", "head", "Eye", "eye"
+	"Head", "head", "Eye", "eye", "mixamorig_Head"
 ]
