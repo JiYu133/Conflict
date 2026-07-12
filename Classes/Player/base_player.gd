@@ -186,7 +186,8 @@ func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
 
 
 func _process(delta: float) -> void:
-	hand_ik_controller.process_ik(delta)
+	if is_alive:
+		hand_ik_controller.process_ik(delta)
 
 
 func _input(event: InputEvent) -> void:
