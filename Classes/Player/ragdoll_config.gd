@@ -4,7 +4,7 @@ extends Resource
 # ============================================================
 # 布娃娃物理配置
 # 功能：定义布娃娃系统的全部物理参数，包括骨骼碰撞体尺寸、
-#       关节刚度/阻尼、死亡动画过渡时间、冲击力大小及碰撞层。
+#       刚体阻尼、死亡动画过渡时间、冲击力大小及碰撞层。
 # 用法：在 Godot 编辑器中创建 .tres 资源，填入具体数值，
 #       然后挂载到 PlayerConfig.ragdoll_config。
 # ============================================================
@@ -13,14 +13,10 @@ extends Resource
 @export_group("物理骨骼参数", "物理骨骼")
 ## 碰撞形状半径缩放系数，相对于父骨骼长度 / Collision shape radius scale factor relative to bone length
 @export var bone_radius_scale: float = 0.3
-## 关节刚度，值越大骨骼越僵硬（100 = 接近刚性）/ Joint stiffness; higher = stiffer
-@export var joint_stiffness: float = 10.0
-## 关节阻尼，抑制骨骼摆动 / Joint damping to reduce bone oscillation
-@export var joint_damping: float = 5.0
 ## 线速度阻尼，控制整体移动减速 / Linear damping applied to each physical bone
-@export var linear_damping: float = 2.0
+@export var linear_damping: float = 5.0
 ## 角速度阻尼，控制旋转减速 / Angular damping applied to each physical bone
-@export var angular_damping: float = 5.0
+@export var angular_damping: float = 8.0
 ## 每块物理骨骼的质量（kg）/ Mass per physical bone in kg
 @export var mass: float = 1.0
 
@@ -37,8 +33,6 @@ extends Resource
 @export var headshot_force_multiplier: float = 2.5
 ## 爆炸冲击力（牛顿）/ Explosion force in Newtons
 @export var explosion_force: float = 300.0
-## 冲击力施加上半身半径（m），仅影响此半径内的上半身骨骼 / Upper body radius for force application in meters
-@export var impact_upper_body_radius: float = 0.8
 
 # 碰撞层 ─────────────────────────────────────────────────
 @export_group("碰撞层")
