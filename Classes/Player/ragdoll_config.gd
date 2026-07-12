@@ -13,6 +13,8 @@ extends Resource
 @export_group("物理骨骼参数", "物理骨骼")
 ## 碰撞形状半径缩放系数，相对于父骨骼长度 / Collision shape radius scale factor relative to bone length
 @export var bone_radius_scale: float = 0.3
+## 小骨骼碰撞体的最小半径，避免手腕/脚踝等细胶囊穿透环境
+@export var minimum_bone_radius: float = 0.025
 ## 线速度阻尼，控制整体移动减速 / Linear damping applied to each physical bone
 @export var linear_damping: float = 5.0
 ## 角速度阻尼，控制旋转减速 / Angular damping applied to each physical bone
@@ -29,6 +31,8 @@ extends Resource
 @export_group("冲击力参数")
 ## 默认死亡冲击力（牛顿）/ Default death impact force in Newtons
 @export var default_impact_force: float = 80.0
+## 冲击力持续的物理帧数；枪击测试通常为 1，最多建议 2
+@export_range(1, 2, 1) var impact_force_frames: int = 1
 ## 爆头额外冲击力倍率 / Headshot force multiplier applied on top of default
 @export var headshot_force_multiplier: float = 2.5
 ## 爆炸冲击力（牛顿）/ Explosion force in Newtons
