@@ -20,6 +20,7 @@ var _ik_weight: float = 1.0
 var _target_position_offset: Vector3 = Vector3.ZERO
 var _target_rotation_offset: Vector3 = Vector3.ZERO
 var _orientation_weight: float = 0.75
+var _vertical_follow_weight: float = 1.0
 
 
 func initialize(_model_manager: PlayerModelManager, _lookup: ModelLookupConfig) -> void:
@@ -74,6 +75,7 @@ func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 		_target_position_offset = weapon.config.left_hand_ik_position_offset
 		_target_rotation_offset = weapon.config.left_hand_ik_rotation_offset_degrees
 		_orientation_weight = weapon.config.left_hand_ik_orientation_weight
+		_vertical_follow_weight = weapon.config.left_hand_ik_vertical_follow
 	_left_hand_grip = weapon.find_child("LeftHandGrip", true, false) as Node3D
 	if not _left_hand_grip:
 		GlobalLogger.warn("HandIK", "武器 '%s' 没有 LeftHandGrip 节点" % weapon.name)
@@ -106,6 +108,11 @@ func process_ik(_delta: float) -> void:
 	for idx in ik_indices:
 		positions.append((skel_xform * _skeleton.get_bone_global_pose(idx)).origin)
 	var animated_positions := positions.duplicate()
+
+	# 保留武器/枪口的完整运动，但只让左手部分跟随其垂直位移。
+	# X/Z 仍精确跟随握把，Y 则从动画手位平滑靠近目标。
+	target_global.y = lerpf(animated_positions[-1].y, target_global.y, _vertical_follow_weight)
+	target_transform.origin.y = target_global.y
 
 	# 武器跟随右手移动时，左手目标可能瞬间超出自然臂展。将目标限制在
 	# 可达区间内并保留少量肘部弯曲，避免极限伸直放大肘部蒙皮变形。
