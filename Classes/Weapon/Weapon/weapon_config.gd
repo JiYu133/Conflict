@@ -97,6 +97,11 @@ extends Resource
 ## 瞄准时 FOV 缩放目标值（度），-1 = 使用摄像机默认 / ADS FOV target; -1 = use camera default
 @export var ads_fov_override: float = -1.0
 
+# 握持 IK ─────────────────────────────────────────────────
+@export_group("握持 IK")
+## 左手 IK 强度，0 = 完全用动画，1 = 完全跟随 LeftHandGrip / Left hand IK blend weight
+@export_range(0.0, 1.0) var left_hand_ik_weight: float = 1.0
+
 # 配件槽位声明 ────────────────────────────────────────────
 @export_group("配件槽位")
 ## 是否支持瞄具槽 / Whether optic rail is supported

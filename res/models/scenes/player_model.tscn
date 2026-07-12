@@ -4,7 +4,4 @@
 
 [node name="PlayerModel" type="Node3D" unique_id=1113221465]
 
-[node name="WeaponMount" type="Node3D" parent="." unique_id=157479528]
-transform = Transform3D(-1, 0, -8.742277e-08, 0, 0.9999999, 0, 8.742278e-08, 0, -0.99999994, 0.31273627, 0.14012304, 0.16520283)
-
 [node name="Swat" parent="." unique_id=727840838 instance=ExtResource("1_jepu8")]

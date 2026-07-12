@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="WeaponConfig" format=3 uid="uid://bak74m001"]
 
 [ext_resource type="Script" uid="uid://cumd76b2e0fn" path="res://Classes/Weapon/Weapon/weapon_config.gd" id="1_cfg"]
-[ext_resource type="PackedScene" uid="uid://dtfj56fulo2tj" path="res://res/models/weapons/AK74M.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://c8jcutg7au4g0" path="res://res/models/weapons/ak74m/ak_74m.tscn" id="2_ixgqf"]
 
 [resource]
 script = ExtResource("1_cfg")
@@ -17,5 +17,5 @@ recoil_recovery_speed = 4.5
 hipfire_spread = 3.2
 ads_spread = 0.12
 weight = 3.6
-weapon_scene = ExtResource("2_scene")
+weapon_scene = ExtResource("2_ixgqf")
 weapon_length = 0.943

@@ -16,11 +16,21 @@ func equip_weapon(weapon: BaseWeapon) -> void:
 	current_weapon = weapon
 	if weapon_mount:
 		weapon_mount.add_child(weapon)
-		weapon.position = Vector3.ZERO
-		weapon.rotation = Vector3.ZERO
+		_align_to_grip(weapon)
 	else:
 		push_error("WeaponManager: weapon_mount 为 null，武器 '%s' 已创建但不会显示" % weapon.name)
 	weapon_changed.emit(current_weapon)
+
+
+func _align_to_grip(weapon: BaseWeapon) -> void:
+	var grip := weapon.find_child("RightHandGrip", true, false) as Node3D
+	if not grip:
+		weapon.position = Vector3.ZERO
+		weapon.rotation = Vector3.ZERO
+		return
+	# 将武器的 local transform 设为 RightHandGrip local transform 的逆
+	# 结果：RightHandGrip 落在 weapon_mount 的局部原点，即右手骨骼位置
+	weapon.transform = grip.transform.inverse()
 
 ## 设置武器挂载点(从调用处获取)
 func set_mount(mount: Node3D) -> void:

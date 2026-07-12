@@ -36,8 +36,10 @@ var camera_controller: PlayerCameraController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
 var foot_ik_controller: FootIKController
+var hand_ik_controller: HandIKController
 var weapon_manager: WeaponManager
 var animation_controller: PlayerAnimationController
+var free_camera_controller: FreeCameraController
 
 # 信号
 
@@ -77,6 +79,7 @@ func _initialize_subsystems() -> void:
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
+	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
 	animation_controller = _create_subsystem(PlayerAnimationController.new(), "AnimationController")
 	
@@ -99,7 +102,15 @@ func _initialize_subsystems() -> void:
 		player_config.model_config if player_config else null
 		)
 
+	hand_ik_controller.initialize(
+		model_manager,
+		player_config.model_config if player_config else null
+		)
+
 	weapon_manager.set_camera_controller(camera_controller)
+
+	if OS.is_debug_build():
+		free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
 
 	# 连接信号
 	_connect_signals()
@@ -137,6 +148,7 @@ func _on_model_loaded(_model: Node3D) -> void:
 
 		# 模型就位后再初始化动画控制器，确保 AnimationTree 已稳定在场景树中
 	animation_controller.initialize(self, movement_controller, model_manager, player_config)
+	hand_ik_controller.setup(model_manager.skeleton, player_config.hand_ik_config if player_config else null)
 	camera_controller._find_camera_nodes()
 	camera_controller.enable_camera()
 	
@@ -148,11 +160,6 @@ func _on_model_loaded(_model: Node3D) -> void:
 		if sway_pivot:
 			weapon_manager.set_mount(sway_pivot)
 			GlobalLogger.info("Player", "Weapon sway pivot created, weapons attach under: " + sway_pivot.name)
-
-			# 初始化武器遮挡检测（需要摄像机和晃动支点就绪后才可用）
-			var obstruction_detector: WeaponObstructionDetector = \
-				_create_subsystem(WeaponObstructionDetector.new(), "ObstructionDetector") as WeaponObstructionDetector
-			obstruction_detector.initialize(self, camera_controller.get_active_camera(), weapon_manager, sway_pivot)
 		else:
 			weapon_manager.set_mount(mount)
 	else:
@@ -163,24 +170,41 @@ func _on_model_loaded(_model: Node3D) -> void:
 		GlobalLogger.debug("Player", "Initializing player's starting weapon...")
 		weapon_manager.load_and_equip(player_config.starting_weapon)
 
+	if OS.is_debug_build() and free_camera_controller:
+		free_camera_controller.initialize(self, camera_controller)
+
 # 公共API
 
 
 func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
-	# 将新装备武器的 RecoilComponent 注入摄像机控制器
-	# 摄像机每帧从中读取后座偏移并叠加到垂直视角
 	if new_weapon and new_weapon.recoil_component:
 		camera_controller.set_recoil_component(new_weapon.recoil_component)
 	else:
 		camera_controller.set_recoil_component(null)
+	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
+	hand_ik_controller.set_weapon(new_weapon, weight)
+
+
+func _process(delta: float) -> void:
+	hand_ik_controller.process_ik(delta)
 
 
 func _input(event: InputEvent) -> void:
+	# ESC 切换鼠标捕捉
+	if event.is_action_pressed("ui_cancel"):
+		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		else:
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+
 	if not OS.is_debug_build():
 		return
-	# Debug: 死亡测试快捷键
+
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
+			KEY_F:
+				if free_camera_controller:
+					free_camera_controller.toggle()
 			KEY_T: die(PlayerRagdollSystem.DeathType.FRONT)
 			KEY_Y: die(PlayerRagdollSystem.DeathType.FRONT_HEADSHOT)
 			KEY_U: die(PlayerRagdollSystem.DeathType.EXPLOSION)
