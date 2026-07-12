@@ -5,4 +5,5 @@
 [resource]
 script = ExtResource("1_script")
 default_impact_force = 500.0
+ragdoll_collision_mask = 2147483645
 metadata/_custom_type_script = "uid://dn103ririhbav"
