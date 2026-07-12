@@ -117,6 +117,7 @@ func initialize(
 	config: RagdollConfig = null,
 	weapon_mount: Node3D = null
 ) -> void:
+	_reset_skeleton_state()
 	_skeleton = skeleton
 	_animator = animator
 	_animation_tree = animation_tree
@@ -127,6 +128,21 @@ func initialize(
 		GlobalLogger.warn("RagdollSystem", "Initialized without skeleton; ragdoll disabled.")
 		return
 	GlobalLogger.info("RagdollSystem", "Initialized with skeleton: %s" % _skeleton.name)
+
+## 清除仅属于旧模型骨骼的缓存。模型热重载时 initialize() 会再次调用。
+func _reset_skeleton_state() -> void:
+	if is_instance_valid(_skeleton) and _current_phase == RagdollPhase.RAGDOLL_PHYSICS:
+		_skeleton.physical_bones_stop_simulation()
+	for entry in _physical_bone_entries:
+		var physical_bone: PhysicalBone3D = entry.get("bone")
+		if is_instance_valid(physical_bone):
+			physical_bone.queue_free()
+	_physical_bone_entries.clear()
+	_saved_bone_poses.clear()
+	_is_active = false
+	_current_phase = RagdollPhase.INACTIVE
+	_death_anim_timer = 0.0
+	set_process(false)
 
 ## 设置武器挂载点（死亡时隐藏、复活时恢复）
 ## 挂载点在 initialize() 之后才由 BasePlayer 查找到，因此单独提供设置入口
@@ -233,15 +249,9 @@ func _create_physical_bones() -> void:
 		if _is_bone_excluded(bone_name):
 			continue
 
-		# 跳过没有父骨骼的根骨骼（通常是 Armature/Root/Hips 本身）
-		# 根骨骼没有父骨骼来定义长度，由平台碰撞决定最终位置
 		var parent_idx := _skeleton.get_bone_parent(i)
-		if parent_idx < 0:
-			continue
-
-		# 骨骼长度 = 当前骨骼 rest pose 相对父骨骼的偏移量（即骨骼自身延伸长度）
-		var bone_rest: Transform3D = _skeleton.get_bone_rest(i)
-		var bone_length: float = bone_rest.origin.length()
+		var bone_segment := _get_bone_segment(i)
+		var bone_length: float = bone_segment.length()
 
 		# 骨骼长度过短（如 0 长度 IK 辅助骨骼）跳过
 		if bone_length < 0.001:
@@ -257,8 +267,8 @@ func _create_physical_bones() -> void:
 		# 指定绑定的骨骼名
 		phys_bone.bone_name = bone_name
 
-		# 关节配置：6DOF 无限制，纯布娃娃
-		phys_bone.set("joint_type", 5)  # 5 = JOINT_TYPE_6DOF
+		# 根骨骼作为自由刚体；其余骨骼由 6DOF 关节连接到物理父骨骼。
+		phys_bone.joint_type = PhysicalBone3D.JOINT_TYPE_NONE if parent_idx < 0 else PhysicalBone3D.JOINT_TYPE_6DOF
 
 		# 不设置关节限制——限制过紧会导致 Jolt 施加巨大约束力弹飞骨骼
 		# 6DOF 关节本身保持骨骼连接，无需线性限制
@@ -283,10 +293,12 @@ func _create_physical_bones() -> void:
 		var capsule_height: float = max(bone_length * 0.8, capsule_radius * 2.0, 0.02)
 		capsule.height = capsule_height
 
+		# PhysicalBone 位于关节处；刚体中心应在关节与子骨骼之间，并沿实际骨段方向旋转。
+		var align_to_segment := Quaternion(Vector3.UP, bone_segment.normalized())
+		phys_bone.body_offset = Transform3D(Basis(align_to_segment), bone_segment * 0.5)
+
 		var col_shape := CollisionShape3D.new()
 		col_shape.shape = capsule
-		# 胶囊默认沿 Y 轴，绕 X 轴旋转 90° 使其沿 Z 轴对齐骨骼方向
-		col_shape.rotation_degrees = Vector3(90.0, 0.0, 0.0)
 		col_shape.name = "CollisionShape"
 
 		phys_bone.add_child(col_shape)
@@ -294,6 +306,27 @@ func _create_physical_bones() -> void:
 
 	GlobalLogger.info("RagdollSystem", "Created %d physical bones (skipped %d excluded/root/tiny)." % \
 		[_physical_bone_entries.size(), bone_count - _physical_bone_entries.size()])
+
+## 返回从当前骨骼关节到一个有效子骨骼的局部向量。
+## 叶骨骼回退为指向父关节的半段，避免手、脚末端产生零尺寸刚体。
+func _get_bone_segment(bone_idx: int) -> Vector3:
+	var children := _skeleton.get_bone_children(bone_idx)
+	var longest := Vector3.ZERO
+	for child_idx in children:
+		var child_name := _skeleton.get_bone_name(child_idx)
+		if _is_bone_excluded(child_name):
+			continue
+		var candidate: Vector3 = _skeleton.get_bone_rest(child_idx).origin
+		if candidate.length_squared() > longest.length_squared():
+			longest = candidate
+	if not longest.is_zero_approx():
+		return longest
+
+	var parent_idx := _skeleton.get_bone_parent(bone_idx)
+	if parent_idx < 0:
+		return Vector3.ZERO
+	var rest := _skeleton.get_bone_rest(bone_idx)
+	return rest.basis.inverse() * -rest.origin * 0.5
 
 ## 检查骨骼名是否匹配任一排除关键词
 func _is_bone_excluded(bone_name: String) -> bool:

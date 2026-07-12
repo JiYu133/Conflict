@@ -48,7 +48,7 @@ extends Resource
 @export var exclude_bone_keywords: Array[String] = [
 	"IK", "_End", "Toe_End", "Hand_End",
 	"Thumb", "Index", "Middle", "Ring", "Pinky",
-	"Weapon", "Armature", "Root"
+	"Eye", "Weapon", "Armature", "Root"
 ]
 
 # 冲击力目标 ─────────────────────────────────────────────────
