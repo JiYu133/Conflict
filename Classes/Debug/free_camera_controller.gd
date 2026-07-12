@@ -13,6 +13,7 @@ var _pitch: float = 0.0
 var _yaw: float = 0.0
 var _player: BasePlayer
 var _camera_controller: PlayerCameraController
+var _was_controllable: bool = false
 
 
 func initialize(player: BasePlayer, camera_controller: PlayerCameraController) -> void:
@@ -31,6 +32,7 @@ func _enter() -> void:
 	_active = true
 
 	# 冻结角色和普通摄像机
+	_was_controllable = _player.controllable
 	_player.set_controllable(false)
 
 	# 从当前摄像机位置出发创建自由摄像机
@@ -60,7 +62,8 @@ func _exit() -> void:
 		_free_cam.queue_free()
 	_free_cam = null
 
-	_player.set_controllable(true)
+	# 恢复进入自由视角前的状态；死亡玩家必须保持不可控，否则无碰撞体时会继续受重力下坠。
+	_player.set_controllable(_was_controllable and _player.is_alive)
 
 	GlobalLogger.info("FreeCam", "自由视角已退出")
 

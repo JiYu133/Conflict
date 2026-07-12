@@ -78,6 +78,9 @@ func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 func process_ik(_delta: float) -> void:
 	if _suspended or not _enabled or not _skeleton or not _left_hand_grip or _bone_indices.is_empty():
 		return
+	# Persistent overrides otherwise become next frame's input and make partial roll
+	# corrections accumulate into a full forearm twist.
+	_clear_overrides()
 
 	var target_global: Vector3 = _left_hand_grip.global_position
 	var skel_xform: Transform3D = _skeleton.global_transform
@@ -94,6 +97,7 @@ func process_ik(_delta: float) -> void:
 	var positions: Array[Vector3] = []
 	for idx in ik_indices:
 		positions.append((skel_xform * _skeleton.get_bone_global_pose(idx)).origin)
+	var animated_positions := positions.duplicate()
 
 	var iterations: int = _config.iterations if _config else 6
 	var threshold: float = _config.threshold if _config else 0.0005
@@ -117,7 +121,7 @@ func process_ik(_delta: float) -> void:
 				break
 
 	_apply_pole_constraint(positions, ik_lengths)
-	_apply_poses(positions, ik_indices)
+	_apply_poses(positions, animated_positions, ik_indices)
 
 
 ## Temporarily releases IK ownership of the arm, e.g. while ragdoll physics is active.
@@ -157,7 +161,7 @@ func _apply_pole_constraint(positions: Array[Vector3], lengths: Array[float]) ->
 	positions[1] = root + rot * (mid - root).normalized() * lengths[0]
 
 
-func _apply_poses(positions: Array[Vector3], ik_indices: Array[int]) -> void:
+func _apply_poses(positions: Array[Vector3], animated_positions: Array[Vector3], ik_indices: Array[int]) -> void:
 	var skel_xform: Transform3D = _skeleton.global_transform
 	var skel_inv: Transform3D   = skel_xform.affine_inverse()
 	var grip_basis: Basis       = _left_hand_grip.global_transform.basis
@@ -171,7 +175,9 @@ func _apply_poses(positions: Array[Vector3], ik_indices: Array[int]) -> void:
 
 		var current_global: Transform3D = skel_xform * _skeleton.get_bone_global_pose(bone_idx)
 		var target_dir: Vector3  = (to - from).normalized()
-		var current_dir: Vector3 = current_global.basis.y.normalized()
+		# Derive the animated bone axis from its joints. Mixamo imports do not guarantee
+		# that every limb's local Y axis points toward its child.
+		var current_dir: Vector3 = (animated_positions[i + 1] - animated_positions[i]).normalized()
 
 		if current_dir.length() < 0.001 or target_dir.length() < 0.001:
 			continue
