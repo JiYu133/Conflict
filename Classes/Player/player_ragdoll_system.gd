@@ -58,6 +58,7 @@ var current_phase: RagdollPhase = RagdollPhase.INACTIVE:
 var _is_active: bool = false
 var _current_phase: RagdollPhase = RagdollPhase.INACTIVE
 var _skeleton: Skeleton3D
+var _physical_simulator: PhysicalBoneSimulator3D
 var _animator: AnimationPlayer
 var _animation_tree: AnimationTree
 var _config: RagdollConfig
@@ -131,12 +132,11 @@ func initialize(
 
 ## 清除仅属于旧模型骨骼的缓存。模型热重载时 initialize() 会再次调用。
 func _reset_skeleton_state() -> void:
-	if is_instance_valid(_skeleton) and _current_phase == RagdollPhase.RAGDOLL_PHYSICS:
-		_skeleton.physical_bones_stop_simulation()
-	for entry in _physical_bone_entries:
-		var physical_bone: PhysicalBone3D = entry.get("bone")
-		if is_instance_valid(physical_bone):
-			physical_bone.queue_free()
+	if is_instance_valid(_physical_simulator):
+		if _physical_simulator.is_simulating_physics():
+			_physical_simulator.physical_bones_stop_simulation()
+		_physical_simulator.queue_free()
+	_physical_simulator = null
 	_physical_bone_entries.clear()
 	_saved_bone_poses.clear()
 	_is_active = false
@@ -210,7 +210,8 @@ func disable() -> void:
 
 	# 已在物理阶段则停止模拟
 	if _current_phase == RagdollPhase.RAGDOLL_PHYSICS:
-		_skeleton.physical_bones_stop_simulation()
+		if is_instance_valid(_physical_simulator):
+			_physical_simulator.physical_bones_stop_simulation()
 	elif _current_phase == RagdollPhase.DEATH_ANIMATION:
 		# 还在动画阶段，停止动画播放
 		if _animator:
@@ -241,6 +242,10 @@ func disable() -> void:
 func _create_physical_bones() -> void:
 	_physical_bone_entries.clear()
 	var bone_count := _skeleton.get_bone_count()
+	_physical_simulator = PhysicalBoneSimulator3D.new()
+	_physical_simulator.name = "RagdollPhysicalBoneSimulator"
+	_skeleton.add_child(_physical_simulator)
+	_physical_simulator.active = true
 
 	for i in bone_count:
 		var bone_name: String = _skeleton.get_bone_name(i)
@@ -262,16 +267,14 @@ func _create_physical_bones() -> void:
 		phys_bone.name = "PhysBone_" + bone_name
 
 		# 先添加到骨骼系统，部分属性需要在场景树中才能设置
-		_skeleton.add_child(phys_bone)
+		_physical_simulator.add_child(phys_bone)
 
 		# 指定绑定的骨骼名
 		phys_bone.bone_name = bone_name
 
-		# 根骨骼作为自由刚体；其余骨骼由 6DOF 关节连接到物理父骨骼。
-		phys_bone.joint_type = PhysicalBone3D.JOINT_TYPE_NONE if parent_idx < 0 else PhysicalBone3D.JOINT_TYPE_6DOF
-
-		# 不设置关节限制——限制过紧会导致 Jolt 施加巨大约束力弹飞骨骼
-		# 6DOF 关节本身保持骨骼连接，无需线性限制
+		# 根骨骼作为自由刚体；Pin 关节可靠锁住其余骨骼的线性连接。
+		# 未配置限制的 6DOF 关节容易在强冲击下分离并拉伸网格。
+		phys_bone.joint_type = PhysicalBone3D.JOINT_TYPE_NONE if parent_idx < 0 else PhysicalBone3D.JOINT_TYPE_PIN
 
 		# 刚体阻尼（增大防止骨骼过度震荡）
 		phys_bone.set("linear_damp", _config.linear_damping)
@@ -284,13 +287,14 @@ func _create_physical_bones() -> void:
 		# 仅与第1层环境几何体碰撞
 		phys_bone.set("collision_layer", _config.ragdoll_collision_layer)
 		phys_bone.set("collision_mask", _config.ragdoll_collision_mask)
+		phys_bone.collision_priority = 5.0
 
 		# 创建胶囊碰撞形状
 		var capsule := CapsuleShape3D.new()
-		var capsule_radius: float = max(bone_length * _config.bone_radius_scale, 0.01)
+		var capsule_radius: float = max(bone_length * _config.bone_radius_scale, _config.minimum_bone_radius)
 		# height 必须 >= radius * 2，否则 Godot 物理引擎会报错
 		capsule.radius = capsule_radius
-		var capsule_height: float = max(bone_length * 0.8, capsule_radius * 2.0, 0.02)
+		var capsule_height: float = max(bone_length, capsule_radius * 2.0)
 		capsule.height = capsule_height
 
 		# PhysicalBone 位于关节处；刚体中心应在关节与子骨骼之间，并沿实际骨段方向旋转。
@@ -350,7 +354,10 @@ func _start_physics_phase() -> void:
 		_weapon_mount.visible = false
 
 	# 启动物理骨骼模拟
-	_skeleton.physical_bones_start_simulation()
+	if not is_instance_valid(_physical_simulator):
+		GlobalLogger.error("RagdollSystem", "Cannot start physics without PhysicalBoneSimulator3D")
+		return
+	_physical_simulator.physical_bones_start_simulation()
 
 	# 施加冲击力
 	_apply_impact_force(_pending_death_type, _pending_impact_direction)
@@ -380,8 +387,8 @@ func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
 
 	var dir_normalized := direction.normalized()
 
-	# 对上半身骨骼施加冲击力
-	var applied_count := 0
+	# 收集受力骨骼。force_magnitude 表示整个身体的总冲量，不能对每块骨骼重复全额施加。
+	var targets: Array[PhysicalBone3D] = []
 	for entry in _physical_bone_entries:
 		var pb: PhysicalBone3D = entry["bone"]
 		if not is_instance_valid(pb):
@@ -395,8 +402,16 @@ func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
 		if not is_upper:
 			continue
 
-		pb.apply_central_impulse(dir_normalized * force_magnitude)
-		applied_count += 1
+		targets.append(pb)
+
+	# 配置使用牛顿，而 apply_central_impulse() 使用 N·s。将 1~2 个物理帧的
+	# 短时力转换为一次等效冲量，避免把 500 N 错当成 500 N·s 发射角色。
+	var physics_hz := maxf(float(Engine.physics_ticks_per_second), 1.0)
+	var impact_duration := float(_config.impact_force_frames) / physics_hz
+	var total_impulse := force_magnitude * impact_duration
+	var impulse_per_bone := total_impulse / maxf(float(targets.size()), 1.0)
+	for target in targets:
+		target.apply_central_impulse(dir_normalized * impulse_per_bone)
 
 	# 爆头：对头部骨骼额外施加更大的力
 	if is_headshot:
@@ -405,12 +420,12 @@ func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
 			if not is_instance_valid(pb):
 				continue
 			if "Head" in pb.bone_name:
-				pb.apply_central_impulse(dir_normalized * force_magnitude * 2.0)
-				GlobalLogger.debug("RagdollSystem", "Headshot impulse on %s: %.0f N" % [pb.bone_name, force_magnitude * 2.0])
+				pb.apply_central_impulse(dir_normalized * total_impulse * 0.5)
+				GlobalLogger.debug("RagdollSystem", "Headshot extra impulse on %s: %.2f N*s" % [pb.bone_name, total_impulse * 0.5])
 				break
 
-	GlobalLogger.info("RagdollSystem", "Applied %.0f N to %d upper-body bones (dir: %s)" % \
-		[force_magnitude, applied_count, dir_normalized])
+	GlobalLogger.info("RagdollSystem", "Applied %.1f N for %d physics frame(s) = %.2f N*s across %d bones (dir: %s)" % \
+		[force_magnitude, _config.impact_force_frames, total_impulse, targets.size(), dir_normalized])
 
 ## 根据死亡类型推断默认的冲击力方向（世界空间）
 func _get_default_impact_direction(death_type: DeathType) -> Vector3:
