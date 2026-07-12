@@ -101,6 +101,12 @@ extends Resource
 @export_group("握持 IK")
 ## 左手 IK 强度，0 = 完全用动画，1 = 完全跟随 LeftHandGrip / Left hand IK blend weight
 @export_range(0.0, 1.0) var left_hand_ik_weight: float = 1.0
+## LeftHandGrip 本地位置微调，避免手掌完全嵌入武器表面
+@export var left_hand_ik_position_offset: Vector3 = Vector3.ZERO
+## LeftHandGrip 本地旋转微调（度），用于匹配不同武器的握持角度
+@export var left_hand_ik_rotation_offset_degrees: Vector3 = Vector3.ZERO
+## 手腕朝向目标的混合比例；位置仍由 left_hand_ik_weight 控制
+@export_range(0.0, 1.0) var left_hand_ik_orientation_weight: float = 0.75
 
 # 配件槽位声明 ────────────────────────────────────────────
 @export_group("配件槽位")
