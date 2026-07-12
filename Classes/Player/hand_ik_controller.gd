@@ -107,6 +107,17 @@ func process_ik(_delta: float) -> void:
 		positions.append((skel_xform * _skeleton.get_bone_global_pose(idx)).origin)
 	var animated_positions := positions.duplicate()
 
+	# 武器跟随右手移动时，左手目标可能瞬间超出自然臂展。将目标限制在
+	# 可达区间内并保留少量肘部弯曲，避免极限伸直放大肘部蒙皮变形。
+	var root_to_target := target_global - positions[0]
+	var target_distance := root_to_target.length()
+	if target_distance > 0.0001:
+		var min_reach := ik_total * _config.min_reach_ratio
+		var max_reach := ik_total * _config.max_reach_ratio
+		var clamped_distance := clampf(target_distance, min_reach, max_reach)
+		target_global = positions[0] + root_to_target * (clamped_distance / target_distance)
+		target_transform.origin = target_global
+
 	var iterations: int = _config.iterations if _config else 6
 	var threshold: float = _config.threshold if _config else 0.0005
 
@@ -129,7 +140,7 @@ func process_ik(_delta: float) -> void:
 				break
 
 	_apply_pole_constraint(positions, ik_lengths)
-	_apply_poses(positions, animated_positions, ik_indices)
+	_apply_poses(positions, animated_positions, ik_indices, target_transform)
 
 
 ## Temporarily releases IK ownership of the arm, e.g. while ragdoll physics is active.
@@ -179,10 +190,14 @@ func _apply_pole_constraint(positions: Array[Vector3], lengths: Array[float]) ->
 	positions[1] = root + rot * (mid - root).normalized() * lengths[0]
 
 
-func _apply_poses(positions: Array[Vector3], animated_positions: Array[Vector3], ik_indices: Array[int]) -> void:
+func _apply_poses(
+	positions: Array[Vector3],
+	animated_positions: Array[Vector3],
+	ik_indices: Array[int],
+	target_transform: Transform3D
+) -> void:
 	var skel_xform: Transform3D = _skeleton.global_transform
 	var skel_inv: Transform3D   = skel_xform.affine_inverse()
-	var target_transform := _get_target_transform()
 	var grip_basis: Basis       = target_transform.basis
 	var forearm_local_idx: int  = ik_indices.size() - 2  # LeftForeArm 在 ik_indices 里的位置
 	var roll_align: float       = _config.forearm_roll_align if _config else 0.5
