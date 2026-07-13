@@ -65,6 +65,7 @@ var _recoil_component: RecoilComponent = null
 # 死亡摄像机跟随
 var _ragdoll_skeleton: Skeleton3D = null
 var _ragdoll_bone_idx: int = -1
+var _ragdoll_physical_bone: PhysicalBone3D = null
 
 # ADS
 var _is_ads: bool = false
@@ -122,8 +123,10 @@ func enable_camera() -> void:
 	if _ragdoll_skeleton:
 		_ragdoll_skeleton = null
 		_ragdoll_bone_idx = -1
+		_ragdoll_physical_bone = null
 		_sync_springs_to_head()
 		return
+	_ragdoll_physical_bone = null
 
 	var viewport: Viewport = get_viewport()
 	if not viewport:
@@ -158,6 +161,16 @@ func disable_camera(skeleton: Skeleton3D = null) -> void:
 		return
 	_ragdoll_skeleton = skeleton
 	_ragdoll_bone_idx = head_idx
+	_ragdoll_physical_bone = null
+
+
+## 死亡动画结束后改为直接跟随物理头骨，而不是等待 Skeleton3D 回写姿态。
+func follow_ragdoll_physical_bone(physical_bone: PhysicalBone3D) -> void:
+	if not is_instance_valid(physical_bone):
+		GlobalLogger.warn("Camera", "Cannot bind ragdoll camera: physical head bone not found")
+		return
+	_ragdoll_physical_bone = physical_bone
+	GlobalLogger.info("Camera", "Ragdoll camera bound to physical bone: %s" % physical_bone.bone_name)
 
 
 # 弹簧位置对齐当前头部局部位置，防止启用/复活瞬间镜头跳变
@@ -277,6 +290,11 @@ func _process(delta: float) -> void:
 		return
 
 	# 死亡模式：直接读头骨骼全局变换
+	if is_instance_valid(_ragdoll_physical_bone):
+		# PhysicalBone3D.global_transform 是刚体中心；消除 body_offset 后才是骨骼关节变换。
+		_active_camera.global_transform = \
+			_ragdoll_physical_bone.global_transform * _ragdoll_physical_bone.body_offset.affine_inverse()
+		return
 	if _ragdoll_skeleton and _ragdoll_bone_idx != -1:
 		if is_instance_valid(_ragdoll_skeleton):
 			var bone_xform: Transform3D = _ragdoll_skeleton.global_transform * _ragdoll_skeleton.get_bone_global_pose(_ragdoll_bone_idx)
