@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://fxy7esyowvpg"]
 
-[ext_resource type="Script" uid="uid://1pc5r0bqgakj" path="res://classes/player/base_player.gd" id="1_jkswc"]
+[ext_resource type="Script" uid="uid://1pc5r0bqgakj" path="res://Classes/Player/base_player.gd" id="1_jkswc"]
 [ext_resource type="Resource" uid="uid://6j1op088306v" path="res://res/config/player/player_config.tres" id="5_config"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_jq8tk"]
