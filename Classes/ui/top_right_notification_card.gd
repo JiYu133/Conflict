@@ -1,10 +1,11 @@
 class_name TopRightNotificationCard
-extends PanelContainer
+extends Control
 
 signal dismissed(notification_id: StringName)
 
 var entry: TopRightNotificationEntry
 var _config: TopRightNotificationConfig
+var _panel: PanelContainer
 var _icon: TextureRect
 var _symbol: Label
 var _message: Label
@@ -15,7 +16,10 @@ func setup(new_entry: TopRightNotificationEntry, new_config: TopRightNotificatio
 	entry = new_entry
 	_config = new_config
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	custom_minimum_size.x = _config.card_width
+	custom_minimum_size = Vector2(
+		_config.card_width,
+		maxf(_config.icon_size, float(_config.font_size)) + _config.card_padding * 2.0
+	)
 	_build_ui()
 	_apply_style()
 	refresh()
@@ -32,9 +36,13 @@ func refresh() -> void:
 
 
 func play_enter() -> void:
-	modulate.a = 0.0
-	var tween := create_tween()
-	tween.tween_property(self, "modulate:a", 1.0, _config.fade_in_duration)
+	_panel.position.x = _config.card_width
+	_panel.modulate.a = 0.0
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(_panel, "position:x", 0.0, _config.slide_in_duration) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_panel, "modulate:a", 1.0, _config.slide_in_duration * 0.75) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	if entry.duration > 0.0:
 		await get_tree().create_timer(entry.duration).timeout
 		play_exit()
@@ -44,17 +52,25 @@ func play_exit() -> void:
 	if _is_exiting:
 		return
 	_is_exiting = true
-	var tween := create_tween()
-	tween.tween_property(self, "modulate:a", 0.0, _config.fade_out_duration)
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(_panel, "position:x", _config.card_width, _config.slide_out_duration) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+	tween.tween_property(_panel, "modulate:a", 0.0, _config.slide_out_duration) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
 	await tween.finished
 	dismissed.emit(entry.notification_id)
 	queue_free()
 
 
 func _build_ui() -> void:
+	_panel = PanelContainer.new()
+	_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_panel)
+
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	add_child(row)
+	_panel.add_child(row)
 
 	_icon = TextureRect.new()
 	_icon.custom_minimum_size = Vector2(_config.icon_size, _config.icon_size)
@@ -96,4 +112,4 @@ func _apply_style() -> void:
 	style.content_margin_right = _config.card_padding
 	style.content_margin_top = _config.card_padding
 	style.content_margin_bottom = _config.card_padding
-	add_theme_stylebox_override("panel", style)
+	_panel.add_theme_stylebox_override("panel", style)
