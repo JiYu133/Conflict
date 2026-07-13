@@ -122,9 +122,20 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 
 func _connect_signals() -> void:
 	model_manager.model_loaded.connect(_on_model_loaded)
+	ragdoll_system.ragdoll_physics_started.connect(_on_ragdoll_physics_started)
 	# 武器切换时将新武器的 RecoilComponent 注入摄像机控制器
 	weapon_manager.weapon_changed.connect(_on_weapon_changed)
 	GlobalLogger.debug("Player", "Signals have been connected. ")
+
+
+func _on_ragdoll_physics_started() -> void:
+	if not player_config or not player_config.model_config:
+		GlobalLogger.warn("Player", "Cannot bind ragdoll camera without model lookup config")
+		return
+	var physical_head := ragdoll_system.find_physical_bone_by_names(
+		player_config.model_config.head_bone_names
+	)
+	camera_controller.follow_ragdoll_physical_bone(physical_head)
 		
 func _on_model_loaded(_model: Node3D) -> void:
 
