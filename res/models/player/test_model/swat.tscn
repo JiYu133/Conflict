@@ -97,6 +97,56 @@ blend_point_7/node = SubResource("ANAnim_run_bwd_right")
 blend_point_7/pos = Vector2(0.707, -0.707)
 blend_point_7/name = &"run_bwd_right"
 
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_fwd"]
+animation = &"sprint_fwd/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_bwd"]
+animation = &"sprint_bwd/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_left"]
+animation = &"sprint_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_right"]
+animation = &"sprint_right/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_fwd_left"]
+animation = &"sprint_fwd_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_fwd_right"]
+animation = &"sprint_fwd_right/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_bwd_left"]
+animation = &"sprint_bwd_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_bwd_right"]
+animation = &"sprint_bwd_right/mixamo_com"
+
+[sub_resource type="AnimationNodeBlendSpace2D" id="ANBlend_sprint"]
+blend_point_0/node = SubResource("ANAnim_sprint_fwd")
+blend_point_0/pos = Vector2(0, 1)
+blend_point_0/name = &"sprint_fwd"
+blend_point_1/node = SubResource("ANAnim_sprint_bwd")
+blend_point_1/pos = Vector2(0, -1)
+blend_point_1/name = &"sprint_bwd"
+blend_point_2/node = SubResource("ANAnim_sprint_left")
+blend_point_2/pos = Vector2(-1, 0)
+blend_point_2/name = &"sprint_left"
+blend_point_3/node = SubResource("ANAnim_sprint_right")
+blend_point_3/pos = Vector2(1, 0)
+blend_point_3/name = &"sprint_right"
+blend_point_4/node = SubResource("ANAnim_sprint_fwd_left")
+blend_point_4/pos = Vector2(-0.707, 0.707)
+blend_point_4/name = &"sprint_fwd_left"
+blend_point_5/node = SubResource("ANAnim_sprint_fwd_right")
+blend_point_5/pos = Vector2(0.707, 0.707)
+blend_point_5/name = &"sprint_fwd_right"
+blend_point_6/node = SubResource("ANAnim_sprint_bwd_left")
+blend_point_6/pos = Vector2(-0.707, -0.707)
+blend_point_6/name = &"sprint_bwd_left"
+blend_point_7/node = SubResource("ANAnim_sprint_bwd_right")
+blend_point_7/pos = Vector2(0.707, -0.707)
+blend_point_7/name = &"sprint_bwd_right"
+
 [sub_resource type="AnimationNodeAnimation" id="ANAnim_walk_fwd"]
 animation = &"walk_fwd/mixamo_com"
 
@@ -177,14 +227,16 @@ states/Land/node = SubResource("ANAnim_jump_down")
 states/Land/position = Vector2(584.26886, 237.12134)
 states/Run/node = SubResource("ANBlend_run")
 states/Run/position = Vector2(200, 0)
+states/Sprint/node = SubResource("ANBlend_sprint")
+states/Sprint/position = Vector2(0, 0)
 states/Walk/node = SubResource("ANBlend_walk")
 states/Walk/position = Vector2(400, 100)
-transitions = ["Start", "Idle", SubResource("Trans_start_idle"), "Idle", "Walk", SubResource("Trans_xfade"), "Walk", "Idle", SubResource("Trans_xfade"), "Idle", "Run", SubResource("Trans_xfade"), "Run", "Idle", SubResource("Trans_xfade"), "Walk", "Run", SubResource("Trans_xfade"), "Run", "Walk", SubResource("Trans_xfade"), "Idle", "Jump", SubResource("Trans_xfade"), "Walk", "Jump", SubResource("Trans_xfade"), "Run", "Jump", SubResource("Trans_xfade"), "Jump", "Fall", SubResource("Trans_auto_jump_fall"), "Idle", "Fall", SubResource("Trans_xfade"), "Walk", "Fall", SubResource("Trans_xfade"), "Run", "Fall", SubResource("Trans_xfade"), "Fall", "Land", SubResource("Trans_auto_fall_land"), "Land", "Idle", SubResource("Trans_auto_land_idle")]
+transitions = ["Start", "Idle", SubResource("Trans_start_idle"), "Idle", "Walk", SubResource("Trans_xfade"), "Walk", "Idle", SubResource("Trans_xfade"), "Idle", "Run", SubResource("Trans_xfade"), "Run", "Idle", SubResource("Trans_xfade"), "Walk", "Run", SubResource("Trans_xfade"), "Run", "Walk", SubResource("Trans_xfade"), "Idle", "Jump", SubResource("Trans_xfade"), "Walk", "Jump", SubResource("Trans_xfade"), "Run", "Jump", SubResource("Trans_xfade"), "Jump", "Fall", SubResource("Trans_auto_jump_fall"), "Idle", "Fall", SubResource("Trans_xfade"), "Walk", "Fall", SubResource("Trans_xfade"), "Run", "Fall", SubResource("Trans_xfade"), "Fall", "Land", SubResource("Trans_auto_fall_land"), "Land", "Idle", SubResource("Trans_auto_land_idle"), "Run", "Sprint", SubResource("Trans_xfade"), "Sprint", "Run", SubResource("Trans_xfade"), "Sprint", "Idle", SubResource("Trans_xfade"), "Sprint", "Walk", SubResource("Trans_xfade"), "Sprint", "Jump", SubResource("Trans_xfade"), "Sprint", "Fall", SubResource("Trans_xfade"), "Idle", "Sprint", SubResource("Trans_xfade"), "Walk", "Sprint", SubResource("Trans_xfade")]
 graph_offset = Vector2(-27.73114, -174.33472)
 
 [node name="Swat" unique_id=727840838 instance=ExtResource("1_wbk7e")]
 
-[node name="Skeleton3D" parent="." index="0" unique_id=2066017944]
+[node name="Skeleton3D" parent="." index="0" unique_id=1821553796]
 bones/0/position = Vector3(-0.011972767, 0.97631294, 0.0057086432)
 bones/0/rotation = Quaternion(-0.051070593, -0.46093547, -0.0059005893, 0.8859433)
 bones/1/rotation = Quaternion(-0.034208477, 0.0040293233, 0.0037765196, 0.9993995)
@@ -239,8 +291,9 @@ bones/65/rotation = Quaternion(-0.35238293, 0.02499832, -0.03664537, 0.93480396)
 bones/66/rotation = Quaternion(0.5453434, 0.013033275, 0.0904822, 0.8332129)
 bones/67/rotation = Quaternion(0.32390404, 0.013540471, 0.024690174, 0.94567084)
 
-[node name="Soldier_head" parent="Skeleton3D" index="0" unique_id=1716287029]
+[node name="Soldier_head" parent="Skeleton3D" index="0" unique_id=748368223]
 layers = 2
+cast_shadow = 3
 
 [node name="BoneAttachment3D" type="BoneAttachment3D" parent="Skeleton3D" index="2" unique_id=312442521]
 transform = Transform3D(0.98200256, -0.11848453, -0.14707923, 0.11008435, 0.99185777, -0.064024605, 0.15346783, 0.04668123, 0.9870504, -0.037388228, 1.5912337, -0.009206524)
@@ -248,6 +301,7 @@ bone_name = "mixamorig_Head"
 bone_idx = 6
 
 [node name="RightHandAttachment" type="BoneAttachment3D" parent="Skeleton3D" index="3" unique_id=489312744]
+transform = Transform3D(-0.09483684, 0.0930049, 0.99113864, 0.9900932, 0.112366855, 0.08419265, -0.103540964, 0.9893047, -0.10273992, -0.25933194, 1.2118973, 0.1606846)
 bone_name = "mixamorig_RightHandMiddle1"
 bone_idx = 47
 
@@ -257,6 +311,7 @@ bone_idx = 47
 tree_root = SubResource("ANStateMachine")
 anim_player = NodePath("../AnimationPlayer2")
 parameters/Run/blend_position = Vector2(0, 0)
+parameters/Sprint/blend_position = Vector2(0, 0)
 parameters/Walk/blend_position = Vector2(0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="." index="4" unique_id=860448908]

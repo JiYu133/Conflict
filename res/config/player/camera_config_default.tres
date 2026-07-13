@@ -1,13 +1,11 @@
 [gd_resource type="Resource" script_class="CameraConfig" format=3 uid="uid://juhdg5d5h5ju"]
 
-[ext_resource type="Script" uid="uid://h27r465digmw" path="res://Classes/Player/camera_config.gd" id="1_camcfg"]
+[ext_resource type="Script" uid="uid://h27r465digmw" path="res://classes/player/camera_config.gd" id="1_camcfg"]
 
 [resource]
 script = ExtResource("1_camcfg")
-spring_stiffness_h = 800.0
-spring_damping_h = 50.0
 spring_stiffness_v = 300.0
-spring_damping_v = 35.0
+spring_damping_v = 25.0
 ads_stiffness_multiplier = 8.0
 head_offset = Vector3(0.07, 0.05, -0.1)
 metadata/_custom_type_script = "uid://h27r465digmw"

@@ -123,8 +123,13 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 func _connect_signals() -> void:
 	model_manager.model_loaded.connect(_on_model_loaded)
 	ragdoll_system.ragdoll_physics_started.connect(_on_ragdoll_physics_started)
-	# 武器切换时将新武器的 RecoilComponent 注入摄像机控制器
 	weapon_manager.weapon_changed.connect(_on_weapon_changed)
+	# Sprint 开始时强制取消 ADS，并同步 IK 状态
+	movement_controller.started_sprinting.connect(_on_started_sprinting)
+	# 运动状态 → 左手 IK 权重过渡
+	movement_controller.started_running.connect(func(): hand_ik_controller.set_movement_state(true, false))
+	movement_controller.stopped_running.connect(func(): hand_ik_controller.set_movement_state(false, false))
+	movement_controller.stopped_sprinting.connect(func(): hand_ik_controller.set_movement_state(true, false))
 	GlobalLogger.debug("Player", "Signals have been connected. ")
 
 
@@ -222,6 +227,14 @@ func _input(event: InputEvent) -> void:
 			KEY_U: die(PlayerRagdollSystem.DeathType.EXPLOSION)
 
 
+func _on_started_sprinting() -> void:
+	# 进入冲刺时强制退出 ADS
+	if is_instance_valid(weapon_manager) and weapon_manager.is_aiming:
+		weapon_manager.set_aiming(false)
+		hand_ik_controller.set_ads_state(false)
+	hand_ik_controller.set_movement_state(true, true)
+
+
 func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathType.GENERIC, impact_direction: Vector3 = Vector3.ZERO) -> void:
 	if not is_alive:
 		return
@@ -232,8 +245,8 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 	# 禁用玩家碰撞体，防止物理骨骼与自身胶囊体碰撞导致弹飞
 	_set_collision_enabled(false)
 
-	ragdoll_system.enable(death_type, impact_direction)
 	camera_controller.disable_camera(model_manager.skeleton)
+	ragdoll_system.enable(death_type, impact_direction)
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
 
 func revive() -> void:
