@@ -35,8 +35,10 @@ func _show_startup_notifications() -> void:
 		register_notification(entry)
 		if entry.visible:
 			show_notification(entry)
-			if config.startup_stagger > 0.0:
-				await get_tree().create_timer(config.startup_stagger).timeout
+			# Finish this bar's complete slide before allowing the next one to start.
+			var sequence_wait := config.slide_in_duration + config.startup_gap
+			if sequence_wait > 0.0:
+				await get_tree().create_timer(sequence_wait).timeout
 
 
 ## Registers an entry without displaying it. Registered entries can later be toggled by ID.
