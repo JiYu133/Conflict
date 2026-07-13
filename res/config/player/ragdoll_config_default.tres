@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="RagdollConfig" format=3 uid="uid://dw84v6n2k5p1x"]
 
-[ext_resource type="Script" uid="uid://dn103ririhbav" path="res://classes/player/ragdoll_config.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://dn103ririhbav" path="res://Classes/Player/ragdoll_config.gd" id="1_script"]
 
 [resource]
 script = ExtResource("1_script")
