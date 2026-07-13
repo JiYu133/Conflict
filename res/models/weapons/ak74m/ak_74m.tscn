@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c8jcutg7au4g0"]
 
-[ext_resource type="Script" uid="uid://e8pwaqfddary" path="res://classes/Weapon/Weapon/base_weapon.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://e8pwaqfddary" path="res://Classes/Weapon/Weapon/base_weapon.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://dv8xw3g68hogr" path="res://res/models/weapons/ak74m/ak74m.glb" id="2_model"]
 
 [node name="AK74M" type="Node3D" unique_id=1004389721]
