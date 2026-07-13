@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="KeyPromptConfig" format=3]
 
-[ext_resource type="Script" path="res://classes/ui/key_prompt_config.gd" id="1_kpcfg"]
+[ext_resource type="Script" path="res://Classes/ui/key_prompt_config.gd" id="1_kpcfg"]
 
 [resource]
 script = ExtResource("1_kpcfg")
