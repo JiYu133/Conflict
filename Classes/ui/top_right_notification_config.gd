@@ -8,14 +8,15 @@ extends Resource
 @export_group("Layout")
 ## Keep at 0 for bars that sit flush against the right edge of the viewport.
 @export var margin_right: float = 0.0
-@export var margin_top: float = 24.0
+## Keep at 0 so the notification stack begins at the exact top-right corner.
+@export var margin_top: float = 0.0
 @export var card_spacing: int = 4
 @export var card_width: float = 390.0
 @export_range(1, 20, 1) var max_visible_notifications: int = 10
 ## Wait until the main scene is visible before starting persistent tutorial animations.
 @export var startup_delay: float = 0.35
-## Small spacing between startup animations makes each bar's motion readable.
-@export var startup_stagger: float = 0.06
+## Extra pause after one bar has completely entered and before the next begins.
+@export var startup_gap: float = 0.03
 
 @export_group("Card appearance")
 @export var card_background: Color = Color(0.035, 0.045, 0.06, 0.58)
