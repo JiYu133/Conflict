@@ -16,13 +16,18 @@ func setup(new_entry: TopRightNotificationEntry, new_config: TopRightNotificatio
 	entry = new_entry
 	_config = new_config
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	custom_minimum_size = Vector2(
-		_config.card_width,
-		maxf(_config.icon_size, float(_config.font_size)) + _config.card_padding * 2.0
-	)
+	custom_minimum_size.x = _config.card_width
 	_build_ui()
 	_apply_style()
 	refresh()
+	update_minimum_size()
+
+
+func _get_minimum_size() -> Vector2:
+	if _panel:
+		var panel_minimum := _panel.get_combined_minimum_size()
+		return Vector2(_config.card_width, panel_minimum.y)
+	return Vector2(_config.card_width if _config else 0.0, 0.0)
 
 
 func refresh() -> void:
@@ -64,8 +69,10 @@ func play_exit() -> void:
 
 func _build_ui() -> void:
 	_panel = PanelContainer.new()
+	_panel.custom_minimum_size.x = _config.card_width
 	_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_panel.minimum_size_changed.connect(update_minimum_size)
 	add_child(_panel)
 
 	var row := HBoxContainer.new()
@@ -90,6 +97,10 @@ func _build_ui() -> void:
 
 	_message = Label.new()
 	_message.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_message.custom_minimum_size.x = maxf(
+		120.0,
+		_config.card_width - _config.symbol_width - _config.card_padding * 2.0 - 16.0
+	)
 	_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_message.add_theme_font_size_override("font_size", _config.font_size)
