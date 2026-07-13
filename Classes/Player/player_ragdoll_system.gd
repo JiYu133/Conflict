@@ -149,6 +149,21 @@ func _reset_skeleton_state() -> void:
 func set_weapon_mount(weapon_mount: Node3D) -> void:
 	_weapon_mount = weapon_mount
 
+## 按候选骨骼名查找运行时生成的 PhysicalBone3D。
+## 精确匹配优先，随后兼容带命名空间/前缀的骨骼名。
+func find_physical_bone_by_names(bone_names: Array[String]) -> PhysicalBone3D:
+	for candidate in bone_names:
+		for entry in _physical_bone_entries:
+			var physical_bone: PhysicalBone3D = entry["bone"]
+			if is_instance_valid(physical_bone) and physical_bone.bone_name == candidate:
+				return physical_bone
+	for candidate in bone_names:
+		for entry in _physical_bone_entries:
+			var physical_bone: PhysicalBone3D = entry["bone"]
+			if is_instance_valid(physical_bone) and physical_bone.bone_name.to_lower().contains(candidate.to_lower()):
+				return physical_bone
+	return null
+
 # 公开方法 ──────────────────────────────────────────────────
 
 ## 启动死亡流程
