@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="CameraConfig" format=3 uid="uid://juhdg5d5h5ju"]
 
-[ext_resource type="Script" uid="uid://h27r465digmw" path="res://classes/player/camera_config.gd" id="1_camcfg"]
+[ext_resource type="Script" uid="uid://h27r465digmw" path="res://Classes/Player/camera_config.gd" id="1_camcfg"]
 
 [resource]
 script = ExtResource("1_camcfg")
