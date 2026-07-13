@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="HandIKConfig" format=3 uid="uid://c736qjjg742l6"]
+
+[ext_resource type="Script" uid="uid://b304dqmhgyp3b" path="res://classes/player/hand_ik_config.gd" id="1_hq47r"]
+
+[resource]
+script = ExtResource("1_hq47r")
+run_ik_weight = 0.25
+metadata/_custom_type_script = "uid://b304dqmhgyp3b"

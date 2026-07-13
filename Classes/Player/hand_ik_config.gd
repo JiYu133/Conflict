@@ -82,3 +82,53 @@ extends Resource
 ## 1 = 完全由 IK 驱动
 ## 单把武器可在 WeaponConfig.left_hand_ik_weight 中覆盖此值
 @export_range(0.0, 1.0) var default_ik_weight: float = 1.0
+
+
+# ── 肩膀参与度 ──────────────────────────────────────────────
+@export_group("肩膀参与度")
+
+## 肩膀骨骼跟随 IK 链的混合权重（0=完全动画驱动，1=完全 IK 修正）
+## 推荐 0.2~0.4，只做轻微修正，避免肩膀超伸/撕裂感
+@export_range(0.0, 1.0) var shoulder_ik_weight: float = 0.3
+
+
+# ── 运动状态权重 ─────────────────────────────────────────────
+@export_group("运动状态权重")
+
+## 站立/行走时的 IK 权重上限（通常保持 1.0）
+@export_range(0.0, 1.0) var walk_ik_weight: float = 1.0
+
+## 奔跑（Run）时的 IK 权重，调低让左手随动画自然摆动（推荐 0.4~0.7）
+@export_range(0.0, 1.0) var run_ik_weight: float = 0.6
+
+## 冲刺（Sprint）时的 IK 权重，参考 EFT：冲刺时左手基本放开（推荐 0.0~0.2）
+@export_range(0.0, 1.0) var sprint_ik_weight: float = 0.1
+
+## 状态切换时权重平滑过渡时间（秒），参考 EFT 约 0.12~0.15s
+@export_range(0.0, 0.5) var weight_blend_time: float = 0.12
+
+
+# ── 左手本地偏移 ─────────────────────────────────────────────
+@export_group("左手本地偏移")
+
+## 在 LeftHandGrip 坐标系中叠加的位置偏移（米），用于微调左手落点
+@export var grip_position_offset: Vector3 = Vector3.ZERO
+
+## 在 LeftHandGrip 坐标系中叠加的旋转偏移（度，XYZ 欧拉角），用于微调手腕朝向
+@export var grip_rotation_offset: Vector3 = Vector3.ZERO
+
+
+# ── ADS 姿势 ─────────────────────────────────────────────────
+@export_group("ADS 姿势")
+
+## ADS 时的 IK 权重（托腮类武器建议 0.0~0.3，前握把类保持较高值）
+@export_range(0.0, 1.0) var ads_ik_weight: float = 0.8
+
+## ADS 时在 LeftHandGrip 基础上叠加的位置偏移（LeftHandGrip 本地空间，米）
+@export var ads_grip_offset: Vector3 = Vector3.ZERO
+
+## ADS 时的额外旋转偏移（度，XYZ 欧拉角）
+@export var ads_grip_rotation: Vector3 = Vector3.ZERO
+
+## ADS 过渡时间（秒），建议与 CameraConfig.ads_time 保持一致
+@export_range(0.0, 0.5) var ads_blend_time: float = 0.25

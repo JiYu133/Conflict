@@ -15,6 +15,10 @@ extends Resource
 @export var walk_speed: float = 1.5
 ## 奔跑速度（m/s），负重士兵持续跑步约 3.5–4.0 m/s / Run speed in m/s
 @export var run_speed: float = 3.5
+## 全力冲刺速度（m/s），长按 Shift 激活 / Sprint speed in m/s
+@export var sprint_speed: float = 6.0
+## 触发冲刺所需的最短按压时长（秒），低于此值视为单击切换奔跑 / Hold duration to activate sprint vs. tap-to-toggle-run
+@export var sprint_hold_threshold: float = 0.25
 ## 地面加速度（m/s²），约 6 m/s² 使起步有明显惯性 / Ground acceleration in m/s²
 @export var ground_acceleration: float = 6.0
 ## 跳跃力（m/s）/ Jump impulse in m/s
@@ -53,10 +57,14 @@ extends Resource
 @export var gait_frequency_walk: float = 1.8
 ## 跑步步频（Hz）/ Run gait frequency in Hz
 @export var gait_frequency_run: float = 2.5
+## 冲刺步频（Hz）/ Sprint gait frequency in Hz
+@export var gait_frequency_sprint: float = 3.2
 ## 走路速度波动振幅（m/s）/ Walk gait speed ripple amplitude in m/s
 @export var gait_amplitude_walk: float = 0.06
 ## 跑步速度波动振幅（m/s）/ Run gait speed ripple amplitude in m/s
 @export var gait_amplitude_run: float = 0.12
+## 冲刺速度波动振幅（m/s）/ Sprint gait speed ripple amplitude in m/s
+@export var gait_amplitude_sprint: float = 0.18
 
 # 转向减速：基于 dot product 的物理公式，90° 急转约损失 35–50% 速度
 ## 转向减速强度，0.0 = 不减速，1.0 = 完全余弦削减 / Turn deceleration factor; 0 = none, 1 = full cosine reduction

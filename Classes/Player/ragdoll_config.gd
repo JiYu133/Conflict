@@ -32,6 +32,8 @@ extends Resource
 
 # 过渡参数 ─────────────────────────────────────────────────
 @export_group("过渡参数")
+## 死亡时是否播放死亡动画；关闭后立即激活布娃娃物理，跳过动画过渡
+@export var play_death_animation: bool = true
 ## 死亡动画播放后到启动布娃娃物理的等待时间（秒） / Seconds to wait after death anim starts before enabling ragdoll physics
 @export var death_anim_to_ragdoll_time: float = 0.5
 

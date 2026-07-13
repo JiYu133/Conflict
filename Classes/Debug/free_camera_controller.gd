@@ -35,6 +35,7 @@ func _enter() -> void:
 	_was_controllable = _player.controllable
 	_player.set_controllable(false)
 
+
 	# 从当前摄像机位置出发创建自由摄像机
 	var current_cam := _camera_controller.get_active_camera()
 	_free_cam = Camera3D.new()
@@ -64,6 +65,8 @@ func _exit() -> void:
 
 	# 恢复进入自由视角前的状态；死亡玩家必须保持不可控，否则无碰撞体时会继续受重力下坠。
 	_player.set_controllable(_was_controllable and _player.is_alive)
+
+	# 退出自由视角时若玩家已死亡，重新播放死亡效果
 
 	GlobalLogger.info("FreeCam", "自由视角已退出")
 

@@ -194,7 +194,7 @@ func enable(death_type: DeathType = DeathType.GENERIC, impact_direction: Vector3
 	# Step 3: 选择并播放死亡动画
 	var death_anim: String = _select_death_animation(death_type)
 	var has_death_animation := false
-	if _animator:
+	if _config.play_death_animation and _animator:
 		_animator.stop()
 		_animator.active = true
 		if _animator.has_animation(death_anim):
@@ -211,7 +211,7 @@ func enable(death_type: DeathType = DeathType.GENERIC, impact_direction: Vector3
 	_pending_death_type = death_type
 
 	if not has_death_animation:
-		# 无死亡动画，直接进入物理阶段
+		# 无死亡动画（或已禁用），直接进入物理阶段
 		_current_phase = RagdollPhase.DEATH_ANIMATION
 		_start_physics_phase()
 	else:

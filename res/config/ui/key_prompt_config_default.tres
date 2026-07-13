@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="KeyPromptConfig" format=3]
+
+[ext_resource type="Script" path="res://classes/ui/key_prompt_config.gd" id="1_kpcfg"]
+
+[resource]
+script = ExtResource("1_kpcfg")
+margin_right = 24.0
+margin_top = 24.0
+card_spacing = 8.0
+max_visible_cards = 5
+card_bg_color = Color(0.05, 0.05, 0.05, 0.82)
+card_corner_radius = 6
+card_padding = 10.0
+icon_size = 40.0
+icon_label_gap = 10.0
+font_size = 16
+text_color = Color(0.95, 0.95, 0.95, 1.0)
+slide_in_duration = 0.22
+slide_out_duration = 0.18
+reposition_duration = 0.15

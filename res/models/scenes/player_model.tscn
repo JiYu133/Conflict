@@ -1,7 +1,0 @@
-[gd_scene format=3 uid="uid://t8q1u3kyd0ib"]
-
-[ext_resource type="PackedScene" uid="uid://b56qxlux3spui" path="res://res/models/scenes/swat.tscn" id="1_jepu8"]
-
-[node name="PlayerModel" type="Node3D" unique_id=1113221465]
-
-[node name="Swat" parent="." unique_id=727840838 instance=ExtResource("1_jepu8")]

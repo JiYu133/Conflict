@@ -15,9 +15,13 @@ signal jumped
 signal landed
 ## 落地（is_on_floor 上升沿触发）
 signal started_running
-## 开始奔跑
+## 开始奔跑（单击 Shift 切换，持枪快步）
 signal stopped_running
 ## 停止奔跑
+signal started_sprinting
+## 开始冲刺（长按 Shift，全力疾跑）
+signal stopped_sprinting
+## 停止冲刺
 
 
 # 私有变量 ────────────────────────────────────────────────
@@ -25,19 +29,32 @@ var _player: BasePlayer
 var _config: PlayerConfig
 var _velocity: Vector3
 var _is_running: bool = false
+var _is_sprinting: bool = false
 var _was_on_floor: bool = true
 
 var _gait_phase: float = 0.0   # 步态相位（0~1 循环），每帧按步频累加
 var _burst_timer: float = 0.0  # 起步爆发剩余时间（秒）
 var _had_input: bool = false   # 上一帧是否有移动输入，用于检测起步边沿
 
+# Shift 按压状态跟踪
+var _shift_held_time: float = 0.0  # 本次连续按压时长（秒）
+var _shift_was_held: bool = false   # 上帧 Shift 状态（沿检测用）
+
 
 func is_running() -> bool:
 	return _is_running
 
+func is_sprinting() -> bool:
+	return _is_sprinting
 
 func get_max_speed() -> float:
-	return _config.run_speed if _config else 4.0
+	if not _config:
+		return 4.0
+	if _is_sprinting:
+		return _config.sprint_speed
+	if _is_running:
+		return _config.run_speed
+	return _config.walk_speed
 
 
 func initialize(player: BasePlayer, config: PlayerConfig) -> void:
@@ -63,19 +80,53 @@ func _physics_process(delta: float) -> void:
 	var has_input := input_dir.length() > _config.input_dead_zone
 
 	# ──────────────────────────────────────────────────────
-	# 2. Sprint 信号检测（移出 is_on_floor 块，空中松开也能正确重置）
+	# 2. Shift 按压检测：区分单击（切换 Run）和长按（Sprint）
 	# ──────────────────────────────────────────────────────
-	var sprint_active := Input.is_action_pressed("sprint") and Input.is_action_pressed("move_forward")
-	if _is_running and not sprint_active:
-		_is_running = false
-		stopped_running.emit()
+	var shift_held := Input.is_action_pressed("sprint")
+	var has_forward := Input.is_action_pressed("move_forward")
+
+	# 下降沿：Shift 刚松开
+	if _shift_was_held and not shift_held:
+		var threshold := _config.sprint_hold_threshold if _config else 0.25
+		if _shift_held_time < threshold:
+			# 短按 → 切换 Run
+			if _is_sprinting:
+				_exit_sprint()
+			else:
+				_toggle_run()
+		else:
+			# 长按松开 → 退出 Sprint
+			if _is_sprinting:
+				_exit_sprint()
+		_shift_held_time = 0.0
+	# 上升沿：Shift 刚按下，重置计时
+	elif not _shift_was_held and shift_held:
+		_shift_held_time = 0.0
+	# 持续按住：累计时间，达到阈值后激活 Sprint
+	elif shift_held:
+		_shift_held_time += delta
+		var threshold := _config.sprint_hold_threshold if _config else 0.25
+		if _shift_held_time >= threshold and has_forward and not _is_sprinting:
+			_enter_sprint()
+
+	_shift_was_held = shift_held
+
+	# Sprint 失去前进输入时自动退出
+	if _is_sprinting and not has_forward:
+		_exit_sprint()
 
 	# ──────────────────────────────────────────────────────
 	# 3. 地面水平速度
 	# ──────────────────────────────────────────────────────
 	if _player.is_on_floor():
 		# 3a. 确定基础目标速度
-		var speed := _config.run_speed if sprint_active else _config.walk_speed
+		var speed: float
+		if _is_sprinting:
+			speed = _config.sprint_speed
+		elif _is_running:
+			speed = _config.run_speed
+		else:
+			speed = _config.walk_speed
 
 		if has_input:
 			var basis := _player.transform.basis
@@ -117,18 +168,22 @@ func _physics_process(delta: float) -> void:
 			_velocity.z = move_toward(_velocity.z, target_z, _config.ground_acceleration * delta)
 
 			# 3f. 步态波动：在速度方向叠加 sin 波动，模拟重心摆动（±振幅）
-			var freq: float = _config.gait_frequency_run if _is_running else _config.gait_frequency_walk
-			var amp: float  = _config.gait_amplitude_run if _is_running else _config.gait_amplitude_walk
+			var freq: float
+			var amp: float
+			if _is_sprinting:
+				freq = _config.gait_frequency_sprint
+				amp  = _config.gait_amplitude_sprint
+			elif _is_running:
+				freq = _config.gait_frequency_run
+				amp  = _config.gait_amplitude_run
+			else:
+				freq = _config.gait_frequency_walk
+				amp  = _config.gait_amplitude_walk
 			_gait_phase = fmod(_gait_phase + delta * freq, 1.0)
 			var move_dir_2d := Vector2(_velocity.x, _velocity.z).normalized()
 			var gait_mod := sin(_gait_phase * TAU) * amp
 			_velocity.x += move_dir_2d.x * gait_mod
 			_velocity.z += move_dir_2d.y * gait_mod
-
-			# 3g. 地面上奔跑起步信号
-			if sprint_active and not _is_running:
-				_is_running = true
-				started_running.emit()
 
 		else:
 			# 3h. 停止卸力：无输入时使用制动强度快速站稳，重置步态相位
@@ -136,6 +191,12 @@ func _physics_process(delta: float) -> void:
 			_velocity.z = move_toward(_velocity.z, 0.0, _config.stop_brake_strength * delta)
 			_burst_timer = 0.0
 			_gait_phase  = 0.0
+			# 停止移动时自动退出 Sprint 和 Run
+			if _is_sprinting:
+				_exit_sprint()
+			if _is_running:
+				_is_running = false
+				stopped_running.emit()
 
 	else:
 		# ──────────────────────────────────────────────────
@@ -189,3 +250,30 @@ func _physics_process(delta: float) -> void:
 		landed.emit()
 	_was_on_floor = on_floor
 	_had_input = has_input
+
+
+# ──────────────────────────────────────────────────────
+# Run / Sprint 状态辅助方法
+# ──────────────────────────────────────────────────────
+
+func _toggle_run() -> void:
+	if _is_running:
+		_is_running = false
+		stopped_running.emit()
+	else:
+		_is_running = true
+		started_running.emit()
+
+
+func _enter_sprint() -> void:
+	_is_sprinting = true
+	# Sprint 时自动进入 Run 状态（松开 Shift 后保持 Run）
+	if not _is_running:
+		_is_running = true
+		started_running.emit()
+	started_sprinting.emit()
+
+
+func _exit_sprint() -> void:
+	_is_sprinting = false
+	stopped_sprinting.emit()

@@ -292,8 +292,12 @@ func _process(delta: float) -> void:
 	# 死亡模式：直接读头骨骼全局变换
 	if is_instance_valid(_ragdoll_physical_bone):
 		# PhysicalBone3D.global_transform 是刚体中心；消除 body_offset 后才是骨骼关节变换。
-		_active_camera.global_transform = \
-			_ragdoll_physical_bone.global_transform * _ragdoll_physical_bone.body_offset.affine_inverse()
+		var phys_xform: Transform3D = _ragdoll_physical_bone.global_transform
+		var offset_basis: Basis = _ragdoll_physical_bone.body_offset.basis
+		_active_camera.global_position = phys_xform.origin
+		# 模型整体有 PI 旋转修正，补偿 180°
+		var yaw_fix := Basis(Vector3.UP, PI)
+		_active_camera.global_basis = phys_xform.basis * offset_basis.inverse() * yaw_fix
 		return
 	if _ragdoll_skeleton and _ragdoll_bone_idx != -1:
 		if is_instance_valid(_ragdoll_skeleton):

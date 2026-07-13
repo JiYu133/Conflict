@@ -10,18 +10,20 @@ extends Node
 # ============================================================
 
 # 状态机节点名称（必须与 AnimationTree 编辑器中的节点名一致）──────
-const SM_IDLE  := "Idle"
-const SM_WALK  := "Walk"
-const SM_RUN   := "Run"
-const SM_JUMP  := "Jump"
-const SM_FALL  := "Fall"
-const SM_LAND  := "Land"
-const SM_DEATH := "Death"
+const SM_IDLE   := "Idle"
+const SM_WALK   := "Walk"
+const SM_RUN    := "Run"
+const SM_SPRINT := "Sprint"
+const SM_JUMP   := "Jump"
+const SM_FALL   := "Fall"
+const SM_LAND   := "Land"
+const SM_DEATH  := "Death"
 
 # AnimationTree 参数路径 ──────────────────────────────────────
-const PARAM_PLAYBACK   := "parameters/playback"
-const PARAM_WALK_BLEND := "parameters/Walk/blend_position"
-const PARAM_RUN_BLEND  := "parameters/Run/blend_position"
+const PARAM_PLAYBACK     := "parameters/playback"
+const PARAM_WALK_BLEND   := "parameters/Walk/blend_position"
+const PARAM_RUN_BLEND    := "parameters/Run/blend_position"
+const PARAM_SPRINT_BLEND := "parameters/Sprint/blend_position"
 
 
 # 状态枚举 ─────────────────────────────────────────────────
@@ -29,6 +31,7 @@ enum State {
 	IDLE,
 	WALK,
 	RUN,
+	SPRINT,
 	JUMP,
 	FALL,
 	LAND,
@@ -65,6 +68,10 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		movement.started_running.connect(_on_started_running)
 	if not movement.stopped_running.is_connected(_on_stopped_running):
 		movement.stopped_running.connect(_on_stopped_running)
+	if not movement.started_sprinting.is_connected(_on_started_sprinting):
+		movement.started_sprinting.connect(_on_started_sprinting)
+	if not movement.stopped_sprinting.is_connected(_on_stopped_sprinting):
+		movement.stopped_sprinting.connect(_on_stopped_sprinting)
 	if not player.died.is_connected(_on_died):
 		player.died.connect(_on_died)
 	if not player.revived.is_connected(_on_revived):
@@ -98,7 +105,7 @@ func _setup_animations() -> void:
 		return
 
 	# 只会被设为循环的动画库名关键词
-	const LOOPING_KEYWORDS := ["idle", "walk_", "run_"]
+	const LOOPING_KEYWORDS := ["idle", "walk_", "run_", "sprint_"]
 
 	for lib_name in anim_player.get_animation_library_list():
 		var lib: AnimationLibrary = anim_player.get_animation_library(lib_name)
@@ -209,9 +216,11 @@ func _update_blend_positions() -> void:
 	# 统一除以 run_speed 会让行走姿态被稀释产生滑步
 	var walk_blend := (vel_2d / maxf(_config.walk_speed, 0.001)).limit_length(1.0)
 	var run_blend := (vel_2d / maxf(_config.run_speed, 0.001)).limit_length(1.0)
+	var sprint_blend := (vel_2d / maxf(_config.sprint_speed, 0.001)).limit_length(1.0)
 
 	_animation_tree.set(PARAM_WALK_BLEND, walk_blend)
 	_animation_tree.set(PARAM_RUN_BLEND, run_blend)
+	_animation_tree.set(PARAM_SPRINT_BLEND, sprint_blend)
 
 
 # 信号回调 ──────────────────────────────────────────────────
@@ -235,6 +244,14 @@ func _on_stopped_running() -> void:
 	if _state == State.RUN:
 		_transition(_resolve_ground_state())
 
+func _on_started_sprinting() -> void:
+	if _state not in [State.JUMP, State.FALL, State.LAND, State.DEATH]:
+		_transition(State.SPRINT)
+
+func _on_stopped_sprinting() -> void:
+	if _state == State.SPRINT:
+		_transition(_resolve_ground_state())
+
 func _on_died() -> void:
 	# 直接设置状态为 DEATH，不调用 _transition()。
 	# 原因：AnimationTree 状态机中不存在 Death 节点，
@@ -256,6 +273,8 @@ func _on_revived() -> void:
 func _resolve_ground_state() -> State:
 	if not _player:
 		return State.IDLE
+	if _movement and _movement.is_sprinting():
+		return State.SPRINT
 	if _movement and _movement.is_running():
 		return State.RUN
 	# 显式标量计算，避免临时 Vector2 分配
@@ -286,11 +305,12 @@ func _transition(new_state: State) -> void:
 
 func _state_to_sm_name(state: State) -> String:
 	match state:
-		State.IDLE:  return SM_IDLE
-		State.WALK:  return SM_WALK
-		State.RUN:   return SM_RUN
-		State.JUMP:  return SM_JUMP
-		State.FALL:  return SM_FALL
-		State.LAND:  return SM_LAND
-		State.DEATH: return SM_DEATH
+		State.IDLE:   return SM_IDLE
+		State.WALK:   return SM_WALK
+		State.RUN:    return SM_RUN
+		State.SPRINT: return SM_SPRINT
+		State.JUMP:   return SM_JUMP
+		State.FALL:   return SM_FALL
+		State.LAND:   return SM_LAND
+		State.DEATH:  return SM_DEATH
 	return SM_IDLE
