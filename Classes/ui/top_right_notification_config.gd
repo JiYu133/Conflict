@@ -12,9 +12,13 @@ extends Resource
 @export var card_spacing: int = 4
 @export var card_width: float = 390.0
 @export_range(1, 20, 1) var max_visible_notifications: int = 10
+## Wait until the main scene is visible before starting persistent tutorial animations.
+@export var startup_delay: float = 0.35
+## Small spacing between startup animations makes each bar's motion readable.
+@export var startup_stagger: float = 0.06
 
 @export_group("Card appearance")
-@export var card_background: Color = Color(0.035, 0.045, 0.06, 0.78)
+@export var card_background: Color = Color(0.035, 0.045, 0.06, 0.58)
 @export var card_corner_radius: int = 0
 @export var card_padding: int = 10
 @export var symbol_width: float = 96.0

@@ -20,10 +20,23 @@ func _ready() -> void:
 	if not config:
 		config = TopRightNotificationConfig.new()
 	_build_layout()
+	_show_startup_notifications.call_deferred()
+
+
+func _show_startup_notifications() -> void:
+	# Autoloads become ready before the main scene. Waiting here prevents all slide
+	# tweens from completing behind the loading screen.
+	while not get_tree().current_scene:
+		await get_tree().process_frame
+	await get_tree().process_frame
+	if config.startup_delay > 0.0:
+		await get_tree().create_timer(config.startup_delay).timeout
 	for entry in config.startup_notifications:
 		register_notification(entry)
 		if entry.visible:
 			show_notification(entry)
+			if config.startup_stagger > 0.0:
+				await get_tree().create_timer(config.startup_stagger).timeout
 
 
 ## Registers an entry without displaying it. Registered entries can later be toggled by ID.
