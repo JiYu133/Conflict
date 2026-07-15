@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="HitboxConfig" format=3 uid="uid://ckh3v8p7qjw2k"]
 
-[ext_resource type="Script" uid="uid://hn2ucdqec18c" path="res://classes/Combat/hitbox_config.gd" id="1_hitbox"]
+[ext_resource type="Script" uid="uid://hn2ucdqec18c" path="res://Classes/Combat/hitbox_config.gd" id="1_hitbox"]
 
 [resource]
 script = ExtResource("1_hitbox")

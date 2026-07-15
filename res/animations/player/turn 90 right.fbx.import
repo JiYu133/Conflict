@@ -1,15 +1,15 @@
 [remap]
 
-importer="scene"
+importer="animation_library"
 importer_version=1
-type="PackedScene"
+type="AnimationLibrary"
 uid="uid://dhbffr21ty2ar"
-path="res://.godot/imported/turn 90 right.fbx-57023fb520c5155c4def073c5b34f4da.scn"
+path="res://.godot/imported/turn 90 right.fbx-57023fb520c5155c4def073c5b34f4da.res"
 
 [deps]
 
 source_file="res://res/animations/player/turn 90 right.fbx"
-dest_files=["res://.godot/imported/turn 90 right.fbx-57023fb520c5155c4def073c5b34f4da.scn"]
+dest_files=["res://.godot/imported/turn 90 right.fbx-57023fb520c5155c4def073c5b34f4da.res"]
 
 [params]
 

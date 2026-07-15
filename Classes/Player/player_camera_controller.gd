@@ -59,13 +59,17 @@ var _stiffness_v: float = 120.0
 
 var _sway_pivot: Node3D = null
 
+# 蹲下眼部高度插值
+var _eye_height: float = 1.6
+var _target_eye_height: float = 1.6
+
 # 后座
 var _recoil_component: RecoilComponent = null
 
 # 死亡摄像机跟随
 var _ragdoll_skeleton: Skeleton3D = null
 var _ragdoll_bone_idx: int = -1
-var _ragdoll_physical_bone: PhysicalBone3D = null
+var _ragdoll_head_bone: Node3D = null  # 头部 PhysicalBone3D，物理激活后用它跟随
 
 # ADS
 var _is_ads: bool = false
@@ -96,6 +100,9 @@ func initialize(
 	_update_spring_params()
 
 	_hip_fov = _camera_config.fov
+	# 眼部高度从 camera_config 头部偏移 Y 初始化（fallback 用）
+	_eye_height = _camera_config.head_offset.y if _camera_config.head_offset.y > 0.1 else 1.6
+	_target_eye_height = _eye_height
 
 	var seed: Camera3D = Camera3D.new()
 	seed.name = "SeedCamera"
@@ -123,10 +130,16 @@ func enable_camera() -> void:
 	if _ragdoll_skeleton:
 		_ragdoll_skeleton = null
 		_ragdoll_bone_idx = -1
-		_ragdoll_physical_bone = null
+		_ragdoll_head_bone = null
+		# 把摄像机从场景根移回挂载点
+		if is_instance_valid(_active_camera) and is_instance_valid(_camera_mount):
+			if _active_camera.get_parent():
+				_active_camera.get_parent().remove_child(_active_camera)
+			_camera_mount.add_child(_active_camera)
+			_active_camera.rotation = Vector3.ZERO
+			_active_camera.current = true
 		_sync_springs_to_head()
 		return
-	_ragdoll_physical_bone = null
 
 	var viewport: Viewport = get_viewport()
 	if not viewport:
@@ -161,16 +174,30 @@ func disable_camera(skeleton: Skeleton3D = null) -> void:
 		return
 	_ragdoll_skeleton = skeleton
 	_ragdoll_bone_idx = head_idx
-	_ragdoll_physical_bone = null
+	_ragdoll_head_bone = null  # 物理启动后才能找到，见 on_ragdoll_physics_started
+
+	# 把摄像机移到场景根，脱离所有会移动的父节点，确保每帧直接写 global_transform 生效
+	if is_instance_valid(_active_camera) and get_tree():
+		var saved_xform := _active_camera.global_transform
+		if _active_camera.get_parent():
+			_active_camera.get_parent().remove_child(_active_camera)
+		get_tree().root.add_child(_active_camera)
+		_active_camera.global_transform = saved_xform
+		_active_camera.current = true
 
 
-## 死亡动画结束后改为直接跟随物理头骨，而不是等待 Skeleton3D 回写姿态。
-func follow_ragdoll_physical_bone(physical_bone: PhysicalBone3D) -> void:
-	if not is_instance_valid(physical_bone):
-		GlobalLogger.warn("Camera", "Cannot bind ragdoll camera: physical head bone not found")
+## 布娃娃物理启动后调用（由 base_player 连接 ragdoll_physics_started 信号触发）
+## 此时 PhysicalBone3D 节点已存在，可以找到并缓存
+func on_ragdoll_physics_started() -> void:
+	if not _ragdoll_skeleton or _ragdoll_bone_idx == -1:
 		return
-	_ragdoll_physical_bone = physical_bone
-	GlobalLogger.info("Camera", "Ragdoll camera bound to physical bone: %s" % physical_bone.bone_name)
+	var head_bone_name := _ragdoll_skeleton.get_bone_name(_ragdoll_bone_idx)
+	var phys_name := "PhysBone_" + head_bone_name
+	_ragdoll_head_bone = _ragdoll_skeleton.find_child(phys_name, true, false) as Node3D
+	if _ragdoll_head_bone:
+		GlobalLogger.info("Camera", "Ragdoll head bone found: " + _ragdoll_head_bone.name)
+	else:
+		GlobalLogger.warn("Camera", "Ragdoll head bone not found: " + phys_name + ", falling back to skeleton pose")
 
 
 # 弹簧位置对齐当前头部局部位置，防止启用/复活瞬间镜头跳变
@@ -289,20 +316,24 @@ func _process(delta: float) -> void:
 	if not _active_camera or not _camera_config:
 		return
 
-	# 死亡模式：直接读头骨骼全局变换
-	if is_instance_valid(_ragdoll_physical_bone):
-		# PhysicalBone3D.global_transform 是刚体中心；消除 body_offset 后才是骨骼关节变换。
-		var phys_xform: Transform3D = _ragdoll_physical_bone.global_transform
-		var offset_basis: Basis = _ragdoll_physical_bone.body_offset.basis
-		_active_camera.global_position = phys_xform.origin
-		# 模型整体有 PI 旋转修正，补偿 180°
-		var yaw_fix := Basis(Vector3.UP, PI)
-		_active_camera.global_basis = phys_xform.basis * offset_basis.inverse() * yaw_fix
-		return
+	# 眼部高度平滑插值（蹲下/起立时移动摄像机 fallback 高度）
+	if _eye_height != _target_eye_height:
+		_eye_height = move_toward(_eye_height, _target_eye_height, 3.0 * delta)
+
+	# 死亡模式：跟随头部物理骨骼
 	if _ragdoll_skeleton and _ragdoll_bone_idx != -1:
 		if is_instance_valid(_ragdoll_skeleton):
-			var bone_xform: Transform3D = _ragdoll_skeleton.global_transform * _ragdoll_skeleton.get_bone_global_pose(_ragdoll_bone_idx)
-			_active_camera.global_transform = bone_xform
+			var head_xform: Transform3D
+			if is_instance_valid(_ragdoll_head_bone):
+				# 物理激活后用 PhysicalBone3D 的真实世界变换
+				# PhysicalBone3D 坐标系与模型相差 180°（模型加载时绕 Y 旋转了 PI），
+				# 用同样的旋转修正后摄像机朝向才正确
+				head_xform = _ragdoll_head_bone.global_transform * Transform3D(Basis(Vector3.UP, PI), Vector3.ZERO)
+			else:
+				# fallback：物理未激活（死亡动画阶段）仍用骨骼 pose
+				head_xform = _ragdoll_skeleton.global_transform * _ragdoll_skeleton.get_bone_global_pose(_ragdoll_bone_idx)
+			_active_camera.global_position = head_xform * _camera_config.ragdoll_eye_offset
+			_active_camera.global_basis = head_xform.basis
 		return
 
 	if not controllable:
@@ -353,8 +384,13 @@ func _get_head_local_position() -> Vector3:
 		var bone_local := _player.global_transform.affine_inverse() * _bone_attachment.global_position
 		return bone_local + _camera_config.head_offset
 	elif is_instance_valid(_player):
-		return Vector3(0, 1.6, 0)
+		return Vector3(0, _eye_height, 0)
 	return Vector3.ZERO
+
+
+## 由 PlayerMovementController 在蹲下/站起时调用，更新摄像机眼部目标高度
+func set_crouch_state(crouching: bool, config: PlayerConfig) -> void:
+	_target_eye_height = config.camera_crouch_eye_height if crouching else config.camera_stand_eye_height
 
 
 # ============================================================
@@ -420,3 +456,7 @@ func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
 
 func get_active_camera() -> Camera3D:
 	return _active_camera
+
+
+func get_vertical_angle() -> float:
+	return _vertical_angle

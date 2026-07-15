@@ -8,35 +8,34 @@ extends RefCounted
 # 用法：HitResolver.resolve(ray_result, energy_joules, damage_type, source)
 # ============================================================
 
-## Mixamo 骨骼名称 → BodyPartId 映射表
-## 覆盖项目使用的 SWAT 模型骨骼命名
-const BONE_PART_MAP: Dictionary = {
+## Mixamo 骨骼名称 → BodyPartId 映射表（ragdoll PhysicalBone3D 命中时使用）
+static var BONE_PART_MAP: Dictionary = {
 	# 头部 & 颈部
-	"Head": MedicalEnums.BodyPartId.HEAD,
-	"Neck": MedicalEnums.BodyPartId.HEAD,
+	"Head":           MedicalEnums.BodyPartId.HEAD,
+	"Neck":           MedicalEnums.BodyPartId.HEAD,
 	# 躯干
-	"Hips": MedicalEnums.BodyPartId.TORSO,
-	"Spine": MedicalEnums.BodyPartId.TORSO,
-	"Spine1": MedicalEnums.BodyPartId.TORSO,
-	"Spine2": MedicalEnums.BodyPartId.TORSO,
-	"LeftShoulder": MedicalEnums.BodyPartId.TORSO,
-	"RightShoulder": MedicalEnums.BodyPartId.TORSO,
+	"Hips":           MedicalEnums.BodyPartId.TORSO,
+	"Spine":          MedicalEnums.BodyPartId.TORSO,
+	"Spine1":         MedicalEnums.BodyPartId.TORSO,
+	"Spine2":         MedicalEnums.BodyPartId.TORSO,
+	"LeftShoulder":   MedicalEnums.BodyPartId.TORSO,
+	"RightShoulder":  MedicalEnums.BodyPartId.TORSO,
 	# 左臂
-	"LeftArm": MedicalEnums.BodyPartId.LEFT_ARM,
-	"LeftForeArm": MedicalEnums.BodyPartId.LEFT_ARM,
-	"LeftHand": MedicalEnums.BodyPartId.LEFT_ARM,
+	"LeftArm":        MedicalEnums.BodyPartId.LEFT_UPPER_ARM,
+	"LeftForeArm":    MedicalEnums.BodyPartId.LEFT_FOREARM,
+	"LeftHand":       MedicalEnums.BodyPartId.LEFT_FOREARM,
 	# 右臂
-	"RightArm": MedicalEnums.BodyPartId.RIGHT_ARM,
-	"RightForeArm": MedicalEnums.BodyPartId.RIGHT_ARM,
-	"RightHand": MedicalEnums.BodyPartId.RIGHT_ARM,
+	"RightArm":       MedicalEnums.BodyPartId.RIGHT_UPPER_ARM,
+	"RightForeArm":   MedicalEnums.BodyPartId.RIGHT_FOREARM,
+	"RightHand":      MedicalEnums.BodyPartId.RIGHT_FOREARM,
 	# 左腿
-	"LeftUpLeg": MedicalEnums.BodyPartId.LEFT_LEG,
-	"LeftLeg": MedicalEnums.BodyPartId.LEFT_LEG,
-	"LeftFoot": MedicalEnums.BodyPartId.LEFT_LEG,
+	"LeftUpLeg":      MedicalEnums.BodyPartId.LEFT_THIGH,
+	"LeftLeg":        MedicalEnums.BodyPartId.LEFT_CALF,
+	"LeftFoot":       MedicalEnums.BodyPartId.LEFT_CALF,
 	# 右腿
-	"RightUpLeg": MedicalEnums.BodyPartId.RIGHT_LEG,
-	"RightLeg": MedicalEnums.BodyPartId.RIGHT_LEG,
-	"RightFoot": MedicalEnums.BodyPartId.RIGHT_LEG,
+	"RightUpLeg":     MedicalEnums.BodyPartId.RIGHT_THIGH,
+	"RightLeg":       MedicalEnums.BodyPartId.RIGHT_CALF,
+	"RightFoot":      MedicalEnums.BodyPartId.RIGHT_CALF,
 }
 
 

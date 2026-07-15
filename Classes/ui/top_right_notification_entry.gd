@@ -22,5 +22,8 @@ extends Resource
 ## Seconds before dismissal. Set to 0 for a persistent notification.
 @export_range(0.0, 60.0, 0.1) var duration: float = 0.0
 
+## If true, the startup sequence waits for this notification to fully slide out before showing the next one.
+@export var block_next: bool = false
+
 ## Optional per-notification highlight color.
 @export var accent_color: Color = Color(0.35, 0.72, 1.0, 1.0)

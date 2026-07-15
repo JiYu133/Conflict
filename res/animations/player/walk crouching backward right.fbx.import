@@ -1,15 +1,15 @@
 [remap]
 
-importer="scene"
+importer="animation_library"
 importer_version=1
-type="PackedScene"
+type="AnimationLibrary"
 uid="uid://dwqwfi1m5eb7u"
-path="res://.godot/imported/walk crouching backward right.fbx-f1484cfc39e190222453d98b9e214f91.scn"
+path="res://.godot/imported/walk crouching backward right.fbx-f1484cfc39e190222453d98b9e214f91.res"
 
 [deps]
 
 source_file="res://res/animations/player/walk crouching backward right.fbx"
-dest_files=["res://.godot/imported/walk crouching backward right.fbx-f1484cfc39e190222453d98b9e214f91.scn"]
+dest_files=["res://.godot/imported/walk crouching backward right.fbx-f1484cfc39e190222453d98b9e214f91.res"]
 
 [params]
 

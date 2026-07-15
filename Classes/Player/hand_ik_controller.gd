@@ -116,24 +116,26 @@ func process_ik(delta: float) -> void:
 	if not _enabled or not _skeleton or not _left_hand_grip or _bone_indices.is_empty():
 		return
 
-	# ── 1. 平滑权重 ─────────────────────────────────────────
+	# ── 1. 平滑权重（EFT 风格：状态切换约 0.12s 过渡）──────────
 	var blend_time := maxf(_config.weight_blend_time if _config else 0.12, 0.001)
 	_current_weight = move_toward(_current_weight, _target_weight, delta / blend_time)
 
-	# ── 2. 平滑 ADS 进度 ────────────────────────────────────
+	# ── 2. 平滑 ADS 进度 ────────────────────────────────────────
 	var ads_time := maxf(_config.ads_blend_time if _config else 0.25, 0.001)
 	_ads_progress = move_toward(_ads_progress, 1.0 if _is_ads else 0.0, delta / ads_time)
 
+	# 权重为零时跳过求解，但保持 override 为 0（不清空，避免一帧跳变）
 	if _current_weight < 0.001:
-		_clear_overrides()
+		_clear_overrides_weighted()
 		return
 
-	# ── 3. 计算有效目标变换 ──────────────────────────────────
+	# ── 3. 计算有效目标变换（叠加本地偏移 + ADS 偏移）──────────
 	var effective_target := _get_effective_target()
 	var target_global := effective_target.origin
 
 	var skel_xform: Transform3D = _skeleton.global_transform
 
+	# 跳过 bone_chain[0]（LeftShoulder），IK 从 index 1 开始
 	var ik_start := 1
 	var ik_indices := _bone_indices.slice(ik_start)
 	var ik_lengths := _rest_lengths.slice(ik_start)
@@ -141,16 +143,18 @@ func process_ik(delta: float) -> void:
 	for l in ik_lengths:
 		ik_total += l
 
-	# ── 4. 读取骨骼位置，根点固定防抽搐 ────────────────────
+	# ── 4. 读取 IK 链各骨骼当前全局位置 ────────────────────────
 	var positions: Array[Vector3] = []
 	for idx in ik_indices:
 		positions.append((skel_xform * _skeleton.get_bone_global_pose(idx)).origin)
+
+	# 根点固定（防止跑动时抽搐）
 	var root_pos: Vector3 = positions[0]
 
 	var iterations: int = _config.iterations if _config else 6
 	var threshold: float = _config.threshold if _config else 0.0005
 
-	# ── 5. FABRIK 求解 ───────────────────────────────────────
+	# ── 5. FABRIK 求解 ───────────────────────────────────────────
 	if (target_global - root_pos).length() >= ik_total:
 		var dir: Vector3 = (target_global - root_pos).normalized()
 		for i in range(1, positions.size()):
@@ -174,12 +178,14 @@ func process_ik(delta: float) -> void:
 
 func _get_effective_target() -> Transform3D:
 	var base := _left_hand_grip.global_transform
-	var pos_off: Vector3 = base.basis * (_config.grip_position_offset if _config else Vector3.ZERO)
-	var rot_deg: Vector3 = (_config.grip_rotation_offset if _config else Vector3.ZERO)
+	# 常规偏移（始终叠加，在 LeftHandGrip 本地坐标系中）
+	var pos_off := base.basis * (_config.grip_position_offset if _config else Vector3.ZERO)
+	var rot_deg := (_config.grip_rotation_offset if _config else Vector3.ZERO)
 	var rot_basis := Basis.from_euler(rot_deg * (PI / 180.0))
 	var result := Transform3D(rot_basis * base.basis, base.origin + pos_off)
+	# ADS 额外偏移（按 _ads_progress 插值）
 	if _ads_progress > 0.001 and _config:
-		var ads_pos: Vector3 = base.basis * _config.ads_grip_offset * _ads_progress
+		var ads_pos := base.basis * _config.ads_grip_offset * _ads_progress
 		var ads_rot_basis := Basis.from_euler(_config.ads_grip_rotation * (PI / 180.0))
 		result.origin += ads_pos
 		result.basis = result.basis.slerp(ads_rot_basis * result.basis, _ads_progress)
@@ -189,21 +195,30 @@ func _get_effective_target() -> Transform3D:
 func _apply_pole_constraint(positions: Array[Vector3], lengths: Array[float]) -> void:
 	if positions.size() < 3:
 		return
+
 	var influence: float = _config.pole_influence if _config else 0.6
 	if influence <= 0.0:
 		return
+
 	var pole_vec: Vector3 = _config.pole_vector if _config else Vector3(0.0, -1.0, 0.5)
-	var root: Vector3 = positions[0]
-	var mid: Vector3  = positions[1]
-	var tip: Vector3  = positions[2]
+
+	var root: Vector3 = positions[0]   # LeftArm
+	var mid: Vector3  = positions[1]   # LeftForeArm
+	var tip: Vector3  = positions[2]   # LeftHand
+
 	var axis: Vector3        = (tip - root).normalized()
 	var pole_global: Vector3 = _skeleton.global_transform.basis * pole_vec
+
+	# 去掉各向量在 axis 方向上的分量，得到垂直于链轴的平面投影
 	var mid_proj_vec:  Vector3 = mid        - root - axis * (mid        - root).dot(axis)
 	var pole_proj_vec: Vector3 = pole_global       - axis * pole_global.dot(axis)
+
 	var mp_len := mid_proj_vec.length()
 	var pp_len := pole_proj_vec.length()
+	# 任一投影过小（链接近伸直或 pole 与轴平行）时跳过，防止数值翻转
 	if mp_len < 0.001 or pp_len < 0.001:
 		return
+
 	var angle: float = (mid_proj_vec / mp_len).signed_angle_to(pole_proj_vec / pp_len, axis) * influence
 	var rot: Basis   = Basis(axis, angle)
 	positions[1] = root + rot * (mid - root).normalized() * lengths[0]
@@ -220,11 +235,14 @@ func _apply_poses(positions: Array[Vector3], ik_indices: Array[int], effective_t
 		var bone_idx: int = ik_indices[i]
 		var from: Vector3 = positions[i]
 		var to: Vector3   = positions[i + 1]
+
 		var current_global: Transform3D = skel_xform * _skeleton.get_bone_global_pose(bone_idx)
 		var target_dir: Vector3  = (to - from).normalized()
 		var current_dir: Vector3 = current_global.basis.y.normalized()
+
 		if current_dir.length() < 0.001 or target_dir.length() < 0.001:
 			continue
+
 		var rotation: Basis
 		if i == forearm_local_idx and roll_align > 0.0:
 			var q_align := _safe_rotation_quaternion(current_dir, target_dir)
@@ -241,32 +259,40 @@ func _apply_poses(positions: Array[Vector3], ik_indices: Array[int], effective_t
 		else:
 			var q := _safe_rotation_quaternion(current_dir, target_dir)
 			rotation = Basis(q) * current_global.basis
+
 		var new_local := skel_inv * Transform3D(rotation, from)
 		_skeleton.set_bone_global_pose_override(bone_idx, new_local, _current_weight, true)
 
-	# 手腕朝向完全由 effective_target（含偏移）决定
+	# 手腕朝向完全由 effective_target（含偏移）的 basis 决定
 	var hand_idx: int = ik_indices[-1]
-	_skeleton.set_bone_global_pose_override(hand_idx, skel_inv * effective_target, _current_weight, true)
+	var grip_local: Transform3D = skel_inv * effective_target
+	_skeleton.set_bone_global_pose_override(hand_idx, grip_local, _current_weight, true)
 
-	# 肩膀修正（clavicle_alpha）
-	var shoulder_weight : float = (_config.shoulder_ik_weight if _config else 0.3) * _current_weight
+	# ── 肩膀修正（clavicle_alpha）──────────────────────────────
+	# 让 LeftShoulder 轻微跟随 LeftArm IK 结果，避免肩膀超伸
+	var shoulder_weight := (_config.shoulder_ik_weight if _config else 0.3) * _current_weight
 	if shoulder_weight > 0.001 and _bone_indices.size() > 0:
 		var shoulder_idx: int = _bone_indices[0]
 		var shoulder_global := skel_xform * _skeleton.get_bone_global_pose(shoulder_idx)
 		var arm_ik_pos   := positions[0]
 		var arm_anim_pos := (skel_xform * _skeleton.get_bone_global_pose(ik_indices[0])).origin
+		# 只在 IK 确实偏离动画时才修正
 		if (arm_ik_pos - arm_anim_pos).length() > 0.001:
 			var target_dir_s := (arm_ik_pos - shoulder_global.origin).normalized()
 			var current_dir_s := shoulder_global.basis.y.normalized()
 			var q_s := _safe_rotation_quaternion(current_dir_s, target_dir_s)
 			var new_basis_s := Basis(q_s) * shoulder_global.basis
-			_skeleton.set_bone_global_pose_override(shoulder_idx, skel_inv * Transform3D(new_basis_s, shoulder_global.origin), shoulder_weight, true)
+			var new_local_s := skel_inv * Transform3D(new_basis_s, shoulder_global.origin)
+			_skeleton.set_bone_global_pose_override(shoulder_idx, new_local_s, shoulder_weight, true)
 
 
+# 安全的方向旋转四元数：当 from/to 接近反向时选择稳定的旋转轴，避免翻转
 func _safe_rotation_quaternion(from: Vector3, to: Vector3) -> Quaternion:
 	var dot := from.dot(to)
+	# 几乎相同方向，不旋转
 	if dot >= 0.9999:
 		return Quaternion.IDENTITY
+	# 接近反向（dot ≤ -0.9999）：Quaternion(from,to) 会数值爆炸，选正交轴做 180° 旋转
 	if dot <= -0.9999:
 		var ortho := from.cross(Vector3.UP)
 		if ortho.length_squared() < 0.001:
@@ -276,6 +302,15 @@ func _safe_rotation_quaternion(from: Vector3, to: Vector3) -> Quaternion:
 
 
 func _clear_overrides() -> void:
+	if not _skeleton or _bone_indices.is_empty():
+		return
+	# 包含 LeftShoulder（index 0）
+	for i in range(_bone_indices.size()):
+		_skeleton.set_bone_global_pose_override(_bone_indices[i], Transform3D.IDENTITY, 0.0, false)
+
+
+# 权重淡出到接近 0 时用于保持平滑：设 weight=0 而不是直接清空
+func _clear_overrides_weighted() -> void:
 	if not _skeleton or _bone_indices.is_empty():
 		return
 	for i in range(_bone_indices.size()):

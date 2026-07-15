@@ -1,8 +1,8 @@
 [gd_resource type="Resource" script_class="TopRightNotificationConfig" format=3 uid="uid://ke76oc81381y"]
 
 [ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://res/fonts/ConflictCJKUI.ttf" id="1_uaoa6"]
-[ext_resource type="Script" uid="uid://56iceyuqgf65" path="res://classes/ui/top_right_notification_config.gd" id="2_7bx85"]
-[ext_resource type="Script" uid="uid://u2poq2a3v32q" path="res://classes/ui/top_right_notification_entry.gd" id="3_s74ca"]
+[ext_resource type="Script" uid="uid://bqr8abj4oymfx" path="res://Classes/ui/top_right_notification_config.gd" id="2_7bx85"]
+[ext_resource type="Script" uid="uid://couuqrmdo0grd" path="res://Classes/ui/top_right_notification_entry.gd" id="3_s74ca"]
 [ext_resource type="Texture2D" uid="uid://cmd8x3rrp3sri" path="res://icon.svg" id="4_734jp"]
 
 [sub_resource type="Resource" id="Resource_3xd07"]

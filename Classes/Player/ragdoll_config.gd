@@ -32,9 +32,9 @@ extends Resource
 
 # 过渡参数 ─────────────────────────────────────────────────
 @export_group("过渡参数")
-## 死亡时是否播放死亡动画；关闭后立即激活布娃娃物理，跳过动画过渡
-@export var play_death_animation: bool = true
-## 死亡动画播放后到启动布娃娃物理的等待时间（秒） / Seconds to wait after death anim starts before enabling ragdoll physics
+## 是否在布娃娃启动前播放死亡动画；关闭则死亡后立即进入物理模拟 / Play death animation before ragdoll physics; when false, ragdoll activates instantly on death
+@export var play_death_animation: bool = false
+## 死亡动画播放后到启动布娃娃物理的等待时间（秒）；仅在 play_death_animation 为 true 时生效 / Seconds to wait after death anim starts before enabling ragdoll physics
 @export var death_anim_to_ragdoll_time: float = 0.5
 
 # 冲击力参数 ─────────────────────────────────────────────────
@@ -61,7 +61,7 @@ extends Resource
 @export_group("骨骼过滤")
 ## 排除骨骼名关键词，匹配任一关键词的骨骼不会被创建物理骨骼 / Bone name keywords excluded from physical bone creation
 @export var exclude_bone_keywords: Array[String] = [
-	"IK", "_End", "Toe_End", "Hand_End",
+	"IK", "_End", "Toe_End", "Hand_End", "Toe",
 	"Thumb", "Index", "Middle", "Ring", "Pinky",
 	"Eye", "Weapon", "Armature", "Root"
 ]
@@ -72,3 +72,14 @@ extends Resource
 @export var upper_body_keywords: Array[String] = [
 	"Spine", "Neck", "Head", "Shoulder", "Arm"
 ]
+
+# 骨骼权重覆盖 ─────────────────────────────────────────────────
+@export_group("骨骼权重覆盖")
+## 按骨骼名关键词覆盖质量（kg）。key = 骨骼名关键词（如 "Head"、"UpLeg"），value = 质量。
+## 匹配第一个关键词即应用，不匹配则使用全局 mass 值。
+## 示例：{"Head": 2.0, "UpLeg": 3.0, "Foot": 0.5}
+@export var bone_mass_overrides: Dictionary = {}
+## 按骨骼名关键词覆盖线速度阻尼。不匹配则使用全局 linear_damping。
+@export var bone_linear_damping_overrides: Dictionary = {}
+## 按骨骼名关键词覆盖角速度阻尼。不匹配则使用全局 angular_damping。
+@export var bone_angular_damping_overrides: Dictionary = {}

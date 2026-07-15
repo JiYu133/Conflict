@@ -7,14 +7,18 @@ class_name MedicalEnums
 #       或在同文件中直接写 BodyPartId.HEAD（class_name 已全局注册）。
 # ============================================================
 
-## 身体部位 ID（P1 6 部位；数据结构预留，未来可扩展 CHEST/ABDOMEN 等子部位）
+## 身体部位 ID（10 部位：头、躯干、上臂×2、前臂×2、大腿×2、小腿×2）
 enum BodyPartId {
 	HEAD,
 	TORSO,
-	LEFT_ARM,
-	RIGHT_ARM,
-	LEFT_LEG,
-	RIGHT_LEG,
+	LEFT_UPPER_ARM,
+	LEFT_FOREARM,
+	RIGHT_UPPER_ARM,
+	RIGHT_FOREARM,
+	LEFT_THIGH,
+	LEFT_CALF,
+	RIGHT_THIGH,
+	RIGHT_CALF,
 }
 
 ## 伤害类型

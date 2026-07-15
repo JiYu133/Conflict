@@ -1,15 +1,15 @@
 [remap]
 
-importer="scene"
+importer="animation_library"
 importer_version=1
-type="PackedScene"
+type="AnimationLibrary"
 uid="uid://bjwjtysatv6ly"
-path="res://.godot/imported/idle aiming.fbx-d4e9684bb4e82632c43cbbbf4a21f83e.scn"
+path="res://.godot/imported/idle aiming.fbx-d4e9684bb4e82632c43cbbbf4a21f83e.res"
 
 [deps]
 
 source_file="res://res/animations/player/idle aiming.fbx"
-dest_files=["res://.godot/imported/idle aiming.fbx-d4e9684bb4e82632c43cbbbf4a21f83e.scn"]
+dest_files=["res://.godot/imported/idle aiming.fbx-d4e9684bb4e82632c43cbbbf4a21f83e.res"]
 
 [params]
 

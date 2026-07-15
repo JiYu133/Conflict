@@ -24,21 +24,26 @@ func _ready() -> void:
 
 
 func _show_startup_notifications() -> void:
-	# Autoloads become ready before the main scene. Waiting here prevents all slide
-	# tweens from completing behind the loading screen.
 	while not get_tree().current_scene:
 		await get_tree().process_frame
 	await get_tree().process_frame
 	if config.startup_delay > 0.0:
 		await get_tree().create_timer(config.startup_delay).timeout
 	for entry in config.startup_notifications:
+		if not entry:
+			continue
 		register_notification(entry)
-		if entry.visible:
-			show_notification(entry)
-			# Finish this bar's complete slide before allowing the next one to start.
-			var sequence_wait := config.slide_in_duration + config.startup_gap
-			if sequence_wait > 0.0:
-				await get_tree().create_timer(sequence_wait).timeout
+		if not entry.visible:
+			continue
+		var card := _spawn_card_direct(entry)
+		if not card:
+			continue
+		if entry.block_next:
+			await card.dismissed
+		else:
+			await card.enter_finished
+			if config.startup_gap > 0.0:
+				await get_tree().create_timer(config.startup_gap).timeout
 
 
 ## Registers an entry without displaying it. Registered entries can later be toggled by ID.
@@ -130,7 +135,7 @@ func _build_layout() -> void:
 	margin.add_child(_stack)
 
 
-func _spawn_card(entry: TopRightNotificationEntry) -> void:
+func _spawn_card(entry: TopRightNotificationEntry) -> TopRightNotificationCard:
 	var card := TopRightNotificationCard.new()
 	card.setup(entry, config)
 	card.dismissed.connect(_on_card_dismissed)
@@ -139,6 +144,13 @@ func _spawn_card(entry: TopRightNotificationEntry) -> void:
 	_sort_cards()
 	card.play_enter()
 	notification_shown.emit(entry.notification_id)
+	return card
+
+
+func _spawn_card_direct(entry: TopRightNotificationEntry) -> TopRightNotificationCard:
+	if _cards.has(entry.notification_id):
+		return _cards[entry.notification_id]
+	return _spawn_card(entry)
 
 
 func _on_card_dismissed(notification_id: StringName) -> void:

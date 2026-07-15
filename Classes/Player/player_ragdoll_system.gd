@@ -149,21 +149,6 @@ func _reset_skeleton_state() -> void:
 func set_weapon_mount(weapon_mount: Node3D) -> void:
 	_weapon_mount = weapon_mount
 
-## 按候选骨骼名查找运行时生成的 PhysicalBone3D。
-## 精确匹配优先，随后兼容带命名空间/前缀的骨骼名。
-func find_physical_bone_by_names(bone_names: Array[String]) -> PhysicalBone3D:
-	for candidate in bone_names:
-		for entry in _physical_bone_entries:
-			var physical_bone: PhysicalBone3D = entry["bone"]
-			if is_instance_valid(physical_bone) and physical_bone.bone_name == candidate:
-				return physical_bone
-	for candidate in bone_names:
-		for entry in _physical_bone_entries:
-			var physical_bone: PhysicalBone3D = entry["bone"]
-			if is_instance_valid(physical_bone) and physical_bone.bone_name.to_lower().contains(candidate.to_lower()):
-				return physical_bone
-	return null
-
 # 公开方法 ──────────────────────────────────────────────────
 
 ## 启动死亡流程
@@ -191,33 +176,30 @@ func enable(death_type: DeathType = DeathType.GENERIC, impact_direction: Vector3
 	if is_instance_valid(_animation_tree):
 		_animation_tree.active = false
 
-	# Step 3: 选择并播放死亡动画
-	var death_anim: String = _select_death_animation(death_type)
-	var has_death_animation := false
+	# Step 3: 选择并播放死亡动画（仅在配置启用时）
+	_pending_impact_direction = impact_direction
+	_pending_death_type = death_type
+	_current_phase = RagdollPhase.DEATH_ANIMATION
+
+	var played_animation := false
 	if _config.play_death_animation and _animator:
+		var death_anim: String = _select_death_animation(death_type)
 		_animator.stop()
 		_animator.active = true
 		if _animator.has_animation(death_anim):
 			_animator.play(death_anim)
 			death_animation_started.emit(death_anim)
 			GlobalLogger.info("RagdollSystem", "Death animation started: %s" % death_anim)
-			has_death_animation = true
+			played_animation = true
 		else:
-			# 动画库中无此动画，直接跳过动画阶段入物理
 			GlobalLogger.warn("RagdollSystem", "Death animation not found: %s, entering physics directly." % death_anim)
 
-	# Step 4: 设置阶段及过渡定时器
-	_pending_impact_direction = impact_direction
-	_pending_death_type = death_type
-
-	if not has_death_animation:
-		# 无死亡动画（或已禁用），直接进入物理阶段
-		_current_phase = RagdollPhase.DEATH_ANIMATION
-		_start_physics_phase()
-	else:
-		_current_phase = RagdollPhase.DEATH_ANIMATION
+	# Step 4: 有动画则等待计时器，否则立即进入物理阶段
+	if played_animation:
 		_death_anim_timer = _config.death_anim_to_ragdoll_time
 		set_process(true)
+	else:
+		_start_physics_phase()
 
 	ragdoll_enabled.emit()
 	GlobalLogger.info("RagdollSystem", "Ragdoll sequence started (type: %d)" % death_type)
@@ -312,11 +294,11 @@ func _create_physical_bones() -> void:
 			_configure_cone_joint(phys_bone, bone_name)
 
 		# 刚体阻尼（增大防止骨骼过度震荡）
-		phys_bone.set("linear_damp", _config.linear_damping)
-		phys_bone.set("angular_damp", _config.angular_damping)
+		phys_bone.set("linear_damp", _get_bone_override(_config.bone_linear_damping_overrides, bone_name, _config.linear_damping))
+		phys_bone.set("angular_damp", _get_bone_override(_config.bone_angular_damping_overrides, bone_name, _config.angular_damping))
 
 		# 质量
-		phys_bone.set("mass", _config.mass)
+		phys_bone.set("mass", _get_bone_override(_config.bone_mass_overrides, bone_name, _config.mass))
 
 		# 碰撞层：骨骼只在第2层，不与第1层（含玩家胶囊体）碰撞
 		# 仅与第1层环境几何体碰撞
@@ -410,7 +392,10 @@ func _configure_cone_joint(physical_bone: PhysicalBone3D, bone_name: String) -> 
 	physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
 	var swing_span := 45.0
 	var twist_span := 25.0
-	if "ForeArm" in bone_name or "Leg" in bone_name and not "UpLeg" in bone_name:
+	if "Foot" in bone_name:
+		swing_span = 20.0
+		twist_span = 5.0
+	elif "ForeArm" in bone_name or "Leg" in bone_name and not "UpLeg" in bone_name:
 		swing_span = 35.0
 		twist_span = 12.0
 	elif "Shoulder" in bone_name or "Arm" in bone_name or "UpLeg" in bone_name:
@@ -466,6 +451,13 @@ func _is_bone_excluded(bone_name: String) -> bool:
 		if bone_name.contains(keyword):
 			return true
 	return false
+
+## 从覆盖字典中按骨骼名关键词查找覆盖值，未匹配则返回 default_value
+func _get_bone_override(overrides: Dictionary, bone_name: String, default_value: float) -> float:
+	for keyword in overrides:
+		if bone_name.contains(str(keyword)):
+			return float(overrides[keyword])
+	return default_value
 
 # 私有 — 阶段切换 ──────────────────────────────────────────
 

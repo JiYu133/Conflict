@@ -1,15 +1,15 @@
 [remap]
 
-importer="scene"
+importer="animation_library"
 importer_version=1
-type="PackedScene"
+type="AnimationLibrary"
 uid="uid://b7w6nmeq8l5l8"
-path="res://.godot/imported/idle crouching aiming.fbx-205dac139db170d8e7e9782ced9c9dff.scn"
+path="res://.godot/imported/idle crouching aiming.fbx-205dac139db170d8e7e9782ced9c9dff.res"
 
 [deps]
 
 source_file="res://res/animations/player/idle crouching aiming.fbx"
-dest_files=["res://.godot/imported/idle crouching aiming.fbx-205dac139db170d8e7e9782ced9c9dff.scn"]
+dest_files=["res://.godot/imported/idle crouching aiming.fbx-205dac139db170d8e7e9782ced9c9dff.res"]
 
 [params]
 
