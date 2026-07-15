@@ -1,0 +1,216 @@
+================================================================================
+CONFLICT — MEDICAL & DAMAGE SYSTEM — PROPOSED STRUCTURE
+Author: Claude (Opus 4.8)   |   For: JiYu final review
+Branch context: feat/camera-and-ragdoll-system (synced @ 804f0db)
+================================================================================
+
+0. DECISION SUMMARY (driven by README)
+--------------------------------------------------------------------------------
+README states the game is a realism-first tactical FPS ("在真实性与游戏性之间
+优先选择前者") and the roadmap lists ONE combined item: "医疗与伤害系统"
+(Medical AND Damage system), with "多人网络同步" (networking) as a LATER item.
+
+Therefore:
+  * FIDELITY = simulationist / ACE-style. No single HP bar, no passive regen.
+    Core = limb-localized wounds + blood volume + bleeding + tourniquet/bandage
+    + unconsciousness/bleed-out. Deeper physiology (fractures, pain/morphine,
+    IV fluids, cardiac arrest/CPR) is designed INTO the data model as later
+    phases, not gated into P1.
+  * SCOPE = includes the DAMAGE pipeline (the roadmap names both halves).
+    Two cooperating layers, cleanly decoupled:
+       - Combat/hit layer: projectile + living-body per-part hitboxes -> builds
+         a DamageInfo.
+       - Medical layer: HealthSystem consumes DamageInfo, owns vitals/treatment/
+         death. Health NEVER references weapons.
+  * NETWORKING = no netcode today, but single-intake apply_damage() keeps a
+    server-authoritative move cheap later.
+
+GREENFIELD CONFIRMATION (verified against the codebase):
+  * No health/damage/wound code exists anywhere.
+  * Weapons simulate the mechanism only (bolt/gas/muzzle_velocity/recoil);
+    _fire_one_round() just emits `fired` + applies recoil. No projectile, no
+    damage stat.
+  * Death is binary via BasePlayer.die(death_type, impact_direction), currently
+    reachable only from debug keys T/Y/U.
+  * Reusable assets already present: PlayerRagdollSystem.DeathType enum and the
+    ragdoll death pipeline; per-bone colliders (layer 2) built at death.
+
+
+1. DESIGN PRINCIPLES
+--------------------------------------------------------------------------------
+  1) ONE INTAKE POINT. All harm flows through HealthSystem.apply_damage(DamageInfo).
+     Nothing mutates vitals directly. (Also the seam for future net authority.)
+  2) MEDICAL OWNS VITALS, NOT HIT DETECTION. Weapons/projectiles/melee build a
+     DamageInfo and hand it in; detection is a separate layer.
+  3) REUSE THE RAGDOLL DEATH PATH. Fatal vitals -> map lethal wound to the
+     existing DeathType -> call existing BasePlayer.die(). No new death rendering.
+  4) INCAPACITATION != DEATH. UNCONSCIOUS state sets controllable = false WITHOUT
+     is_alive = false, so the existing revive() can bring a downed player back.
+  5) DAMAGE IS DERIVED, NOT AUTHORED. Ballistic damage from kinetic energy
+     (0.5 * mass * velocity^2), matching the ethos of the existing gas/bolt sim,
+     instead of a flat "damage" number.
+  6) MATCH HOUSE STYLE. Subsystem Node on BasePlayer, Resource configs referenced
+     from PlayerConfig, GlobalLogger tags, doc-commented signals, enums, bilingual
+     (ZH/EN) comments, snake_case / PascalCase / _private conventions.
+
+
+2. FILE LAYOUT
+--------------------------------------------------------------------------------
+Classes/Player/Medical/
+  health_system.gd          # class_name HealthSystem  — subsystem orchestrator
+  vitals_model.gd           # class_name VitalsModel   — pure data: parts, blood, pain, consciousness
+  body_part.gd              # class_name BodyPart      — one part: id, hp/max, wounds[]
+  wound.gd                  # class_name Wound (RefCounted) — type, severity, bleed_rate, bandaged/sutured
+  damage_info.gd            # class_name DamageInfo (RefCounted) — one harm event payload
+  medical_treatment.gd      # class_name MedicalTreatmentController — applies items to parts
+  health_config.gd          # class_name HealthConfig       extends Resource
+  medical_item_config.gd    # class_name MedicalItemConfig  extends Resource — per-item effect data
+
+Classes/Combat/
+  projectile.gd             # class_name Projectile — hitscan now (penetration-aware); drag/drop later
+  hit_resolver.gd           # class_name HitResolver — ray/area hit -> BodyPartId + world dir + energy
+  body_hitbox.gd            # class_name BodyHitbox (Area3D) — per-part, bone-attached on LIVING body
+  ballistics.gd             # class_name Ballistics — KE = 0.5*m*v^2, retained energy through tissue
+
+Classes/Weapon/Weapon/
+  ammo_ballistics_config.gd # class_name AmmoBallisticsConfig — projectile_mass(g) + reuse muzzle_velocity
+
+Config resources (res/config/player/, res/config/combat/):
+  health_config_default.tres, medical items table, ammo ballistics table.
+
+Docs (matching docs/ convention):
+  docs/player/MedicalSystem.md, docs/combat/DamageSystem.md
+
+
+3. ENUMS  (shared; on HealthSystem or a Medical namespace)
+--------------------------------------------------------------------------------
+  enum BodyPartId  { HEAD, TORSO, LEFT_ARM, RIGHT_ARM, LEFT_LEG, RIGHT_LEG }
+  enum DamageType  { BULLET, EXPLOSION, FRAGMENT, MELEE, FALL, FIRE }
+  enum HealthState { HEALTHY, INJURED, CRITICAL, UNCONSCIOUS, DEAD }
+  enum TreatmentType { BANDAGE, TOURNIQUET, MORPHINE, EPINEPHRINE, BLOOD_BAG, SPLINT }
+
+
+4. CORE PAYLOAD
+--------------------------------------------------------------------------------
+  class_name DamageInfo extends RefCounted
+    var amount: float            # derived from ballistic energy, not authored
+    var type: DamageType
+    var body_part: BodyPartId    # or resolved from hit_position when unknown
+    var direction: Vector3       # world-space; drives DeathType + ragdoll impulse
+    var hit_position: Vector3
+    var source: Node             # attacker / weapon (logging & scoring)
+    var is_penetrating: bool
+
+
+5. HealthSystem PUBLIC SURFACE
+--------------------------------------------------------------------------------
+  func initialize(player: BasePlayer, config: HealthConfig) -> void
+  func apply_damage(info: DamageInfo) -> void          # THE one intake point
+  func apply_treatment(t: TreatmentType, part: BodyPartId) -> bool
+  func get_blood_pct() -> float
+  func get_part_health(part: BodyPartId) -> float
+  func get_state() -> HealthState
+
+  signal damage_taken(info: DamageInfo)
+  signal part_state_changed(part: BodyPartId, hp: float)
+  signal bleeding_changed(total_rate: float)
+  signal blood_changed(pct: float)
+  signal state_changed(new_state: HealthState)
+  signal went_unconscious
+  signal died(death_type: PlayerRagdollSystem.DeathType)
+
+  Bleeding/pain tick in _physics_process (or a 0.25 s timer) off VitalsModel.
+
+
+6. THE DEATH BRIDGE (reuses existing code — key integration)
+--------------------------------------------------------------------------------
+  # fatal wound -> existing DeathType -> existing BasePlayer.die() -> ragdoll
+  func _resolve_death_type(fatal: Wound, dir: Vector3) -> PlayerRagdollSystem.DeathType:
+      var facing := _player.global_basis.z         # -Z is forward
+      var from_front := dir.dot(facing) > 0.0
+      match fatal.part:
+          BodyPartId.HEAD:
+              return DeathType.FRONT_HEADSHOT if from_front else DeathType.BACK_HEADSHOT
+          _:
+              if fatal.type == DamageType.EXPLOSION: return DeathType.EXPLOSION
+              return DeathType.FRONT if from_front else DeathType.BACK
+
+  The medical model produces exactly the inputs die(death_type, impact_direction)
+  already consumes — no ragdoll changes needed. CROUCHING_HEADSHOT wires up once a
+  crouch state exists (parked, per "designed later").
+
+
+7. BALLISTIC DAMAGE (realism differentiator; leans on existing weapon sim)
+--------------------------------------------------------------------------------
+  * WeaponConfig already carries muzzle_velocity + barrel_length. Add an
+    AmmoBallisticsConfig with projectile_mass (g).
+  * DamageInfo.amount = f(kinetic_energy_at_impact, body_part, penetration),
+    energy = 0.5 * mass * velocity^2. 7.62 vs 5.45 differences fall out of
+    mass/velocity — no per-weapon damage authoring.
+  * Range falloff and over-penetration (exit wound at reduced energy) are P2/P3
+    knobs, not P1.
+  * EjectionComponent already handles casings; Projectile is the actual bullet
+    (genuinely new). Start hitscan; projectile-with-drag is a later swap behind
+    the same HitResolver output.
+  * Living-body hitboxes (BodyHitbox) reuse the SAME bone->BodyPartId map the
+    ragdoll builds per-bone colliders from — one mapping, two consumers
+    (alive = BodyHitbox, dead = ragdoll bones).
+
+
+8. INTEGRATION POINTS (concrete)
+--------------------------------------------------------------------------------
+  * BasePlayer._initialize_subsystems(): add
+      health_system = _create_subsystem(HealthSystem.new(), "HealthSystem")
+    and initialize with player_config.health_config.
+  * BasePlayer.die(): stays the terminal ragdoll trigger, but is now CALLED BY
+    HealthSystem instead of directly. Debug keys T/Y/U change to apply_damage()
+    with a lethal DamageInfo, so they exercise the real pipeline.
+  * PlayerConfig: add @export var health_config: HealthConfig (+ item / ballistics
+    tables).
+  * Weapons: base_weapon._fire_one_round() originates a Projectile that builds a
+    DamageInfo via HitResolver + Ballistics.
+  * Movement/aim (P4): leg wound -> speed multiplier hook in
+    PlayerMovementController; arm wound -> sway hook in the camera/weapon path.
+  * HUD (P4): HealthHUD rides on JiYu's new UI-card system (Classes/ui/key_prompt_*).
+
+
+9. STATE TRANSITIONS
+--------------------------------------------------------------------------------
+  HEALTHY   -> INJURED       any part damaged
+  INJURED   -> CRITICAL      blood < threshold OR vital part (head/torso) low
+  CRITICAL  -> UNCONSCIOUS   incapacitated, revivable (controllable off, alive true)
+  CRITICAL  -> DEAD          head/torso destroyed OR blood == 0
+  UNCONSCIOUS -> DEAD        untreated bleed-out
+  UNCONSCIOUS -> INJURED     stabilized (epinephrine + bleeding stopped)
+
+
+10. PHASED ROLLOUT (realism-first ordering)
+--------------------------------------------------------------------------------
+  P1 — Damage->death loop, simulationist core.
+       HealthSystem + VitalsModel (per-part HP + blood volume), apply_damage(),
+       bleeding tick, hitscan Projectile + per-part hitboxes, ballistic energy ->
+       wound, death bridge to existing DeathType/ragdoll. Debug keys fire real
+       DamageInfo instead of calling die().
+  P2 — Wound realism.
+       Multiple wounds/part, over-penetration/exit, direction-accurate DeathType,
+       bleeding severity tiers.
+  P3 — Down, not dead.
+       UNCONSCIOUS + bleed-out timer + teammate revive; treatment items
+       (bandage, tourniquet, epinephrine, blood bag).
+  P4 — Physiology + feedback.
+       Limp/aim penalties, pain/morphine, fractures/splint, IV fluids/cardiac,
+       HealthHUD.
+
+
+11. OPEN NOTES FOR JIYU
+--------------------------------------------------------------------------------
+  * Networking: designed for later server authority via the single intake point;
+    not implemented now (matches roadmap ordering).
+  * Regen: default NONE (treatment-only) to match the sim lean; toggle in
+    HealthConfig if desired.
+  * Living-body hitboxes are new work (ragdoll colliders only exist post-death);
+    the bone->part map is shared to avoid divergence.
+  * Suggested deliverable: docs/player/MedicalSystem.md + docs/combat/DamageSystem.md
+    plus class_name skeletons (signals + method signatures, no logic) so the API
+    surface can be reviewed directly.
+================================================================================
