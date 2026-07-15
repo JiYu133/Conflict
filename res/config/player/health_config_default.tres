@@ -6,3 +6,9 @@
 [resource]
 script = ExtResource("1_healthcfg")
 hitbox_config = ExtResource("2_hitboxcfg")
+ke_per_severity_unit = 1200.0
+torso_lethal_severity = 1.5
+torso_cumulative_lethal = 2.0
+head_lethal_severity = 0.6
+head_cumulative_lethal = 1.0
+immediate_blood_loss_per_severity = 150.0

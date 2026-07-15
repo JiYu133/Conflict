@@ -9,26 +9,26 @@ class_name MedicalEnums
 
 ## 身体部位 ID（10 部位：头、躯干、上臂×2、前臂×2、大腿×2、小腿×2）
 enum BodyPartId {
-	HEAD,
-	TORSO,
-	LEFT_UPPER_ARM,
-	LEFT_FOREARM,
-	RIGHT_UPPER_ARM,
-	RIGHT_FOREARM,
-	LEFT_THIGH,
-	LEFT_CALF,
-	RIGHT_THIGH,
-	RIGHT_CALF,
+	HEAD,            ## 头部：单发高 severity 即致命，爆头判定来源
+	TORSO,           ## 躯干：累积伤最高容忍度，多发也可致命
+	LEFT_UPPER_ARM,  ## 左上臂
+	LEFT_FOREARM,    ## 左前臂
+	RIGHT_UPPER_ARM, ## 右上臂
+	RIGHT_FOREARM,   ## 右前臂
+	LEFT_THIGH,      ## 左大腿：含股动脉，动脉出血阈值与头/躯干相同
+	LEFT_CALF,       ## 左小腿
+	RIGHT_THIGH,     ## 右大腿：同左大腿
+	RIGHT_CALF,      ## 右小腿
 }
 
-## 伤害类型
+## 伤害类型（决定 WoundType 分类和部分特殊处理逻辑）
 enum DamageType {
-	BULLET,
-	EXPLOSION,
-	FRAGMENT,
-	MELEE,
-	FALL,
-	FIRE,
+	BULLET,     ## 子弹：生成 PENETRATING 伤口
+	EXPLOSION,  ## 爆炸冲击波：生成 BLAST_TRAUMA 伤口，死亡动画优先使用 EXPLOSION DeathType
+	FRAGMENT,   ## 破片：当前同 BULLET 处理（P2 差异化）
+	MELEE,      ## 近战：生成 BLUNT_TRAUMA 伤口
+	FALL,       ## 坠落：生成 BLUNT_TRAUMA 伤口
+	FIRE,       ## 火焰：P4 BURN 伤口，当前同 BLUNT_TRAUMA 处理
 }
 
 ## 玩家整体生理状态（驱动 HUD 显示和行动能力）
@@ -37,7 +37,7 @@ enum HealthState {
 	INJURED,      ## 受伤，仍可行动
 	CRITICAL,     ## 严重失血或关键部位受创，运动受限（P4 乘数生效）
 	UNCONSCIOUS,  ## 失去意识；controllable = false，is_alive = true（P3）
-	DEAD,
+	DEAD,         ## 死亡；触发 ragdoll 和死亡屏幕
 }
 
 ## 伤口类型

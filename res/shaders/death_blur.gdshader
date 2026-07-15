@@ -9,24 +9,23 @@ uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
 void fragment() {
 	if (blur_amount < 0.001) {
 		COLOR = vec4(0.0);
-		return;
+	} else {
+		vec2 ps = SCREEN_PIXEL_SIZE * blur_amount;
+		vec4 col = vec4(0.0);
+
+		// 3×3 高斯核，权重归一化
+		float w0 = 0.36, w1 = 0.12, w2 = 0.04;
+		col += texture(screen_texture, SCREEN_UV + vec2(-2.0, -2.0) * ps) * w2;
+		col += texture(screen_texture, SCREEN_UV + vec2( 0.0, -2.0) * ps) * w1;
+		col += texture(screen_texture, SCREEN_UV + vec2( 2.0, -2.0) * ps) * w2;
+		col += texture(screen_texture, SCREEN_UV + vec2(-2.0,  0.0) * ps) * w1;
+		col += texture(screen_texture, SCREEN_UV + vec2( 0.0,  0.0) * ps) * w0;
+		col += texture(screen_texture, SCREEN_UV + vec2( 2.0,  0.0) * ps) * w1;
+		col += texture(screen_texture, SCREEN_UV + vec2(-2.0,  2.0) * ps) * w2;
+		col += texture(screen_texture, SCREEN_UV + vec2( 0.0,  2.0) * ps) * w1;
+		col += texture(screen_texture, SCREEN_UV + vec2( 2.0,  2.0) * ps) * w2;
+
+		// alpha 控制叠加强度，由 GDScript 通过 modulate.a 驱动
+		COLOR = vec4(col.rgb, 1.0);
 	}
-
-	vec2 ps = SCREEN_PIXEL_SIZE * blur_amount;
-	vec4 col = vec4(0.0);
-
-	// 3×3 高斯核，权重归一化
-	float w0 = 0.36, w1 = 0.12, w2 = 0.04;
-	col += texture(screen_texture, SCREEN_UV + vec2(-2.0, -2.0) * ps) * w2;
-	col += texture(screen_texture, SCREEN_UV + vec2( 0.0, -2.0) * ps) * w1;
-	col += texture(screen_texture, SCREEN_UV + vec2( 2.0, -2.0) * ps) * w2;
-	col += texture(screen_texture, SCREEN_UV + vec2(-2.0,  0.0) * ps) * w1;
-	col += texture(screen_texture, SCREEN_UV + vec2( 0.0,  0.0) * ps) * w0;
-	col += texture(screen_texture, SCREEN_UV + vec2( 2.0,  0.0) * ps) * w1;
-	col += texture(screen_texture, SCREEN_UV + vec2(-2.0,  2.0) * ps) * w2;
-	col += texture(screen_texture, SCREEN_UV + vec2( 0.0,  2.0) * ps) * w1;
-	col += texture(screen_texture, SCREEN_UV + vec2( 2.0,  2.0) * ps) * w2;
-
-	// alpha 控制叠加强度，由 GDScript 通过 modulate.a 驱动
-	COLOR = vec4(col.rgb, 1.0);
 }

@@ -257,8 +257,8 @@ func _spawn_hit_marker(pos: Vector3) -> void:
 	mat.flags_transparent = true
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mesh_inst.material_override = mat
-	mesh_inst.global_position = pos
 	_player.get_tree().current_scene.add_child(mesh_inst)
+	mesh_inst.global_position = pos
 
 	var tween := mesh_inst.create_tween()
 	tween.tween_interval(1.4)
