@@ -39,6 +39,7 @@ var foot_ik_controller: FootIKController
 var hand_ik_controller: HandIKController
 var weapon_manager: WeaponManager
 var animation_controller: PlayerAnimationController
+var health_system: HealthSystem
 var free_camera_controller: FreeCameraController
 
 # 信号
@@ -82,21 +83,23 @@ func _initialize_subsystems() -> void:
 	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
 	animation_controller = _create_subsystem(PlayerAnimationController.new(), "AnimationController")
-	
+	health_system = _create_subsystem(HealthSystem.new(), "HealthSystem")
+
 	# 初始化子系统
-	
+
 	camera_controller.initialize(
 		self,
 		model_manager,
 		player_config.model_config if player_config else null,
 		player_config.camera_config if player_config else null
 		)
-		
+
 	movement_controller.initialize(
-		self, 
-		player_config
+		self,
+		player_config,
+		camera_controller
 		)
-		
+
 	foot_ik_controller.initialize(
 		model_manager,
 		player_config.model_config if player_config else null
@@ -108,6 +111,11 @@ func _initialize_subsystems() -> void:
 		)
 
 	weapon_manager.set_camera_controller(camera_controller)
+
+	health_system.initialize(
+		self,
+		player_config.health_config if player_config else null
+		)
 
 	if OS.is_debug_build():
 		free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
@@ -122,7 +130,6 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 
 func _connect_signals() -> void:
 	model_manager.model_loaded.connect(_on_model_loaded)
-	ragdoll_system.ragdoll_physics_started.connect(_on_ragdoll_physics_started)
 	weapon_manager.weapon_changed.connect(_on_weapon_changed)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
@@ -133,15 +140,6 @@ func _connect_signals() -> void:
 	GlobalLogger.debug("Player", "Signals have been connected. ")
 
 
-func _on_ragdoll_physics_started() -> void:
-	if not player_config or not player_config.model_config:
-		GlobalLogger.warn("Player", "Cannot bind ragdoll camera without model lookup config")
-		return
-	var physical_head := ragdoll_system.find_physical_bone_by_names(
-		player_config.model_config.head_bone_names
-	)
-	camera_controller.follow_ragdoll_physical_bone(physical_head)
-		
 func _on_model_loaded(_model: Node3D) -> void:
 
 	# 初始化布娃娃系统（需要骨骼、动画系统及配置）
@@ -214,6 +212,11 @@ func _input(event: InputEvent) -> void:
 		else:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
+	if is_alive and controllable:
+		# 换弹
+		if event.is_action_pressed("reload"):
+			weapon_manager.reload()
+
 	if not OS.is_debug_build():
 		return
 
@@ -222,16 +225,18 @@ func _input(event: InputEvent) -> void:
 			KEY_F:
 				if free_camera_controller:
 					free_camera_controller.toggle()
-			KEY_T: die(PlayerRagdollSystem.DeathType.FRONT)
-			KEY_Y: die(PlayerRagdollSystem.DeathType.FRONT_HEADSHOT)
-			KEY_U: die(PlayerRagdollSystem.DeathType.EXPLOSION)
+			KEY_T:
+				if free_camera_controller:
+					free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.TORSO)
+			KEY_Y:
+				if free_camera_controller:
+					free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.HEAD)
+			KEY_U:
+				if free_camera_controller:
+					free_camera_controller.debug_shoot_explosion()
 
 
 func _on_started_sprinting() -> void:
-	# 进入冲刺时强制退出 ADS
-	if is_instance_valid(weapon_manager) and weapon_manager.is_aiming:
-		weapon_manager.set_aiming(false)
-		hand_ik_controller.set_ads_state(false)
 	hand_ik_controller.set_movement_state(true, true)
 
 
@@ -246,6 +251,9 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 	_set_collision_enabled(false)
 
 	camera_controller.disable_camera(model_manager.skeleton)
+	# 布娃娃物理启动后通知摄像机缓存 PhysicalBone3D
+	if not ragdoll_system.ragdoll_physics_started.is_connected(camera_controller.on_ragdoll_physics_started):
+		ragdoll_system.ragdoll_physics_started.connect(camera_controller.on_ragdoll_physics_started, CONNECT_ONE_SHOT)
 	ragdoll_system.enable(death_type, impact_direction)
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
 

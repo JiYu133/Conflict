@@ -15,9 +15,9 @@ extends Resource
 @export var walk_speed: float = 1.5
 ## 奔跑速度（m/s），负重士兵持续跑步约 3.5–4.0 m/s / Run speed in m/s
 @export var run_speed: float = 3.5
-## 全力冲刺速度（m/s），长按 Shift 激活 / Sprint speed in m/s
+## 全力冲刺速度（m/s），长按 Shift 激活，比奔跑更快 / Sprint speed in m/s
 @export var sprint_speed: float = 6.0
-## 触发冲刺所需的最短按压时长（秒），低于此值视为单击切换奔跑 / Hold duration to activate sprint vs. tap-to-toggle-run
+## 触发冲刺所需的最短按压时长（秒），低于此值视为单击切换奔跑 / Hold duration threshold to activate sprint vs. tap-to-toggle-run
 @export var sprint_hold_threshold: float = 0.25
 ## 地面加速度（m/s²），约 6 m/s² 使起步有明显惯性 / Ground acceleration in m/s²
 @export var ground_acceleration: float = 6.0
@@ -92,6 +92,8 @@ extends Resource
 @export var collision_shape_height: float = 1.8
 ## 碰撞胶囊体半径（m），约等于角色身体厚度 / Collision capsule radius in meters
 @export var collision_shape_radius: float = 0.4
+## 碰撞体 Y 轴偏移（m），正值上移，负值下移 / Collision shape Y offset in meters
+@export var collision_shape_y_offset: float = 0.0
 ## 模型垂直偏移（m），正值上移，负值下移。用于使模型脚部对齐胶囊体底部 / Model vertical offset to align feet with collision capsule bottom
 @export var model_y_offset: float = -0.5
 
@@ -117,3 +119,32 @@ extends Resource
 @export var walk_exit_speed_sq: float = 0.0225
 ## 落地恢复时间（秒），落地动画播放完毕后自动切回地面状态的等待时间 / Landing recovery time in seconds
 @export var land_recovery_time: float = 0.3
+
+# 蹲下 ──────────────────────────────────────────────────────
+@export_group("蹲下")
+## 蹲走速度（m/s）
+@export var crouch_speed: float = 1.0
+## 蹲下/站起过渡时间（秒）
+@export var crouch_transition_time: float = 0.35
+## 蹲下碰撞胶囊体高度（m）
+@export var crouch_capsule_height: float = 0.6
+## 站立时摄像机眼部高度（玩家局部 Y，从原点算）
+@export var camera_stand_eye_height: float = 1.6
+## 蹲下时摄像机眼部高度（玩家局部 Y，从原点算）
+@export var camera_crouch_eye_height: float = 1.0
+## 蹲下时模型 Y 轴偏移（让脚踩地，通常比 model_y_offset 更负）
+@export var crouch_y_offset: float = -0.85
+
+# 转身动画 ──────────────────────────────────────────────────
+@export_group("转身动画")
+## 是否启用转身动画（默认关闭）
+@export var turn_in_place_enabled: bool = false
+## 触发转身动画的朝向差阈值（度），超过此角度触发转身
+@export var turn_angle_threshold: float = 60.0
+## 低于此速度（m/s）时才能触发转身动画
+@export var turn_walk_speed_threshold: float = 1.2
+
+# 医疗配置 ─────────────────────────────────────────────────
+@export_group("医疗配置")
+## 医疗系统配置（留空则使用代码内默认值）/ Health system configuration (uses code defaults if empty)
+@export var health_config: HealthConfig

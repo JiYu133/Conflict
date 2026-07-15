@@ -22,6 +22,10 @@ signal started_sprinting
 ## 开始冲刺（长按 Shift，全力疾跑）
 signal stopped_sprinting
 ## 停止冲刺
+signal started_crouching
+## 开始蹲下
+signal stopped_crouching
+## 停止蹲下（站起）
 
 
 # 私有变量 ────────────────────────────────────────────────
@@ -30,15 +34,19 @@ var _config: PlayerConfig
 var _velocity: Vector3
 var _is_running: bool = false
 var _is_sprinting: bool = false
+var _is_crouching: bool = false
 var _was_on_floor: bool = true
 
-var _gait_phase: float = 0.0   # 步态相位（0~1 循环），每帧按步频累加
-var _burst_timer: float = 0.0  # 起步爆发剩余时间（秒）
-var _had_input: bool = false   # 上一帧是否有移动输入，用于检测起步边沿
+var _gait_phase: float = 0.0
+var _burst_timer: float = 0.0
+var _had_input: bool = false
 
-# Shift 按压状态跟踪
-var _shift_held_time: float = 0.0  # 本次连续按压时长（秒）
-var _shift_was_held: bool = false   # 上帧 Shift 状态（沿检测用）
+var _shift_held_time: float = 0.0
+var _shift_was_held: bool = false
+
+var _crouch_tween: Tween = null
+var _collision_shape: CollisionShape3D = null
+var _camera_controller: PlayerCameraController = null
 
 
 func is_running() -> bool:
@@ -47,6 +55,9 @@ func is_running() -> bool:
 func is_sprinting() -> bool:
 	return _is_sprinting
 
+func is_crouching() -> bool:
+	return _is_crouching
+
 func get_max_speed() -> float:
 	if not _config:
 		return 4.0
@@ -54,12 +65,15 @@ func get_max_speed() -> float:
 		return _config.sprint_speed
 	if _is_running:
 		return _config.run_speed
+	if _is_crouching:
+		return _config.crouch_speed
 	return _config.walk_speed
 
 
-func initialize(player: BasePlayer, config: PlayerConfig) -> void:
+func initialize(player: BasePlayer, config: PlayerConfig, camera_controller: PlayerCameraController) -> void:
 	_player = player
 	_config = config
+	_camera_controller = camera_controller
 	_velocity = Vector3.ZERO
 
 
@@ -85,46 +99,65 @@ func _physics_process(delta: float) -> void:
 	var shift_held := Input.is_action_pressed("sprint")
 	var has_forward := Input.is_action_pressed("move_forward")
 
-	# 下降沿：Shift 刚松开
-	if _shift_was_held and not shift_held:
-		var threshold := _config.sprint_hold_threshold if _config else 0.25
-		if _shift_held_time < threshold:
-			# 短按 → 切换 Run
-			if _is_sprinting:
-				_exit_sprint()
+	if _is_crouching:
+		# 蹲下时 Shift + 有移动输入 → 尝试站起，站起后下一帧正常触发 run/sprint
+		if shift_held and has_input:
+			_try_stand_up()
+		# 蹲下时不进入任何 run/sprint 逻辑，重置计时器防止状态泄漏
+		_shift_held_time = 0.0
+		_shift_was_held = shift_held
+	else:
+		# 下降沿：Shift 刚松开
+		if _shift_was_held and not shift_held:
+			var threshold := _config.sprint_hold_threshold if _config else 0.25
+			if _shift_held_time < threshold:
+				# 短按 → 切换 Run（不触发 Sprint）
+				if _is_sprinting:
+					_exit_sprint()
+				else:
+					_toggle_run()
 			else:
-				_toggle_run()
+				# 长按松开 → 退出 Sprint
+				if _is_sprinting:
+					_exit_sprint()
+			_shift_held_time = 0.0
+		# 上升沿：Shift 刚按下，重置计时
+		elif not _shift_was_held and shift_held:
+			_shift_held_time = 0.0
+		# 持续按住：累计时间，达到阈值后激活 Sprint
+		elif shift_held:
+			_shift_held_time += delta
+			var threshold := _config.sprint_hold_threshold if _config else 0.25
+			if _shift_held_time >= threshold and has_forward and not _is_sprinting:
+				_enter_sprint()
+
+		_shift_was_held = shift_held
+
+		# Sprint 失去前进输入时自动退出
+		if _is_sprinting and not has_forward:
+			_exit_sprint()
+
+	# ──────────────────────────────────────────────────────
+	# 蹲下切换（C 键）
+	# ──────────────────────────────────────────────────────
+	if Input.is_action_just_pressed("crouch"):
+		if _is_crouching:
+			_try_stand_up()
 		else:
-			# 长按松开 → 退出 Sprint
-			if _is_sprinting:
-				_exit_sprint()
-		_shift_held_time = 0.0
-	# 上升沿：Shift 刚按下，重置计时
-	elif not _shift_was_held and shift_held:
-		_shift_held_time = 0.0
-	# 持续按住：累计时间，达到阈值后激活 Sprint
-	elif shift_held:
-		_shift_held_time += delta
-		var threshold := _config.sprint_hold_threshold if _config else 0.25
-		if _shift_held_time >= threshold and has_forward and not _is_sprinting:
-			_enter_sprint()
-
-	_shift_was_held = shift_held
-
-	# Sprint 失去前进输入时自动退出
-	if _is_sprinting and not has_forward:
-		_exit_sprint()
+			_enter_crouch()
 
 	# ──────────────────────────────────────────────────────
 	# 3. 地面水平速度
 	# ──────────────────────────────────────────────────────
 	if _player.is_on_floor():
-		# 3a. 确定基础目标速度
+		# 3a. 确定基础目标速度（与 get_max_speed() 保持一致的优先级）
 		var speed: float
 		if _is_sprinting:
 			speed = _config.sprint_speed
 		elif _is_running:
 			speed = _config.run_speed
+		elif _is_crouching:
+			speed = _config.crouch_speed
 		else:
 			speed = _config.walk_speed
 
@@ -215,7 +248,7 @@ func _physics_process(delta: float) -> void:
 	# ──────────────────────────────────────────────────────
 	# 5. 跳跃（不变）
 	# ──────────────────────────────────────────────────────
-	if Input.is_action_just_pressed("jump") and _player.is_on_floor():
+	if Input.is_action_just_pressed("jump") and _player.is_on_floor() and not _is_crouching:
 		_velocity.y = _config.jump_force
 		jumped.emit()
 
@@ -277,3 +310,80 @@ func _enter_sprint() -> void:
 func _exit_sprint() -> void:
 	_is_sprinting = false
 	stopped_sprinting.emit()
+
+
+# ──────────────────────────────────────────────────────
+# 蹲下辅助方法
+# ──────────────────────────────────────────────────────
+
+func _enter_crouch() -> void:
+	if not _player.is_on_floor():
+		return
+	_is_crouching = true
+	if _is_sprinting:
+		_exit_sprint()
+	if _is_running:
+		_is_running = false
+		stopped_running.emit()
+	started_crouching.emit()
+	_animate_crouch(true)
+	if _camera_controller:
+		_camera_controller.set_crouch_state(true, _config)
+
+
+func _try_stand_up() -> void:
+	if not _player.is_on_floor():
+		return
+	if _is_blocked_above():
+		return
+	_is_crouching = false
+	stopped_crouching.emit()
+	_animate_crouch(false)
+	if _camera_controller:
+		_camera_controller.set_crouch_state(false, _config)
+
+
+func _is_blocked_above() -> bool:
+	if not _player or not _config:
+		return false
+	# 需要的净空高度 = 站立碰撞体高度 - 蹲下高度
+	var clearance: float = _config.collision_shape_height - _config.crouch_capsule_height
+	if clearance <= 0.0:
+		return false
+	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
+	var params := PhysicsRayQueryParameters3D.new()
+	params.from = _player.global_position + Vector3.UP * _config.crouch_capsule_height
+	params.to = _player.global_position + Vector3.UP * _config.collision_shape_height
+	params.exclude = [_player.get_rid()]
+	var result := space.intersect_ray(params)
+	return result.size() > 0
+
+
+func _animate_crouch(crouching: bool) -> void:
+	# 懒加载碰撞体（model_manager 在 initialize 之后才创建它）
+	if not is_instance_valid(_collision_shape):
+		for child in _player.get_children():
+			if child is CollisionShape3D:
+				_collision_shape = child
+				break
+	if not _collision_shape or not (_collision_shape.shape is CapsuleShape3D):
+		return
+
+	var shape := _collision_shape.shape as CapsuleShape3D
+	var duration: float = _config.crouch_transition_time if _config else 0.35
+	var target_height := _config.crouch_capsule_height if crouching else _config.collision_shape_height
+	var target_model_y := _config.crouch_y_offset if crouching else _config.model_y_offset
+
+	if _crouch_tween and _crouch_tween.is_running():
+		_crouch_tween.kill()
+
+	_crouch_tween = _player.create_tween()
+	_crouch_tween.set_ease(Tween.EASE_IN_OUT)
+	_crouch_tween.set_trans(Tween.TRANS_SINE)
+	_crouch_tween.set_parallel(true)
+	_crouch_tween.tween_property(shape, "height", target_height, duration)
+
+	# 同步模型 Y，让脚底贴地
+	var model_node: Node3D = _player.model_manager.model_node if _player.model_manager else null
+	if model_node:
+		_crouch_tween.tween_property(model_node, "position:y", target_model_y, duration)

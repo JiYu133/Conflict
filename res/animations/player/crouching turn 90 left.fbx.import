@@ -1,15 +1,15 @@
 [remap]
 
-importer="scene"
+importer="animation_library"
 importer_version=1
-type="PackedScene"
+type="AnimationLibrary"
 uid="uid://ckjb0gw7dulps"
-path="res://.godot/imported/crouching turn 90 left.fbx-056ca9bb843c9c572eecf6f9df8f9700.scn"
+path="res://.godot/imported/crouching turn 90 left.fbx-056ca9bb843c9c572eecf6f9df8f9700.res"
 
 [deps]
 
 source_file="res://res/animations/player/crouching turn 90 left.fbx"
-dest_files=["res://.godot/imported/crouching turn 90 left.fbx-056ca9bb843c9c572eecf6f9df8f9700.scn"]
+dest_files=["res://.godot/imported/crouching turn 90 left.fbx-056ca9bb843c9c572eecf6f9df8f9700.res"]
 
 [params]
 

@@ -133,5 +133,10 @@ extends Resource
 # 以下字段是预留的弹药类型配置，后续需要实现弹种切换功能时启用
 # ============================================================
 # @export var bullet_type: String = "fmj"              # 弹种：fmj（全被甲）/ hp（空尖）/ ap（穿甲）
-# @export var bullet_mass: float = 0.0034              # 弹头质量，单位：kg
 # @export var ballistic_coefficient: float = 0.3       # 弹道系数（BC），用于远距离弹道下坠计算
+
+# 弹道学参数 ────────────────────────────────────────────────
+@export_group("弹道学参数 / Ballistics")
+## 子弹质量（克）；用于弹道动能计算 KE = 0.5 × m × v²
+## 5.45×39mm 弹头约 3.4–5.2 g；7.62×39mm 约 7.9–8.0 g
+@export var bullet_mass_g: float = 5.2

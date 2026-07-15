@@ -150,9 +150,10 @@ func _build_wound(info: DamageInfo, severity: float, region: BodyRegion) -> Woun
 	return w
 
 func _classify_bleed(severity: float, part: MedicalEnums.BodyPartId) -> MedicalEnums.BleedRate:
-	# 头部和躯干的伤口更容易触发动脉出血
 	var is_vital: bool = part in [MedicalEnums.BodyPartId.HEAD, MedicalEnums.BodyPartId.TORSO]
-	if severity >= 0.6 and is_vital:
+	# 大腿动脉出血阈值更低（股动脉）
+	var is_thigh: bool = part in [MedicalEnums.BodyPartId.LEFT_THIGH, MedicalEnums.BodyPartId.RIGHT_THIGH]
+	if severity >= 0.6 and (is_vital or is_thigh):
 		return MedicalEnums.BleedRate.ARTERIAL
 	elif severity >= 0.4:
 		return MedicalEnums.BleedRate.VENOUS
@@ -296,22 +297,17 @@ func _create_hitboxes() -> void:
 	# 骨骼名称 → 身体部位映射（使用实际骨骼名称：mixamorig_）
 	# 扩展：躯干分为胸部和腹部，手臂和腿分为前后两段
 	var bone_mapping: Dictionary = {
-		"mixamorig_Head": MedicalEnums.BodyPartId.HEAD,
-		# 躯干：胸部 + 腹部
-		"mixamorig_Spine2": MedicalEnums.BodyPartId.TORSO,
-		"mixamorig_Spine1": MedicalEnums.BodyPartId.TORSO,
-		# 左臂：上臂 + 前臂
-		"mixamorig_LeftArm": MedicalEnums.BodyPartId.LEFT_ARM,
-		"mixamorig_LeftForeArm": MedicalEnums.BodyPartId.LEFT_ARM,
-		# 右臂：上臂 + 前臂
-		"mixamorig_RightArm": MedicalEnums.BodyPartId.RIGHT_ARM,
-		"mixamorig_RightForeArm": MedicalEnums.BodyPartId.RIGHT_ARM,
-		# 左腿：大腿 + 小腿
-		"mixamorig_LeftUpLeg": MedicalEnums.BodyPartId.LEFT_LEG,
-		"mixamorig_LeftLeg": MedicalEnums.BodyPartId.LEFT_LEG,
-		# 右腿：大腿 + 小腿
-		"mixamorig_RightUpLeg": MedicalEnums.BodyPartId.RIGHT_LEG,
-		"mixamorig_RightLeg": MedicalEnums.BodyPartId.RIGHT_LEG,
+		"mixamorig_Head":        MedicalEnums.BodyPartId.HEAD,
+		"mixamorig_Spine2":      MedicalEnums.BodyPartId.TORSO,
+		"mixamorig_Spine1":      MedicalEnums.BodyPartId.TORSO,
+		"mixamorig_LeftArm":     MedicalEnums.BodyPartId.LEFT_UPPER_ARM,
+		"mixamorig_LeftForeArm": MedicalEnums.BodyPartId.LEFT_FOREARM,
+		"mixamorig_RightArm":    MedicalEnums.BodyPartId.RIGHT_UPPER_ARM,
+		"mixamorig_RightForeArm":MedicalEnums.BodyPartId.RIGHT_FOREARM,
+		"mixamorig_LeftUpLeg":   MedicalEnums.BodyPartId.LEFT_THIGH,
+		"mixamorig_LeftLeg":     MedicalEnums.BodyPartId.LEFT_CALF,
+		"mixamorig_RightUpLeg":  MedicalEnums.BodyPartId.RIGHT_THIGH,
+		"mixamorig_RightLeg":    MedicalEnums.BodyPartId.RIGHT_CALF,
 	}
 
 	# 为每个部位创建碰撞盒

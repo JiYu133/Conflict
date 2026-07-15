@@ -36,3 +36,5 @@ extends Resource
 @export_group("头显偏移")
 ## 头部位置偏移（局部坐标），靠前可减少贴脸感 / Head position offset in local space
 @export var head_offset: Vector3 = Vector3(0.07, 0.1, -0.15)
+## 布娃娃死亡时摄像机在头骨骼局部空间的偏移，把镜头从骨骼关节移到眼睛位置
+@export var ragdoll_eye_offset: Vector3 = Vector3(0.0, 0.06, 0.08)

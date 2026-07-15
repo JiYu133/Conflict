@@ -2,6 +2,7 @@ class_name TopRightNotificationCard
 extends Control
 
 signal dismissed(notification_id: StringName)
+signal enter_finished
 
 var entry: TopRightNotificationEntry
 var _config: TopRightNotificationConfig
@@ -48,6 +49,8 @@ func play_enter() -> void:
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tween.tween_property(_panel, "modulate:a", 1.0, _config.slide_in_duration * 0.75) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	await tween.finished
+	enter_finished.emit()
 	if entry.duration > 0.0:
 		await get_tree().create_timer(entry.duration).timeout
 		play_exit()

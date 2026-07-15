@@ -348,8 +348,31 @@ func _fire_one_round() -> void:
 	cycle_timer = gas_component.get_delay_time()
 	bolt_position = 0.0
 
+	# 发射弹丸（P1 hitscan）
+	_spawn_projectile()
+
 	fired.emit()
 	recoil_component.apply_recoil()
+
+
+## 发射弹丸（P1 hitscan 实现）
+func _spawn_projectile() -> void:
+	var muzzle_offset: float = config.weapon_length if config else 0.7
+	var muzzle_origin: Vector3 = global_position + global_basis.z * -muzzle_offset
+
+	var camera := get_viewport().get_camera_3d()
+	var shoot_dir: Vector3
+	if camera:
+		shoot_dir = -camera.global_basis.z
+	else:
+		shoot_dir = -global_basis.z
+
+	var world := get_world_3d()
+	if not world:
+		GlobalLogger.warn("BaseWeapon", "Cannot get World3D, projectile not fired")
+		return
+
+	Projectile.fire_hitscan(muzzle_origin, shoot_dir, config, self, world)
 
 
 # ============================================================

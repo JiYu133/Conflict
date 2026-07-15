@@ -53,7 +53,7 @@ func _find_health_system() -> void:
 	# 兜底：直接搜索 HealthSystem 节点
 	var health_systems := get_tree().get_nodes_in_group("health_system")
 	if health_systems.size() > 0:
-		_health_system = health_systems[0]
+		_health_system = health_systems[0] as HealthSystem
 		GlobalLogger.info("MedicalHUD", "Found HealthSystem via group")
 		return
 
@@ -131,21 +131,29 @@ func _update_display() -> void:
 	lines.append("[b]部位伤情:[/b]")
 
 	var part_display := {
-		MedicalEnums.BodyPartId.HEAD: "头部",
-		MedicalEnums.BodyPartId.TORSO: "躯干",
-		MedicalEnums.BodyPartId.LEFT_ARM: "左臂",
-		MedicalEnums.BodyPartId.RIGHT_ARM: "右臂",
-		MedicalEnums.BodyPartId.LEFT_LEG: "左腿",
-		MedicalEnums.BodyPartId.RIGHT_LEG: "右腿",
+		MedicalEnums.BodyPartId.HEAD:           "头部",
+		MedicalEnums.BodyPartId.TORSO:          "躯干",
+		MedicalEnums.BodyPartId.LEFT_UPPER_ARM: "左上臂",
+		MedicalEnums.BodyPartId.LEFT_FOREARM:   "左前臂",
+		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM:"右上臂",
+		MedicalEnums.BodyPartId.RIGHT_FOREARM:  "右前臂",
+		MedicalEnums.BodyPartId.LEFT_THIGH:     "左大腿",
+		MedicalEnums.BodyPartId.LEFT_CALF:      "左小腿",
+		MedicalEnums.BodyPartId.RIGHT_THIGH:    "右大腿",
+		MedicalEnums.BodyPartId.RIGHT_CALF:     "右小腿",
 	}
 
 	for part_id in [
 		MedicalEnums.BodyPartId.HEAD,
 		MedicalEnums.BodyPartId.TORSO,
-		MedicalEnums.BodyPartId.LEFT_ARM,
-		MedicalEnums.BodyPartId.RIGHT_ARM,
-		MedicalEnums.BodyPartId.LEFT_LEG,
-		MedicalEnums.BodyPartId.RIGHT_LEG,
+		MedicalEnums.BodyPartId.LEFT_UPPER_ARM,
+		MedicalEnums.BodyPartId.LEFT_FOREARM,
+		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM,
+		MedicalEnums.BodyPartId.RIGHT_FOREARM,
+		MedicalEnums.BodyPartId.LEFT_THIGH,
+		MedicalEnums.BodyPartId.LEFT_CALF,
+		MedicalEnums.BodyPartId.RIGHT_THIGH,
+		MedicalEnums.BodyPartId.RIGHT_CALF,
 	]:
 		var region := vitals.get_region(part_id)
 		if not region:
@@ -167,16 +175,17 @@ func _update_display() -> void:
 				part_health * 100.0
 			])
 
-			# 致命伤警告
-			var lethal_threshold := config.head_lethal_severity if part_id == MedicalEnums.BodyPartId.HEAD else config.torso_lethal_severity
-			var cumulative_threshold := config.head_cumulative_lethal if part_id == MedicalEnums.BodyPartId.HEAD else config.torso_cumulative_lethal
-
-			if region.has_lethal_wound(lethal_threshold):
-				lines.append("  [color=#ff0000]⚠ 单发致命伤！[/color]")
-			elif total_severity >= cumulative_threshold:
-				lines.append("  [color=#ff0000]⚠ 累积致命伤！[/color]")
-			elif total_severity >= cumulative_threshold * 0.7:
-				lines.append("  [color=#ff8800]⚠ 接近累积致死阈值[/color]")
+			# 致命伤警告（仅头部和躯干有致命阈值）
+			var is_vital : bool = part_id in [MedicalEnums.BodyPartId.HEAD, MedicalEnums.BodyPartId.TORSO]
+			if is_vital:
+				var lethal_threshold := config.head_lethal_severity if part_id == MedicalEnums.BodyPartId.HEAD else config.torso_lethal_severity
+				var cumulative_threshold := config.head_cumulative_lethal if part_id == MedicalEnums.BodyPartId.HEAD else config.torso_cumulative_lethal
+				if region.has_lethal_wound(lethal_threshold):
+					lines.append("  [color=#ff0000]⚠ 单发致命伤！[/color]")
+				elif total_severity >= cumulative_threshold:
+					lines.append("  [color=#ff0000]⚠ 累积致命伤！[/color]")
+				elif total_severity >= cumulative_threshold * 0.7:
+					lines.append("  [color=#ff8800]⚠ 接近累积致死阈值[/color]")
 
 			# 列出各个伤口
 			for wound in region.wounds:

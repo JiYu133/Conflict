@@ -4,6 +4,6 @@
 
 [resource]
 script = ExtResource("1_script")
-play_death_animation = false
-default_impact_force = 500.0
+default_impact_force = 600.0
+upper_body_keywords = Array[String](["Spine", "Neck"])
 metadata/_custom_type_script = "uid://dn103ririhbav"

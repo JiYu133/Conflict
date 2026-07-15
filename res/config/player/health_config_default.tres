@@ -1,18 +1,8 @@
-[gd_resource type="Resource" script_class="HealthConfig" format=3 uid="uid://lnjuf8q6gqn6"]
+[gd_resource type="Resource" script_class="HealthConfig" format=3 uid="uid://health_cfg_default"]
 
-[ext_resource type="Script" path="res://classes/player/Medical/health_config.gd" id="1"]
-[ext_resource type="Resource" uid="uid://ckh3v8p7qjw2k" path="res://res/config/player/hitbox_config_default.tres" id="2_hitbox"]
+[ext_resource type="Script" uid="uid://052a69a3eaa6048f" path="res://Classes/Player/Medical/health_config.gd" id="1_healthcfg"]
+[ext_resource type="Resource" uid="uid://ckh3v8p7qjw2k" path="res://res/config/player/hitbox_config_default.tres" id="2_hitboxcfg"]
 
 [resource]
-script = ExtResource("1")
-hitbox_config = ExtResource("2_hitbox")
-blood_volume_ml = 5000.0
-critical_blood_threshold_pct = 0.6
-fatal_blood_threshold_pct = 0.3
-head_lethal_severity = 0.7
-torso_lethal_severity = 0.85
-head_cumulative_lethal = 1.2
-torso_cumulative_lethal = 2.5
-ke_per_severity_unit = 600.0
-immediate_blood_loss_per_severity = 150.0
-tick_interval = 0.2
+script = ExtResource("1_healthcfg")
+hitbox_config = ExtResource("2_hitboxcfg")

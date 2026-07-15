@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c8jcutg7au4g0"]
 
-[ext_resource type="Script" uid="uid://e8pwaqfddary" path="res://Classes/Weapon/Weapon/base_weapon.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://b6l7lko5s68eb" path="res://Classes/Weapon/Weapon/base_weapon.gd" id="1_script"]
 [ext_resource type="PackedScene" uid="uid://dv8xw3g68hogr" path="res://res/models/weapons/ak74m/ak74m.glb" id="2_model"]
 
 [node name="AK74M" type="Node3D" unique_id=1004389721]
@@ -10,6 +10,6 @@ script = ExtResource("1_script")
 transform = Transform3D(4.371138e-08, 1, 1.3113419e-07, 0.99999994, -4.371139e-08, 4.3711392e-08, 4.3711392e-08, 1.3113416e-07, -1.0000001, -0.16316144, 0.08375146, 0.03671211)
 
 [node name="LeftHandGrip" type="Marker3D" parent="." unique_id=391024857]
-transform = Transform3D(-1, 6.181724e-08, -6.181724e-08, 0, 0.70710677, 0.70710677, 8.742278e-08, 0.70710677, -0.70710677, 0.13377047, 0.06572157, -0.07297767)
+transform = Transform3D(-1, 6.181723e-08, -6.181723e-08, 6.748479e-09, 0.75958085, 0.65041256, 8.716191e-08, 0.65041256, -0.75958085, 0.12681597, 0.036081508, -0.053088672)
 
 [node name="Model" parent="." unique_id=893712044 instance=ExtResource("2_model")]

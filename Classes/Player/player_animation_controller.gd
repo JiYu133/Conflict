@@ -10,20 +10,23 @@ extends Node
 # ============================================================
 
 # 状态机节点名称（必须与 AnimationTree 编辑器中的节点名一致）──────
-const SM_IDLE   := "Idle"
-const SM_WALK   := "Walk"
-const SM_RUN    := "Run"
-const SM_SPRINT := "Sprint"
-const SM_JUMP   := "Jump"
-const SM_FALL   := "Fall"
-const SM_LAND   := "Land"
-const SM_DEATH  := "Death"
+const SM_IDLE         := "Idle"
+const SM_WALK         := "Walk"
+const SM_RUN          := "Run"
+const SM_SPRINT       := "Sprint"
+const SM_JUMP         := "Jump"
+const SM_FALL         := "Fall"
+const SM_LAND         := "Land"
+const SM_DEATH        := "Death"
+const SM_CROUCH_IDLE  := "CrouchIdle"
+const SM_CROUCH_WALK  := "CrouchWalk"
 
 # AnimationTree 参数路径 ──────────────────────────────────────
-const PARAM_PLAYBACK     := "parameters/playback"
-const PARAM_WALK_BLEND   := "parameters/Walk/blend_position"
-const PARAM_RUN_BLEND    := "parameters/Run/blend_position"
-const PARAM_SPRINT_BLEND := "parameters/Sprint/blend_position"
+const PARAM_PLAYBACK       := "parameters/playback"
+const PARAM_WALK_BLEND     := "parameters/Walk/blend_position"
+const PARAM_RUN_BLEND      := "parameters/Run/blend_position"
+const PARAM_SPRINT_BLEND   := "parameters/Sprint/blend_position"
+const PARAM_CROUCH_BLEND   := "parameters/CrouchWalk/blend_position"
 
 
 # 状态枚举 ─────────────────────────────────────────────────
@@ -36,6 +39,8 @@ enum State {
 	FALL,
 	LAND,
 	DEATH,
+	CROUCH_IDLE,
+	CROUCH_WALK,
 }
 
 # 私有变量 ─────────────────────────────────────────────────
@@ -72,6 +77,10 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		movement.started_sprinting.connect(_on_started_sprinting)
 	if not movement.stopped_sprinting.is_connected(_on_stopped_sprinting):
 		movement.stopped_sprinting.connect(_on_stopped_sprinting)
+	if not movement.started_crouching.is_connected(_on_started_crouching):
+		movement.started_crouching.connect(_on_started_crouching)
+	if not movement.stopped_crouching.is_connected(_on_stopped_crouching):
+		movement.stopped_crouching.connect(_on_stopped_crouching)
 	if not player.died.is_connected(_on_died):
 		player.died.connect(_on_died)
 	if not player.revived.is_connected(_on_revived):
@@ -105,7 +114,7 @@ func _setup_animations() -> void:
 		return
 
 	# 只会被设为循环的动画库名关键词
-	const LOOPING_KEYWORDS := ["idle", "walk_", "run_", "sprint_"]
+	const LOOPING_KEYWORDS := ["idle", "walk_", "run_", "sprint_", "crouch"]
 
 	for lib_name in anim_player.get_animation_library_list():
 		var lib: AnimationLibrary = anim_player.get_animation_library(lib_name)
@@ -193,7 +202,6 @@ func _process(delta: float) -> void:
 	if on_floor and _state != State.JUMP:
 		_transition(_resolve_ground_state())
 
-
 # BlendSpace2D 混合坐标更新 ───────────────────────────────────
 
 func _update_blend_positions() -> void:
@@ -217,10 +225,15 @@ func _update_blend_positions() -> void:
 	var walk_blend := (vel_2d / maxf(_config.walk_speed, 0.001)).limit_length(1.0)
 	var run_blend := (vel_2d / maxf(_config.run_speed, 0.001)).limit_length(1.0)
 	var sprint_blend := (vel_2d / maxf(_config.sprint_speed, 0.001)).limit_length(1.0)
+	# 蹲走 BlendSpace 坐标系与普通走路旋转了 90°（Mixamo 蹲走前进方向为 +X）
+	# vel_2d = (right, forward)，需转为 (forward, -right)
+	var crouch_normalized := (vel_2d / maxf(_config.crouch_speed, 0.001)).limit_length(1.0)
+	var crouch_blend := Vector2(crouch_normalized.y, -crouch_normalized.x)
 
 	_animation_tree.set(PARAM_WALK_BLEND, walk_blend)
 	_animation_tree.set(PARAM_RUN_BLEND, run_blend)
 	_animation_tree.set(PARAM_SPRINT_BLEND, sprint_blend)
+	_animation_tree.set(PARAM_CROUCH_BLEND, crouch_blend)
 
 
 # 信号回调 ──────────────────────────────────────────────────
@@ -252,6 +265,14 @@ func _on_stopped_sprinting() -> void:
 	if _state == State.SPRINT:
 		_transition(_resolve_ground_state())
 
+func _on_started_crouching() -> void:
+	if _state not in [State.JUMP, State.FALL, State.LAND, State.DEATH]:
+		_transition(_resolve_ground_state())
+
+func _on_stopped_crouching() -> void:
+	if _state in [State.CROUCH_IDLE, State.CROUCH_WALK]:
+		_transition(_resolve_ground_state())
+
 func _on_died() -> void:
 	# 直接设置状态为 DEATH，不调用 _transition()。
 	# 原因：AnimationTree 状态机中不存在 Death 节点，
@@ -277,11 +298,13 @@ func _resolve_ground_state() -> State:
 		return State.SPRINT
 	if _movement and _movement.is_running():
 		return State.RUN
+	if _movement and _movement.is_crouching():
+		# 蹲下时根据速度决定 CROUCH_IDLE 或 CROUCH_WALK
+		var h_speed_sq := _player.velocity.x * _player.velocity.x + _player.velocity.z * _player.velocity.z
+		return State.CROUCH_WALK if h_speed_sq > _config.walk_enter_speed_sq else State.CROUCH_IDLE
 	# 显式标量计算，避免临时 Vector2 分配
 	var h_speed_sq := _player.velocity.x * _player.velocity.x + _player.velocity.z * _player.velocity.z
-	# 滞后阈值来自 PlayerConfig，默认值适用于步态波动约 0.06 m/s、walk_speed 约 1.5 m/s：
-	#   进入 WALK：速度 > 0.5 m/s（远大于步态波动，不会因波动误触发）
-	#   离开 WALK：速度 < 0.15 m/s（给制动足够空间，避免停步时抖动）
+	# 滞后阈值来自 PlayerConfig
 	if _state == State.WALK:
 		return State.IDLE if h_speed_sq < _config.walk_exit_speed_sq else State.WALK
 	else:
@@ -305,12 +328,14 @@ func _transition(new_state: State) -> void:
 
 func _state_to_sm_name(state: State) -> String:
 	match state:
-		State.IDLE:   return SM_IDLE
-		State.WALK:   return SM_WALK
-		State.RUN:    return SM_RUN
-		State.SPRINT: return SM_SPRINT
-		State.JUMP:   return SM_JUMP
-		State.FALL:   return SM_FALL
-		State.LAND:   return SM_LAND
-		State.DEATH:  return SM_DEATH
+		State.IDLE:        return SM_IDLE
+		State.WALK:        return SM_WALK
+		State.RUN:         return SM_RUN
+		State.SPRINT:      return SM_SPRINT
+		State.JUMP:        return SM_JUMP
+		State.FALL:        return SM_FALL
+		State.LAND:        return SM_LAND
+		State.DEATH:       return SM_DEATH
+		State.CROUCH_IDLE: return SM_CROUCH_IDLE
+		State.CROUCH_WALK: return SM_CROUCH_WALK
 	return SM_IDLE

@@ -48,14 +48,17 @@ func initialize(config: HealthConfig) -> void:
 
 
 func _build_regions(config: HealthConfig) -> void:
-	# 创建6个身体部位，无需初始化 HP（已移除 HP 概念）
 	for part_id: int in [
 		MedicalEnums.BodyPartId.HEAD,
 		MedicalEnums.BodyPartId.TORSO,
-		MedicalEnums.BodyPartId.LEFT_ARM,
-		MedicalEnums.BodyPartId.RIGHT_ARM,
-		MedicalEnums.BodyPartId.LEFT_LEG,
-		MedicalEnums.BodyPartId.RIGHT_LEG,
+		MedicalEnums.BodyPartId.LEFT_UPPER_ARM,
+		MedicalEnums.BodyPartId.LEFT_FOREARM,
+		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM,
+		MedicalEnums.BodyPartId.RIGHT_FOREARM,
+		MedicalEnums.BodyPartId.LEFT_THIGH,
+		MedicalEnums.BodyPartId.LEFT_CALF,
+		MedicalEnums.BodyPartId.RIGHT_THIGH,
+		MedicalEnums.BodyPartId.RIGHT_CALF,
 	]:
 		var region := BodyRegion.new()
 		region.part_id = part_id as MedicalEnums.BodyPartId

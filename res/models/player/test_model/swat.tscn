@@ -34,6 +34,16 @@
 [ext_resource type="AnimationLibrary" uid="uid://e1hv8y40gya2" path="res://res/animations/player/sprint forward left.fbx" id="24_mpx0j"]
 [ext_resource type="AnimationLibrary" uid="uid://50y1b45npxqd" path="res://res/animations/player/sprint forward right.fbx" id="25_bl0pa"]
 [ext_resource type="AnimationLibrary" uid="uid://cex2dg620nopt" path="res://res/animations/player/sprint left.fbx" id="26_3uqx0"]
+[ext_resource type="AnimationLibrary" uid="uid://bmoiys0ory21b" path="res://res/animations/player/sprint right.fbx" id="27_spright"]
+[ext_resource type="AnimationLibrary" uid="uid://6f1sj0xvq43s" path="res://res/animations/player/idle crouching.fbx" id="28_crouch_idle"]
+[ext_resource type="AnimationLibrary" uid="uid://eb6tb7o3i721" path="res://res/animations/player/walk crouching forward.fbx" id="29_cwfwd"]
+[ext_resource type="AnimationLibrary" uid="uid://tx86kr2vl65u" path="res://res/animations/player/walk crouching backward.fbx" id="30_cwbwd"]
+[ext_resource type="AnimationLibrary" uid="uid://dcr72e5x5e6nu" path="res://res/animations/player/walk crouching left.fbx" id="31_cwleft"]
+[ext_resource type="AnimationLibrary" uid="uid://dpsdtt1iqhcfv" path="res://res/animations/player/walk crouching right.fbx" id="32_cwright"]
+[ext_resource type="AnimationLibrary" uid="uid://bbhhqk4l3bo5s" path="res://res/animations/player/walk crouching forward left.fbx" id="33_cwfwdleft"]
+[ext_resource type="AnimationLibrary" uid="uid://cpb7voxbqoa63" path="res://res/animations/player/walk crouching forward right.fbx" id="34_cwfwdright"]
+[ext_resource type="AnimationLibrary" uid="uid://2otad1n1ueqm" path="res://res/animations/player/walk crouching backward left.fbx" id="35_cwbwdleft"]
+[ext_resource type="AnimationLibrary" uid="uid://dwqwfi1m5eb7u" path="res://res/animations/player/walk crouching backward right.fbx" id="36_cwbwdright"]
 
 [sub_resource type="AnimationNodeAnimation" id="ANAnim_jump_loop"]
 animation = &"jump_loop/mixamo_com"
@@ -197,8 +207,111 @@ blend_point_7/node = SubResource("ANAnim_walk_bwd_right")
 blend_point_7/pos = Vector2(0.707, -0.707)
 blend_point_7/name = &"walk_bwd_right"
 
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_fwd"]
+animation = &"sprint_fwd/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_bwd"]
+animation = &"sprint_bwd/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_left"]
+animation = &"sprint_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_right"]
+animation = &"sprint_right/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_fwd_left"]
+animation = &"sprint_fwd_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_fwd_right"]
+animation = &"sprint_fwd_right/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_bwd_left"]
+animation = &"sprint_bwd_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_sprint_bwd_right"]
+animation = &"sprint_bwd_right/mixamo_com"
+
+[sub_resource type="AnimationNodeBlendSpace2D" id="ANBlend_sprint"]
+blend_point_0/node = SubResource("ANAnim_sprint_fwd")
+blend_point_0/pos = Vector2(0, 1)
+blend_point_0/name = &"sprint_fwd"
+blend_point_1/node = SubResource("ANAnim_sprint_bwd")
+blend_point_1/pos = Vector2(0, -1)
+blend_point_1/name = &"sprint_bwd"
+blend_point_2/node = SubResource("ANAnim_sprint_left")
+blend_point_2/pos = Vector2(-1, 0)
+blend_point_2/name = &"sprint_left"
+blend_point_3/node = SubResource("ANAnim_sprint_right")
+blend_point_3/pos = Vector2(1, 0)
+blend_point_3/name = &"sprint_right"
+blend_point_4/node = SubResource("ANAnim_sprint_fwd_left")
+blend_point_4/pos = Vector2(-0.707, 0.707)
+blend_point_4/name = &"sprint_fwd_left"
+blend_point_5/node = SubResource("ANAnim_sprint_fwd_right")
+blend_point_5/pos = Vector2(0.707, 0.707)
+blend_point_5/name = &"sprint_fwd_right"
+blend_point_6/node = SubResource("ANAnim_sprint_bwd_left")
+blend_point_6/pos = Vector2(-0.707, -0.707)
+blend_point_6/name = &"sprint_bwd_left"
+blend_point_7/node = SubResource("ANAnim_sprint_bwd_right")
+blend_point_7/pos = Vector2(0.707, -0.707)
+blend_point_7/name = &"sprint_bwd_right"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_crouch_idle"]
+animation = &"crouch_idle/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_cwfwd"]
+animation = &"crouch_walk_fwd/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_cwbwd"]
+animation = &"crouch_walk_bwd/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_cwleft"]
+animation = &"crouch_walk_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_cwright"]
+animation = &"crouch_walk_right/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_cwfwdleft"]
+animation = &"crouch_walk_fwd_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_cwfwdright"]
+animation = &"crouch_walk_fwd_right/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_cwbwdleft"]
+animation = &"crouch_walk_bwd_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_cwbwdright"]
+animation = &"crouch_walk_bwd_right/mixamo_com"
+
+[sub_resource type="AnimationNodeBlendSpace2D" id="ANBlend_crouch_walk"]
+blend_point_0/node = SubResource("ANAnim_cwfwd")
+blend_point_0/pos = Vector2(1, 0)
+blend_point_0/name = &"crouch_walk_fwd"
+blend_point_1/node = SubResource("ANAnim_cwbwd")
+blend_point_1/pos = Vector2(-1, 0)
+blend_point_1/name = &"crouch_walk_bwd"
+blend_point_2/node = SubResource("ANAnim_cwleft")
+blend_point_2/pos = Vector2(0, 1)
+blend_point_2/name = &"crouch_walk_left"
+blend_point_3/node = SubResource("ANAnim_cwright")
+blend_point_3/pos = Vector2(0, -1)
+blend_point_3/name = &"crouch_walk_right"
+blend_point_4/node = SubResource("ANAnim_cwfwdleft")
+blend_point_4/pos = Vector2(0.707, 0.707)
+blend_point_4/name = &"crouch_walk_fwd_left"
+blend_point_5/node = SubResource("ANAnim_cwfwdright")
+blend_point_5/pos = Vector2(0.707, -0.707)
+blend_point_5/name = &"crouch_walk_fwd_right"
+blend_point_6/node = SubResource("ANAnim_cwbwdleft")
+blend_point_6/pos = Vector2(-0.707, 0.707)
+blend_point_6/name = &"crouch_walk_bwd_left"
+blend_point_7/node = SubResource("ANAnim_cwbwdright")
+blend_point_7/pos = Vector2(-0.707, -0.707)
+blend_point_7/name = &"crouch_walk_bwd_right"
+blend_mode = 1
+
 [sub_resource type="AnimationNodeStateMachineTransition" id="Trans_start_idle"]
-advance_mode = 2
 
 [sub_resource type="AnimationNodeStateMachineTransition" id="Trans_xfade"]
 xfade_time = 0.15
@@ -231,7 +344,11 @@ states/Sprint/node = SubResource("ANBlend_sprint")
 states/Sprint/position = Vector2(0, 0)
 states/Walk/node = SubResource("ANBlend_walk")
 states/Walk/position = Vector2(400, 100)
-transitions = ["Start", "Idle", SubResource("Trans_start_idle"), "Idle", "Walk", SubResource("Trans_xfade"), "Walk", "Idle", SubResource("Trans_xfade"), "Idle", "Run", SubResource("Trans_xfade"), "Run", "Idle", SubResource("Trans_xfade"), "Walk", "Run", SubResource("Trans_xfade"), "Run", "Walk", SubResource("Trans_xfade"), "Idle", "Jump", SubResource("Trans_xfade"), "Walk", "Jump", SubResource("Trans_xfade"), "Run", "Jump", SubResource("Trans_xfade"), "Jump", "Fall", SubResource("Trans_auto_jump_fall"), "Idle", "Fall", SubResource("Trans_xfade"), "Walk", "Fall", SubResource("Trans_xfade"), "Run", "Fall", SubResource("Trans_xfade"), "Fall", "Land", SubResource("Trans_auto_fall_land"), "Land", "Idle", SubResource("Trans_auto_land_idle"), "Run", "Sprint", SubResource("Trans_xfade"), "Sprint", "Run", SubResource("Trans_xfade"), "Sprint", "Idle", SubResource("Trans_xfade"), "Sprint", "Walk", SubResource("Trans_xfade"), "Sprint", "Jump", SubResource("Trans_xfade"), "Sprint", "Fall", SubResource("Trans_xfade"), "Idle", "Sprint", SubResource("Trans_xfade"), "Walk", "Sprint", SubResource("Trans_xfade")]
+states/CrouchIdle/node = SubResource("ANAnim_crouch_idle")
+states/CrouchIdle/position = Vector2(200, 200)
+states/CrouchWalk/node = SubResource("ANBlend_crouch_walk")
+states/CrouchWalk/position = Vector2(400, 200)
+transitions = ["Start", "Idle", SubResource("Trans_start_idle"), "Idle", "Walk", SubResource("Trans_xfade"), "Walk", "Idle", SubResource("Trans_xfade"), "Idle", "Run", SubResource("Trans_xfade"), "Run", "Idle", SubResource("Trans_xfade"), "Walk", "Run", SubResource("Trans_xfade"), "Run", "Walk", SubResource("Trans_xfade"), "Idle", "Jump", SubResource("Trans_xfade"), "Walk", "Jump", SubResource("Trans_xfade"), "Run", "Jump", SubResource("Trans_xfade"), "Jump", "Fall", SubResource("Trans_auto_jump_fall"), "Idle", "Fall", SubResource("Trans_xfade"), "Walk", "Fall", SubResource("Trans_xfade"), "Run", "Fall", SubResource("Trans_xfade"), "Fall", "Land", SubResource("Trans_auto_fall_land"), "Land", "Idle", SubResource("Trans_auto_land_idle"), "Run", "Sprint", SubResource("Trans_xfade"), "Sprint", "Run", SubResource("Trans_xfade"), "Sprint", "Idle", SubResource("Trans_xfade"), "Sprint", "Walk", SubResource("Trans_xfade"), "Sprint", "Jump", SubResource("Trans_xfade"), "Sprint", "Fall", SubResource("Trans_xfade"), "Idle", "Sprint", SubResource("Trans_xfade"), "Walk", "Sprint", SubResource("Trans_xfade"), "Idle", "CrouchIdle", SubResource("Trans_xfade"), "Walk", "CrouchIdle", SubResource("Trans_xfade"), "Run", "CrouchIdle", SubResource("Trans_xfade"), "CrouchIdle", "Idle", SubResource("Trans_xfade"), "CrouchIdle", "Walk", SubResource("Trans_xfade"), "CrouchIdle", "CrouchWalk", SubResource("Trans_xfade"), "CrouchWalk", "CrouchIdle", SubResource("Trans_xfade"), "CrouchWalk", "Idle", SubResource("Trans_xfade"), "CrouchWalk", "Walk", SubResource("Trans_xfade"), "CrouchIdle", "Jump", SubResource("Trans_xfade"), "CrouchWalk", "Jump", SubResource("Trans_xfade"), "CrouchIdle", "Fall", SubResource("Trans_xfade"), "CrouchWalk", "Fall", SubResource("Trans_xfade")]
 graph_offset = Vector2(-27.73114, -174.33472)
 
 [node name="Swat" unique_id=727840838 instance=ExtResource("1_wbk7e")]
@@ -313,6 +430,7 @@ anim_player = NodePath("../AnimationPlayer2")
 parameters/Run/blend_position = Vector2(0, 0)
 parameters/Sprint/blend_position = Vector2(0, 0)
 parameters/Walk/blend_position = Vector2(0, 0)
+parameters/CrouchWalk/blend_position = Vector2(0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="." index="4" unique_id=860448908]
 cull_mask = 1048573
@@ -344,6 +462,7 @@ libraries/sprint_fwd = ExtResource("23_4qguc")
 libraries/sprint_fwd_left = ExtResource("24_mpx0j")
 libraries/sprint_fwd_right = ExtResource("25_bl0pa")
 libraries/sprint_left = ExtResource("26_3uqx0")
+libraries/sprint_right = ExtResource("27_spright")
 libraries/walk_bwd = ExtResource("3_fohhv")
 libraries/walk_bwd_left = ExtResource("16_wbwdleft")
 libraries/walk_bwd_right = ExtResource("17_wbwdright")
@@ -352,3 +471,12 @@ libraries/walk_fwd_left = ExtResource("14_wfwdleft")
 libraries/walk_fwd_right = ExtResource("15_wfwdright")
 libraries/walk_left = ExtResource("5_5diqx")
 libraries/walk_right = ExtResource("6_1n0kr")
+libraries/crouch_idle = ExtResource("28_crouch_idle")
+libraries/crouch_walk_fwd = ExtResource("29_cwfwd")
+libraries/crouch_walk_bwd = ExtResource("30_cwbwd")
+libraries/crouch_walk_left = ExtResource("31_cwleft")
+libraries/crouch_walk_right = ExtResource("32_cwright")
+libraries/crouch_walk_fwd_left = ExtResource("33_cwfwdleft")
+libraries/crouch_walk_fwd_right = ExtResource("34_cwfwdright")
+libraries/crouch_walk_bwd_left = ExtResource("35_cwbwdleft")
+libraries/crouch_walk_bwd_right = ExtResource("36_cwbwdright")

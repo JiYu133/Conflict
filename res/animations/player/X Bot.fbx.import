@@ -1,15 +1,15 @@
 [remap]
 
-importer="scene"
+importer="animation_library"
 importer_version=1
-type="PackedScene"
+type="AnimationLibrary"
 uid="uid://ds5ljjo74ymeo"
-path="res://.godot/imported/X Bot.fbx-42f64030474e6a5e7a48549e00170fc8.scn"
+path="res://.godot/imported/X Bot.fbx-42f64030474e6a5e7a48549e00170fc8.res"
 
 [deps]
 
 source_file="res://res/animations/player/X Bot.fbx"
-dest_files=["res://.godot/imported/X Bot.fbx-42f64030474e6a5e7a48549e00170fc8.scn"]
+dest_files=["res://.godot/imported/X Bot.fbx-42f64030474e6a5e7a48549e00170fc8.res"]
 
 [params]
 
