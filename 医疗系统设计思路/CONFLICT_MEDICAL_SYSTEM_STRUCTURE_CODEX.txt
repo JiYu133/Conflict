@@ -1,0 +1,416 @@
+CONFLICT — REALISTIC MEDICAL AND INJURY SYSTEM STRUCTURE
+=========================================================
+
+DESIGN DIRECTION
+----------------
+
+Conflict is described in the README as a realistic tactical first-person shooter:
+
+“在真实性与游戏性之间优先选择前者。”
+
+This means the medical system should prioritize believable causes and consequences
+over conventional game mechanics. It should not use a traditional health bar or
+allow treatments to magically restore generic health. Survival should emerge from
+anatomical injuries, bleeding, circulation, respiration, neurological condition,
+and the medical care the player receives.
+
+
+HIGH-LEVEL DAMAGE FLOW
+----------------------
+
+Projectile / explosion / fall
+    -> Trauma event
+    -> Anatomical damage
+    -> Wounds, fractures, or organ trauma
+    -> Bleeding, respiratory effects, pain, and neurological effects
+    -> Reduced circulation or oxygenation
+    -> Impairment, unconsciousness, incapacitation, or death
+
+Medical treatment should intervene in this chain by managing the actual cause. A
+bandage can control external bleeding, for example, but it cannot replace blood that
+has already been lost or repair destroyed tissue.
+
+
+CORE ARCHITECTURE
+-----------------
+
+The medical feature should be implemented as a componentized player subsystem,
+consistent with the existing Conflict architecture.
+
+Suggested files:
+
+Classes/Medical/
+    medical_system.gd
+    medical_config.gd
+    medical_state.gd
+    medical_damage_context.gd
+    medical_injury.gd
+    medical_treatment.gd
+    medical_body_region.gd
+    medical_enums.gd
+
+res/config/medical/
+    medical_config_default.tres
+    injuries/
+    treatments/
+
+The MedicalSystem should own medical state and calculations. It should not directly
+control animation, movement, ragdoll, weapons, or UI. It should emit signals, and the
+other systems should react to those signals.
+
+
+ANATOMICAL REGIONS
+------------------
+
+The initial anatomical model should support:
+
+1. Head
+2. Neck
+3. Chest
+4. Abdomen
+5. Pelvis
+6. Left and right upper arms
+7. Left and right forearms
+8. Left and right hands
+9. Left and right thighs
+10. Left and right lower legs
+11. Left and right feet
+
+Each region may contain one or more anatomical structures:
+
+- Bone
+- Major artery
+- Ordinary blood vessels
+- Muscle and soft tissue
+- Organ group
+- Nervous tissue
+
+The first release does not need to simulate every individual organ. However, the
+data format should allow more detailed organs and tissue structures to be added
+without replacing the medical architecture.
+
+Physical or animated bone names should be mapped to medical regions when an impact
+occurs. Medical state should not be stored directly on PhysicalBone3D nodes because
+ragdoll construction and model skeletons may change independently.
+
+
+DAMAGE CONTEXT
+--------------
+
+All damage sources should create the same normalized MedicalDamageContext instead
+of directly subtracting health.
+
+Suggested information:
+
+- Damage source
+- Weapon or projectile
+- Damage type
+- Impact position
+- Impact direction
+- Impact energy or magnitude
+- Hit bone
+- Resolved anatomical region
+- Penetration information, when available
+
+Possible damage types:
+
+- Ballistic
+- Explosion
+- Blunt trauma
+- Fall
+- Cutting
+- Burn
+
+The medical system should consume the resulting trauma event. Ballistic penetration,
+armour interaction, and projectile energy transfer can later become their own system
+without changing the medical API.
+
+
+WOUND INSTANCES
+---------------
+
+Every injury should be represented by a persistent wound instance. Multiple wounds
+must be allowed on the same body region; a second gunshot must not overwrite the
+first one.
+
+Initial wound categories:
+
+- Penetrating wound
+- Laceration
+- Blunt trauma
+- Fracture
+- Burn
+- Blast trauma
+
+Each wound should track at least:
+
+- Unique injury ID
+- Body region
+- Wound type
+- Depth
+- Severity
+- External bleeding rate
+- Internal bleeding rate
+- Pain contribution
+- Mobility or handling impairment
+- Contamination, if later required
+- Bandaged state
+- Packed state
+- Tourniquet state
+- Stabilized state
+
+Treatments should affect individual wound instances rather than a generic health
+value assigned to an entire body part.
+
+
+BLEEDING AND BLOOD VOLUME
+-------------------------
+
+The player should have a configured blood volume measured in millilitres instead of
+a generic hit-point total. A typical configured starting value might be around
+5,000 ml, but character configuration should control the exact amount.
+
+The system should separately track:
+
+- Current blood volume
+- External blood-loss rate
+- Internal blood-loss rate
+
+Bleeding can be categorized as:
+
+- Capillary: slow bleeding
+- Venous: moderate continuous bleeding
+- Arterial: rapid and immediately dangerous bleeding
+- Internal: blood loss that is not externally visible
+
+Blood loss should progressively cause believable consequences:
+
+- Reduced stamina
+- Poor weapon stability
+- Slower movement
+- Tunnel vision
+- Confusion
+- Reduced consciousness
+- Unconsciousness
+- Circulatory arrest
+
+
+PHYSIOLOGICAL SYSTEMS
+---------------------
+
+The medical state should be divided into three interacting systems.
+
+CIRCULATION
+
+- Blood volume
+- Active bleeding
+- Perfusion
+- Circulatory arrest
+
+RESPIRATION
+
+- Breathing effectiveness
+- Chest trauma
+- Airway condition
+- Oxygenation
+- Respiratory arrest
+
+NEUROLOGICAL CONDITION
+
+- Brain and nervous-system trauma
+- Pain response
+- Consciousness
+- Incapacitation
+
+The initial calculations may be simplified, but they should preserve realistic
+causal relationships. For example, severe blood loss should reduce perfusion, and
+reduced perfusion should gradually reduce consciousness.
+
+
+INCAPACITATION AND DEATH
+------------------------
+
+Death should result from explicit medical causes rather than health reaching zero.
+
+Possible fatal conditions:
+
+- Catastrophic brain injury
+- Destruction of critical cervical nervous tissue
+- Unsurvivable torso trauma
+- Critical blood loss
+- Prolonged lack of oxygen
+- Cardiac arrest without successful intervention
+
+Unconsciousness must remain separate from death. An unconscious player may still:
+
+- Continue bleeding
+- Breathe inadequately
+- Be examined and treated by another player
+- Recover if circulation and oxygenation improve
+- Die if the underlying cause remains untreated
+
+Ragdoll activation should represent loss of muscular control. It should not itself
+mean that the player is medically dead.
+
+
+TREATMENTS
+----------
+
+Treatments should control or manage specific medical causes. They should never
+restore a generic health bar.
+
+Recommended initial treatments:
+
+- Direct pressure
+- Bandage
+- Wound packing
+- Tourniquet for limbs
+- Chest seal
+- Recovery position
+- Basic airway management
+
+Possible later treatments:
+
+- Needle decompression
+- Blood transfusion
+- Intravenous fluids
+- Splints
+- Analgesics
+- Advanced airway intervention
+- Cardiopulmonary resuscitation
+
+Important restrictions:
+
+- Bandages do not replace lost blood.
+- Tourniquets cannot be applied to the chest, abdomen, neck, or pelvis.
+- Painkillers do not repair damaged tissue.
+- CPR cannot reverse catastrophic trauma.
+- Treatment actions should take time and be interruptible.
+- Severe injuries should continue affecting the player after stabilization.
+
+
+FUNCTIONAL IMPAIRMENT
+---------------------
+
+The medical system should expose calculated impairment values instead of directly
+editing unrelated subsystems.
+
+Examples of medical queries:
+
+- Movement-speed multiplier
+- Stamina multiplier
+- Aim-stability multiplier
+- Whether sprinting is medically possible
+- Whether an arm can support a weapon
+- Whether the player is conscious
+- Whether the player can perform treatment
+
+Movement, animation, weapon, camera, and IK systems should read these values or react
+to medical signals. This keeps medical logic independent and testable.
+
+
+SIGNALS AND SYSTEM INTEGRATION
+------------------------------
+
+Recommended signals:
+
+- injury_added
+- injury_updated
+- bleeding_changed
+- treatment_started
+- treatment_interrupted
+- treatment_completed
+- consciousness_changed
+- incapacitated
+- circulation_stopped
+- respiration_stopped
+- medically_died
+
+The MedicalSystem should request final death through BasePlayer. BasePlayer remains
+responsible for coordinating input shutdown, camera state, ragdoll activation, and
+other player subsystems.
+
+The notification system can react to medical signals and display warnings or
+instructions. MedicalSystem should not directly create UI controls.
+
+
+SIMULATION FREQUENCY
+--------------------
+
+Damage application must be immediate. Long-term physiological simulation does not
+need to run every rendered frame.
+
+A fixed medical update frequency of approximately 5 to 10 updates per second should
+be sufficient for bleeding, circulation, respiration, and consciousness. A fixed
+tick makes the simulation cheaper, easier to test, and easier to synchronize in
+future multiplayer development.
+
+
+RECOMMENDED DEVELOPMENT PHASES
+------------------------------
+
+PHASE 1 — DAMAGE AND ANATOMY
+
+- Standardized damage context
+- Anatomical hit-region mapping
+- Persistent wound instances
+
+PHASE 2 — BLEEDING
+
+- External bleeding
+- Blood volume
+- Blood-loss symptoms
+- Exsanguination
+
+PHASE 3 — BASIC TREATMENT
+
+- Direct pressure
+- Bandages
+- Wound packing
+- Tourniquets
+- Interruptible treatment actions
+
+PHASE 4 — CONSCIOUSNESS
+
+- Perfusion effects
+- Unconsciousness
+- Incapacitation
+- Separation of incapacitation from death
+
+PHASE 5 — RESPIRATION AND INTERNAL TRAUMA
+
+- Internal bleeding
+- Chest wounds
+- Oxygenation
+- Respiratory arrest
+
+PHASE 6 — FUNCTIONAL INJURIES
+
+- Fractures
+- Limb impairment
+- Movement penalties
+- Weapon-handling and IK consequences
+
+PHASE 7 — COOPERATIVE MEDICINE
+
+- Examination of other players
+- Treating other players
+- Multiplayer authority and synchronization
+
+PHASE 8 — ADVANCED MEDICINE
+
+- Advanced airway care
+- Blood products and fluids
+- CPR
+- Detailed organ and tissue modelling
+
+
+CORE DEVELOPMENT RULE
+---------------------
+
+MODEL MEDICAL CAUSES AND THEIR CONSEQUENCES. DO NOT IMPLEMENT A TRADITIONAL HEALTH BAR.
+
+Damage should create anatomical trauma. Trauma should create wounds and physiological
+effects. Treatment should manage those effects. Incapacitation and death should be
+the results of the simulated medical state.
+
