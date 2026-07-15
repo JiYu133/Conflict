@@ -19,3 +19,6 @@ ads_spread = 0.12
 weight = 3.6
 weapon_scene = ExtResource("2_ixgqf")
 weapon_length = 0.943
+muzzle_velocity = 880.0
+bullet_mass_g = 3.45
+caliber = "5.45x39mm"

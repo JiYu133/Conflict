@@ -8,7 +8,10 @@ extends RefCounted
 # 用法：HitResolver.resolve(ray_result, energy_joules, damage_type, source)
 # ============================================================
 
-## Mixamo 骨骼名称 → BodyPartId 映射表（ragdoll PhysicalBone3D 命中时使用）
+## Mixamo 骨骼名称 → BodyPartId 映射表。
+## 仅在玩家死亡后（ragdoll 激活）命中 PhysicalBone3D 时使用；
+## 存活时由 BodyHitbox.get_body_part_id() 直接返回部位，不经此表。
+## 骨骼名匹配采用 contains()，因此 Mixamo 的 "mixamorig_LeftArm" 能匹配到 "LeftArm" 键。
 static var BONE_PART_MAP: Dictionary = {
 	# 头部 & 颈部
 	"Head":           MedicalEnums.BodyPartId.HEAD,
@@ -39,11 +42,15 @@ static var BONE_PART_MAP: Dictionary = {
 }
 
 
-## 从射线检测结果构建 DamageInfo
-## ray_result: PhysicsDirectSpaceState3D.intersect_ray() 返回的字典
-## energy_joules: 预计算的动能（J）
-## damage_type: 伤害类型
-## source: 攻击来源节点
+## 将射线命中结果转化为 DamageInfo，供 HealthSystem.apply_damage() 消费。
+## 命中部位解析有两条路径：
+##   1. 存活：collider 为 BodyHitbox（Area3D），调用 get_body_part_id() 直接取部位
+##   2. 死亡后（ragdoll）：collider 为 PhysicalBone3D，通过 BONE_PART_MAP 按骨骼名映射
+## [参数] ray_result     PhysicsDirectSpaceState3D.intersect_ray() 返回的字典
+## [参数] energy_joules  由 Ballistics.kinetic_energy() 预计算的动能（J）
+## [参数] damage_type    伤害类型（MedicalEnums.DamageType）
+## [参数] source         攻击来源节点，用于得分/日志
+## [返回] 填充好所有字段的 DamageInfo；无法识别部位时默认 TORSO
 static func resolve(
 	ray_result: Dictionary,
 	energy_joules: float,

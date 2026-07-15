@@ -7,6 +7,18 @@ extends Node
 #       通过 apply_damage() 接受所有伤害输入；
 #       将致命伤映射到现有 DeathType 并调用 BasePlayer.die()。
 # 用法：由 BasePlayer._initialize_subsystems() 创建并初始化。
+#
+# 数据流总览：
+#   武器开火 → Ballistics.kinetic_energy() → HitResolver.resolve()
+#       → DamageInfo → HealthSystem.apply_damage()
+#           → _apply_structural_damage()  （创建 Wound，立即失血）
+#           → _evaluate_state()           （状态机 + 死亡判定）
+#   HealthSystem._physics_process()（每 tick_interval 秒）
+#       → VitalsModel.total_bleed_rate() → 持续扣血 → blood_changed 信号
+#
+# 碰撞体生命周期：
+#   存活：BoneAttachment3D + BodyHitbox（Area3D），由 _create_hitboxes() 在模型加载后创建
+#   死亡：hitbox 销毁，后续命中由 PhysicalBone3D ragdoll 碰撞体接管（HitResolver 兜底）
 # ============================================================
 
 # 信号 ────────────────────────────────────────────────────────
@@ -107,6 +119,8 @@ func can_sprint() -> bool:
 
 # 私有 — 伤害处理 ──────────────────────────────────────────
 
+## 将 DamageInfo 转化为 Wound 并写入对应 BodyRegion。
+## 同时触发立即失血（液压冲击近似）并发出 bleeding_changed 信号。
 func _apply_structural_damage(info: DamageInfo) -> void:
 	var region := vitals.get_region(info.body_part)
 	if not region:
@@ -136,6 +150,9 @@ func _apply_structural_damage(info: DamageInfo) -> void:
 		MedicalEnums.BleedRate.keys()[wound.bleed_rate]
 	])
 
+## 根据 DamageInfo 和 severity 构建 Wound 实例。
+## WoundType 由伤害类型决定：BULLET→PENETRATING，EXPLOSION→BLAST_TRAUMA，其余→BLUNT_TRAUMA。
+## [返回] 已填充好所有字段的 Wound（尚未加入 region，由调用方负责）。
 func _build_wound(info: DamageInfo, severity: float, region: BodyRegion) -> Wound:
 	var w := Wound.new()
 	w.wound_id = vitals.allocate_wound_id()
@@ -149,6 +166,9 @@ func _build_wound(info: DamageInfo, severity: float, region: BodyRegion) -> Woun
 	w.pain_contribution = severity * 0.5  # P4 存根
 	return w
 
+## 根据伤口严重度和命中部位，确定出血等级。
+## 阈值：头/躯干/大腿 severity≥0.6 → ARTERIAL；任意部位 ≥0.4 → VENOUS；≥0.1 → CAPILLARY。
+## 大腿单独处理是因为股动脉受损后出血极快（同头躯干动脉阈值）。
 func _classify_bleed(severity: float, part: MedicalEnums.BodyPartId) -> MedicalEnums.BleedRate:
 	var is_vital: bool = part in [MedicalEnums.BodyPartId.HEAD, MedicalEnums.BodyPartId.TORSO]
 	# 大腿动脉出血阈值更低（股动脉）
@@ -163,6 +183,8 @@ func _classify_bleed(severity: float, part: MedicalEnums.BodyPartId) -> MedicalE
 
 # 私有 — 生理 Tick ──────────────────────────────────────────
 
+## P1 生理 tick：每 tick_interval 秒调用一次，处理外部持续出血。
+## P2 将在此处加入内部出血；P3 加入呼吸系统；P4 加入疼痛/意识。
 func _run_physiology_tick(dt: float) -> void:
 	# P1: 仅处理外部出血
 	var bleed: float = vitals.total_bleed_rate()
@@ -271,12 +293,15 @@ func _resolve_death_type(dir: Vector3) -> PlayerRagdollSystem.DeathType:
 
 # 私有 — 模型加载与 Hitbox 创建 ────────────────────────────
 
+## 接收 model_loaded 信号后，触发 hitbox 创建流程。
 func _on_model_loaded(_model: Node3D) -> void:
 	GlobalLogger.info("HealthSystem", "model_loaded signal received, creating hitboxes...")
 	_create_hitboxes()
 
 
-## 为骨骼创建 BodyHitbox（Area3D + CollisionShape3D）
+## 为 Mixamo 骨架的关键骨骼创建 BodyHitbox（Area3D + CollisionShape3D）。
+## 骨骼→部位映射：Head→HEAD，Spine1/Spine2→TORSO，LeftArm→LEFT_UPPER_ARM，以此类推。
+## 形状参数来自 HitboxConfig；每个 hitbox 挂在对应骨骼的 BoneAttachment3D 下。
 func _create_hitboxes() -> void:
 	if not _player or not _player.model_manager or not _player.model_manager.skeleton:
 		GlobalLogger.warn("HealthSystem", "Cannot create hitboxes: skeleton not found")
