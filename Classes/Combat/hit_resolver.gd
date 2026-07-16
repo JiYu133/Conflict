@@ -50,19 +50,25 @@ static var BONE_PART_MAP: Dictionary = {
 ## [参数] energy_joules  由 Ballistics.kinetic_energy() 预计算的动能（J）
 ## [参数] damage_type    伤害类型（MedicalEnums.DamageType）
 ## [参数] source         攻击来源节点，用于得分/日志
+## [参数] travel_dir     弹头实际飞行方向（归一化，可选）。弹道模拟提供真实方向；
+##                       缺省 ZERO 时回退为表面法线取反（hitscan 老路径，斜射时略有偏差）
 ## [返回] 填充好所有字段的 DamageInfo；无法识别部位时默认 TORSO
 static func resolve(
 	ray_result: Dictionary,
 	energy_joules: float,
 	damage_type: MedicalEnums.DamageType,
-	source: Node
+	source: Node,
+	travel_dir: Vector3 = Vector3.ZERO
 ) -> DamageInfo:
 	var info := DamageInfo.new()
 	info.amount = energy_joules
 	info.type = damage_type
 	info.hit_position = ray_result.get("position", Vector3.ZERO)
-	# normal 指向外（离开碰撞体），取反得弹头入射方向
-	info.direction = ray_result.get("normal", Vector3.ZERO) * -1.0
+	if travel_dir != Vector3.ZERO:
+		info.direction = travel_dir
+	else:
+		# normal 指向外（离开碰撞体），取反近似弹头入射方向
+		info.direction = ray_result.get("normal", Vector3.ZERO) * -1.0
 	info.source = source
 
 	var collider = ray_result.get("collider", null)
