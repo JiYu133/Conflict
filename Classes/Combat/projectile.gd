@@ -54,7 +54,7 @@ static func fire_hitscan(
 		return
 
 	# 向上寻找 BasePlayer；命中环境（墙/地面）时子弹在此终止
-	var player_node := _find_player(collider)
+	var player_node := find_player(collider)
 	if not player_node:
 		return
 	if not player_node.has_node("HealthSystem"):
@@ -67,8 +67,8 @@ static func fire_hitscan(
 	health_system.apply_damage(info)
 
 
-## 从碰撞体向上查找 BasePlayer 节点
-static func _find_player(node: Object) -> BasePlayer:
+## 从碰撞体向上查找 BasePlayer 节点（供 hitscan 与 BallisticProjectileSystem 共用）
+static func find_player(node: Object) -> BasePlayer:
 	var current := node as Node
 	while current:
 		if current is BasePlayer:
