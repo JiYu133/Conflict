@@ -41,6 +41,7 @@ var weapon_manager: WeaponManager
 var animation_controller: PlayerAnimationController
 var health_system: HealthSystem
 var free_camera_controller: FreeCameraController
+var medical_debug_menu: MedicalDebugMenu
 
 # 信号
 
@@ -119,6 +120,9 @@ func _initialize_subsystems() -> void:
 
 	if OS.is_debug_build():
 		free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
+		# 医疗调试菜单（M 键）：所有临时医疗测试操作集中于此，不占用正常玩法输入
+		medical_debug_menu = _create_subsystem(MedicalDebugMenu.new(), "MedicalDebugMenu") as MedicalDebugMenu
+		medical_debug_menu.initialize(self)
 
 	# 连接信号
 	_connect_signals()
@@ -234,6 +238,12 @@ func _input(event: InputEvent) -> void:
 			KEY_U:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot_explosion()
+			KEY_R:
+				# 调试复活（仅 debug 构建）：死亡状态下按 R 原地复活并清除全部伤情。
+				# 存活时 R 仍是正常换弹（上方 "reload" 动作分支），互不冲突。
+				# 更多医疗调试操作（伤情注入/出血等级/血量修改）在 M 菜单中。
+				if not is_alive:
+					revive()
 
 
 func _on_started_sprinting() -> void:
@@ -260,8 +270,14 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 func revive() -> void:
 	if is_alive:
 		return
-	
+
 	is_alive = true
+
+	# 布娃娃可能已从死亡点滑动/滚落数米：把胶囊体移动到尸体（骨盆骨骼）
+	# 的最终位置，让角色"在倒下的地方站起来"，而不是闪回死亡瞬间的位置，
+	# 更不是重置到出生点
+	_move_to_ragdoll_rest_position()
+
 	ragdoll_system.disable()
 	camera_controller.enable_camera()
 
@@ -269,6 +285,22 @@ func revive() -> void:
 	_set_collision_enabled(true)
 
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
+
+
+## 将玩家根节点平移到布娃娃骨盆骨骼当前的世界位置（仅取水平分量）。
+## 高度保持不变：骨盆躺倒时贴近地面，直接采用其 Y 会把胶囊体埋进地里；
+## 平坦地形下沿用死亡前的胶囊高度即可安全落地。
+func _move_to_ragdoll_rest_position() -> void:
+	var skeleton := model_manager.skeleton if model_manager else null
+	if not skeleton:
+		return
+	var hips_idx := skeleton.find_bone("mixamorig_Hips")
+	if hips_idx == -1:
+		hips_idx = skeleton.find_bone("Hips")
+	if hips_idx == -1:
+		return
+	var hips_global: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(hips_idx)).origin
+	global_position = Vector3(hips_global.x, global_position.y, hips_global.z)
 
 
 func set_controllable(enabled: bool) -> void:

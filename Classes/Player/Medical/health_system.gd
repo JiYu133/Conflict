@@ -125,6 +125,53 @@ func get_hitbox_rids() -> Array[RID]:
 			rids.append(hitbox.get_rid())
 	return rids
 
+# ── 调试 API（仅供 MedicalDebugMenu 使用，勿在游戏逻辑中调用）────
+# 手动伤情注入 / 出血等级指定 / 医疗状态修改统一走这里，
+# 不进入正常伤害管线（apply_damage），避免与玩法逻辑耦合。
+
+## 注入一个伤口。bleed_override < 0 时按严重度自动分类（_classify_bleed），
+## 否则强制使用指定的 MedicalEnums.BleedRate 等级。
+func debug_add_wound(part: MedicalEnums.BodyPartId, severity: float, bleed_override: int = -1) -> void:
+	if _is_dead or not vitals:
+		return
+	var region := vitals.get_region(part)
+	if not region:
+		return
+	var w := Wound.new()
+	w.wound_id = vitals.allocate_wound_id()
+	w.body_part = part
+	w.type = MedicalEnums.WoundType.PENETRATING
+	w.severity = severity
+	w.bleed_rate = (bleed_override as MedicalEnums.BleedRate) if bleed_override >= 0 else _classify_bleed(severity, part)
+	w.pain_contribution = severity * 0.5
+	region.add_wound(w)
+	wound_added.emit(w)
+	bleeding_changed.emit(vitals.total_bleed_rate())
+	GlobalLogger.debug("HealthSystem", "[DEBUG] Wound injected: %s severity %.2f bleed %s" % [
+		MedicalEnums.BodyPartId.keys()[part], severity, MedicalEnums.BleedRate.keys()[w.bleed_rate]
+	])
+	_evaluate_state(Vector3.ZERO)
+
+## 直接设置血量百分比（0.0–1.0）。降到致命阈值以下会正常触发死亡流程。
+func debug_set_blood_pct(pct: float) -> void:
+	if _is_dead or not vitals:
+		return
+	vitals.blood_volume_ml = clampf(pct, 0.0, 1.0) * vitals.max_blood_volume_ml
+	blood_changed.emit(vitals.get_blood_pct())
+	GlobalLogger.debug("HealthSystem", "[DEBUG] Blood set to %.0f%%" % (pct * 100.0))
+	_evaluate_state(Vector3.ZERO)
+
+## 清除全部伤口（不恢复已流失的血量；如需满血用 debug_set_blood_pct(1.0)）
+func debug_clear_wounds() -> void:
+	if not vitals:
+		return
+	for part_id: int in vitals.regions:
+		(vitals.regions[part_id] as BodyRegion).wounds.clear()
+	bleeding_changed.emit(0.0)
+	GlobalLogger.debug("HealthSystem", "[DEBUG] All wounds cleared")
+	_evaluate_state(Vector3.ZERO)
+
+
 # 状态乘数查询（P4 实现；P1 返回默认值）
 func get_movement_speed_multiplier() -> float:
 	return 1.0
