@@ -149,9 +149,6 @@ func _enter() -> void:
 	_player.add_child(_free_cam)
 	_free_cam.current = true
 
-	# 进入自由视角时移除死亡黑屏/模糊，方便观察布娃娃
-	DeathScreen.restore()
-
 	_crosshair_canvas.visible = true
 	GlobalLogger.info("FreeCam", "自由视角已启用，WASD/QE 移动，Shift 加速，左键/T/Y/U 射击，F 退出")
 
@@ -176,10 +173,6 @@ func _exit() -> void:
 	if _free_cam and is_instance_valid(_free_cam):
 		_free_cam.queue_free()
 	_free_cam = null
-
-	# 退出自由视角：玩家仍处于死亡状态时恢复死亡黑屏
-	if not _player.is_alive:
-		DeathScreen.play_death()
 
 	_player.set_controllable(_was_controllable and _player.is_alive)
 	GlobalLogger.info("FreeCam", "自由视角已退出")
