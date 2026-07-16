@@ -217,6 +217,13 @@ func _input(event: InputEvent) -> void:
 		if event.is_action_pressed("reload"):
 			weapon_manager.reload()
 
+	# R 键复用（"reload" 动作）：死亡状态下按 R 原地复活。
+	# 与换弹互斥——换弹只在存活时响应，此分支只在死亡时响应。
+	# 复活会清除全部伤情（HealthSystem 监听 revived 信号重置生理状态），
+	# 并且不会重置出生点：玩家在布娃娃倒地的位置原地站起。
+	if not is_alive and event.is_action_pressed("reload"):
+		revive()
+
 	if not OS.is_debug_build():
 		return
 
@@ -260,8 +267,14 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 func revive() -> void:
 	if is_alive:
 		return
-	
+
 	is_alive = true
+
+	# 布娃娃可能已从死亡点滑动/滚落数米：把胶囊体移动到尸体（骨盆骨骼）
+	# 的最终位置，让角色"在倒下的地方站起来"，而不是闪回死亡瞬间的位置，
+	# 更不是重置到出生点
+	_move_to_ragdoll_rest_position()
+
 	ragdoll_system.disable()
 	camera_controller.enable_camera()
 
@@ -269,6 +282,22 @@ func revive() -> void:
 	_set_collision_enabled(true)
 
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
+
+
+## 将玩家根节点平移到布娃娃骨盆骨骼当前的世界位置（仅取水平分量）。
+## 高度保持不变：骨盆躺倒时贴近地面，直接采用其 Y 会把胶囊体埋进地里；
+## 平坦地形下沿用死亡前的胶囊高度即可安全落地。
+func _move_to_ragdoll_rest_position() -> void:
+	var skeleton := model_manager.skeleton if model_manager else null
+	if not skeleton:
+		return
+	var hips_idx := skeleton.find_bone("mixamorig_Hips")
+	if hips_idx == -1:
+		hips_idx = skeleton.find_bone("Hips")
+	if hips_idx == -1:
+		return
+	var hips_global: Vector3 = (skeleton.global_transform * skeleton.get_bone_global_pose(hips_idx)).origin
+	global_position = Vector3(hips_global.x, global_position.y, hips_global.z)
 
 
 func set_controllable(enabled: bool) -> void:
