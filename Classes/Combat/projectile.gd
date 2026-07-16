@@ -9,17 +9,19 @@ extends RefCounted
 # ============================================================
 
 ## 发射一发 hitscan 射线
-## origin: 枪口世界坐标
+## origin: 射线起点世界坐标（推荐使用摄像机位置，避免枪口视差）
 ## target_dir: 弹头飞行方向（归一化）
 ## config: 武器配置（提供 bullet_mass_g 和 muzzle_velocity）
 ## source: 开火的武器节点（用于 DamageInfo.source）
 ## world: World3D 引用（用于射线查询）
+## exclude: 射线忽略的 RID 列表（射手自身的胶囊体与 hitbox，防止自伤）
 static func fire_hitscan(
 	origin: Vector3,
 	target_dir: Vector3,
 	config: WeaponConfig,
 	source: Node,
-	world: World3D
+	world: World3D,
+	exclude: Array[RID] = []
 ) -> void:
 	# 弹道参数
 	var mass_kg: float = config.bullet_mass_g / 1000.0
@@ -27,11 +29,13 @@ static func fire_hitscan(
 	var energy: float = Ballistics.kinetic_energy(mass_kg, velocity)
 
 	# 射线查询（最大 2000m）
+	# mask 含 layer 1（环境）+ layer 2（hitbox/布娃娃骨骼）：
+	# 墙体等环境命中在先时子弹被阻挡，不能隔墙伤人
 	var query := PhysicsRayQueryParameters3D.create(
 		origin,
 		origin + target_dir.normalized() * 2000.0,
-		2,   # collision_mask: layer 2 = living hitboxes + ragdoll bones
-		[]
+		1 | 2,
+		exclude
 	)
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
@@ -49,7 +53,7 @@ static func fire_hitscan(
 	if not collider:
 		return
 
-	# 向上寻找 BasePlayer
+	# 向上寻找 BasePlayer；命中环境（墙/地面）时子弹在此终止
 	var player_node := _find_player(collider)
 	if not player_node:
 		return
