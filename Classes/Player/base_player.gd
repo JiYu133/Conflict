@@ -41,6 +41,7 @@ var weapon_manager: WeaponManager
 var animation_controller: PlayerAnimationController
 var health_system: HealthSystem
 var free_camera_controller: FreeCameraController
+var medical_debug_menu: MedicalDebugMenu
 
 # 信号
 
@@ -119,6 +120,9 @@ func _initialize_subsystems() -> void:
 
 	if OS.is_debug_build():
 		free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
+		# 医疗调试菜单（M 键）：所有临时医疗测试操作集中于此，不占用正常玩法输入
+		medical_debug_menu = _create_subsystem(MedicalDebugMenu.new(), "MedicalDebugMenu") as MedicalDebugMenu
+		medical_debug_menu.initialize(self)
 
 	# 连接信号
 	_connect_signals()
@@ -217,13 +221,6 @@ func _input(event: InputEvent) -> void:
 		if event.is_action_pressed("reload"):
 			weapon_manager.reload()
 
-	# R 键复用（"reload" 动作）：死亡状态下按 R 原地复活。
-	# 与换弹互斥——换弹只在存活时响应，此分支只在死亡时响应。
-	# 复活会清除全部伤情（HealthSystem 监听 revived 信号重置生理状态），
-	# 并且不会重置出生点：玩家在布娃娃倒地的位置原地站起。
-	if not is_alive and event.is_action_pressed("reload"):
-		revive()
-
 	if not OS.is_debug_build():
 		return
 
@@ -241,6 +238,12 @@ func _input(event: InputEvent) -> void:
 			KEY_U:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot_explosion()
+			KEY_R:
+				# 调试复活（仅 debug 构建）：死亡状态下按 R 原地复活并清除全部伤情。
+				# 存活时 R 仍是正常换弹（上方 "reload" 动作分支），互不冲突。
+				# 更多医疗调试操作（伤情注入/出血等级/血量修改）在 M 菜单中。
+				if not is_alive:
+					revive()
 
 
 func _on_started_sprinting() -> void:
