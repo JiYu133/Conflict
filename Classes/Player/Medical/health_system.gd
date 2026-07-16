@@ -18,7 +18,9 @@ extends Node
 #
 # 碰撞体生命周期：
 #   存活：BoneAttachment3D + BodyHitbox（Area3D），由 _create_hitboxes() 在模型加载后创建
-#   死亡：hitbox 销毁，后续命中由 PhysicalBone3D ragdoll 碰撞体接管（HitResolver 兜底）
+#   死亡：_on_player_died() 销毁全部 hitbox，后续命中由 PhysicalBone3D
+#         ragdoll 碰撞体接管（HitResolver 按骨骼名映射部位）
+#   复活：_on_player_revived() 重建 hitbox 并重置生理状态
 # ============================================================
 
 # 信号 ────────────────────────────────────────────────────────
@@ -40,6 +42,7 @@ var _config: HealthConfig = null
 var _tick_timer: float = 0.0
 var _is_dead: bool = false
 var _hitboxes: Array[BodyHitbox] = []  # 存活时的命中检测区域
+var _last_hit_direction: Vector3 = Vector3.ZERO  # 最后一次受击方向，供失血死亡时选择死亡动画
 
 # 初始化 ────────────────────────────────────────────────────
 
@@ -56,7 +59,11 @@ func initialize(player: BasePlayer, config: HealthConfig) -> void:
 	else:
 		GlobalLogger.warn("HealthSystem", "No model_manager found!")
 
-	GlobalLogger.info("HealthSystem", "Initialized for player: " + player.get_parent().name)
+	# 死亡时销毁 hitbox（命中检测交给布娃娃 PhysicalBone3D）；复活时重建并重置生理状态
+	_player.died.connect(_on_player_died)
+	_player.revived.connect(_on_player_revived)
+
+	GlobalLogger.info("HealthSystem", "Initialized for player: %s" % player.name)
 
 # 生命周期 ──────────────────────────────────────────────────
 
@@ -74,6 +81,9 @@ func _physics_process(delta: float) -> void:
 func apply_damage(info: DamageInfo) -> void:
 	if _is_dead:
 		return
+	if info.direction != Vector3.ZERO:
+		# 缓存受击方向：之后失血死亡时仍能按最后中弹方向选择死亡动画，而非 GENERIC
+		_last_hit_direction = info.direction
 	_apply_structural_damage(info)
 	damage_taken.emit(info)
 	_evaluate_state(info.direction)
@@ -106,6 +116,14 @@ func set_hitboxes_visible(visible: bool) -> void:
 	for hitbox in _hitboxes:
 		if is_instance_valid(hitbox):
 			hitbox.set_debug_visible(visible)
+
+## 返回全部存活 hitbox 的物理 RID，供射手在 hitscan 射线中排除自身
+func get_hitbox_rids() -> Array[RID]:
+	var rids: Array[RID] = []
+	for hitbox in _hitboxes:
+		if is_instance_valid(hitbox):
+			rids.append(hitbox.get_rid())
+	return rids
 
 # 状态乘数查询（P4 实现；P1 返回默认值）
 func get_movement_speed_multiplier() -> float:
@@ -192,7 +210,8 @@ func _run_physiology_tick(dt: float) -> void:
 		vitals.blood_volume_ml = maxf(0.0, vitals.blood_volume_ml - bleed * dt)
 		blood_changed.emit(vitals.get_blood_pct())
 
-	_evaluate_state(Vector3.ZERO)
+	# 使用缓存的最后受击方向：失血死亡也能选择方向正确的死亡动画
+	_evaluate_state(_last_hit_direction)
 
 # 私有 — 状态评估与死亡桥 ──────────────────────────────────
 
@@ -291,6 +310,26 @@ func _resolve_death_type(dir: Vector3) -> PlayerRagdollSystem.DeathType:
 	return PlayerRagdollSystem.DeathType.FRONT if from_front else PlayerRagdollSystem.DeathType.BACK
 
 
+# 私有 — 死亡/复活生命周期 ─────────────────────────────────
+
+## 死亡：销毁全部 hitbox。布娃娃启动后 PhysicalBone3D（layer 2）接管命中检测，
+## HitResolver 按骨骼名映射部位；同时避免两套碰撞体在同一层重叠。
+func _on_player_died() -> void:
+	_destroy_hitboxes()
+
+## 复活：重建 hitbox，并将生理状态重置为初始值（P3 治疗系统实装后
+## 复活将改为保留伤情的"抢救"流程，此处的完全重置仅供调试复活使用）。
+func _on_player_revived() -> void:
+	vitals.initialize(_config)
+	_last_hit_direction = Vector3.ZERO
+	_is_dead = false
+	_tick_timer = 0.0
+	current_state = MedicalEnums.HealthState.HEALTHY
+	state_changed.emit(current_state)
+	blood_changed.emit(vitals.get_blood_pct())
+	bleeding_changed.emit(0.0)
+	_create_hitboxes()
+
 # 私有 — 模型加载与 Hitbox 创建 ────────────────────────────
 
 ## 接收 model_loaded 信号后，触发 hitbox 创建流程。
@@ -303,6 +342,9 @@ func _on_model_loaded(_model: Node3D) -> void:
 ## 骨骼→部位映射：Head→HEAD，Spine1/Spine2→TORSO，LeftArm→LEFT_UPPER_ARM，以此类推。
 ## 形状参数来自 HitboxConfig；每个 hitbox 挂在对应骨骼的 BoneAttachment3D 下。
 func _create_hitboxes() -> void:
+	# 模型热重载/复活时先清理旧 hitbox，防止 _hitboxes 残留失效引用或重复创建
+	_destroy_hitboxes()
+
 	if not _player or not _player.model_manager or not _player.model_manager.skeleton:
 		GlobalLogger.warn("HealthSystem", "Cannot create hitboxes: skeleton not found")
 		return
@@ -366,3 +408,16 @@ func _create_hitboxes() -> void:
 		_hitboxes.append(hitbox)
 
 	GlobalLogger.info("HealthSystem", "Created %d hitboxes" % _hitboxes.size())
+
+
+## 销毁全部 hitbox 及其 BoneAttachment3D 父节点，并清空引用列表
+func _destroy_hitboxes() -> void:
+	for hitbox in _hitboxes:
+		if not is_instance_valid(hitbox):
+			continue
+		var attach := hitbox.get_parent()
+		if attach is BoneAttachment3D:
+			attach.queue_free()
+		else:
+			hitbox.queue_free()
+	_hitboxes.clear()
