@@ -24,10 +24,12 @@ extends Resource
 
 @export_group("部位致命阈值 / Lethality Thresholds")
 ## 头部单次伤口致命阈值（severity >= 此值立即死亡）。
-## 调参提示：值越低越容易被一枪爆头；0.5 左右为"高威力武器单发即死"，1.0 为"需要多发"。
-@export_range(0.0, 1.0) var head_lethal_severity: float = 0.7
+## 注意：severity 为开放量表可超过 1.0（如 7.62×39 ≈ 1.76），阈值也允许 >1.0。
+## 调参提示：值越低越容易被一枪爆头；0.5 左右为"高威力武器单发即死"，>1.0 为"需要多发或高威力弹"。
+@export_range(0.0, 3.0, 0.01, "or_greater") var head_lethal_severity: float = 0.7
 ## 躯干单次伤口致命阈值。躯干耐受性通常高于头部，建议设为 head_lethal_severity 的 1.2–1.5 倍。
-@export_range(0.0, 1.0) var torso_lethal_severity: float = 0.85
+## （默认 .tres 使用 1.5，超过旧的 0–1 滑条范围，故此处放宽为开放上限。）
+@export_range(0.0, 3.0, 0.01, "or_greater") var torso_lethal_severity: float = 0.85
 ## 头部累积伤口致命阈值（总 severity >= 此值死亡），用于多发低威力弹累积致死判定。
 @export var head_cumulative_lethal: float = 1.2
 ## 躯干累积伤口致命阈值。
@@ -36,11 +38,12 @@ extends Resource
 @export_group("弹道 / Ballistics")
 ## 动能（J）转伤口 severity 的换算基准。
 ## 公式：severity = KE / ke_per_severity_unit
-## 典型值参考（ke_per_severity_unit = 1200，即 .tres 默认值）：
+## 注意：本脚本的回退默认值为 1200（与 health_config_default.tres 一致）。
+## 典型值参考（ke_per_severity_unit = 1200 时）：
 ##   5.45×39（3.45g @ 880m/s）→ ~1335J → severity ≈ 1.11（接近躯干单发致命）
 ##   7.62×39（7.9g  @ 730m/s）→ ~2108J → severity ≈ 1.76（躯干高概率致命）
 ## 值越大则越难造成重伤；建议范围：600–2000。
-@export var ke_per_severity_unit: float = 600.0
+@export var ke_per_severity_unit: float = 1200.0
 ## 受伤后立即血量损失的换算系数（模拟液压冲击效应）。
 ## 公式：立即失血（ml）= severity × immediate_blood_loss_per_severity
 ## 典型值 150：severity 1.0 → 150 ml 立即失血（约总血量的 3%）。

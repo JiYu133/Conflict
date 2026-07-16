@@ -356,23 +356,41 @@ func _fire_one_round() -> void:
 
 
 ## 发射弹丸（P1 hitscan 实现）
+## 射线从摄像机沿准星方向发出（枪口起点会产生近距离视差，弹着点偏离准星）；
+## 无摄像机时回退到枪口沿武器朝向。枪口位置留给未来的曳光/开火特效使用。
 func _spawn_projectile() -> void:
-	var muzzle_offset: float = config.weapon_length if config else 0.7
-	var muzzle_origin: Vector3 = global_position + global_basis.z * -muzzle_offset
-
-	var camera := get_viewport().get_camera_3d()
-	var shoot_dir: Vector3
-	if camera:
-		shoot_dir = -camera.global_basis.z
-	else:
-		shoot_dir = -global_basis.z
-
 	var world := get_world_3d()
 	if not world:
 		GlobalLogger.warn("BaseWeapon", "Cannot get World3D, projectile not fired")
 		return
 
-	Projectile.fire_hitscan(muzzle_origin, shoot_dir, config, self, world)
+	var camera := get_viewport().get_camera_3d()
+	var origin: Vector3
+	var shoot_dir: Vector3
+	if camera:
+		origin = camera.global_position
+		shoot_dir = -camera.global_basis.z
+	else:
+		var muzzle_offset: float = config.weapon_length if config else 0.7
+		origin = global_position + global_basis.z * -muzzle_offset
+		shoot_dir = -global_basis.z
+
+	Projectile.fire_hitscan(origin, shoot_dir, config, self, world, _collect_shooter_exclusions())
+
+
+## 收集射手自身的物理 RID（胶囊体 + 全部 BodyHitbox），
+## 供 hitscan 射线排除，防止摄像机起点的射线命中自己的头部/手臂 hitbox
+func _collect_shooter_exclusions() -> Array[RID]:
+	var rids: Array[RID] = []
+	var node: Node = self
+	while node and node is not BasePlayer:
+		node = node.get_parent()
+	if node:
+		var player := node as BasePlayer
+		rids.append(player.get_rid())
+		if player.health_system:
+			rids.append_array(player.health_system.get_hitbox_rids())
+	return rids
 
 
 # ============================================================
