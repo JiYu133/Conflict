@@ -17,10 +17,10 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-GlobalLogger="*res://Classes/GameLogger/game_logger.gd"
 AppManager="*res://classes/app_manager.gd"
-DeathScreen="*res://Classes/ui/death_screen.gd"
-KeyPromptManager="*res://Classes/ui/key_prompt_manager.gd"
+DeathScreen="*res://classes/ui/death_screen.gd"
+KeyPromptManager="*res://classes/ui/key_prompt_manager.gd"
+GlobalLogger="*uid://cubcslg46kl2q"
 
 [display]
 
