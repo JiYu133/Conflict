@@ -355,27 +355,58 @@ func _fire_one_round() -> void:
 	recoil_component.apply_recoil()
 
 
-## 发射弹丸（P1 hitscan 实现）
-## 射线从摄像机沿准星方向发出（枪口起点会产生近距离视差，弹着点偏离准星）；
-## 无摄像机时回退到枪口沿武器朝向。枪口位置留给未来的曳光/开火特效使用。
+## 发射弹丸
+## 弹道模拟开启（WeaponConfig.use_ballistic_simulation）：弹丸从枪口射出，
+##   初始方向指向"摄像机准星射线的命中点"（瞄准收敛），之后受重力/阻力支配。
+## 关闭时回退 P1 hitscan：射线从摄像机沿准星方向瞬时判定（无下坠、满动能）。
 func _spawn_projectile() -> void:
 	var world := get_world_3d()
 	if not world:
 		GlobalLogger.warn("BaseWeapon", "Cannot get World3D, projectile not fired")
 		return
 
+	var exclusions := _collect_shooter_exclusions()
 	var camera := get_viewport().get_camera_3d()
-	var origin: Vector3
-	var shoot_dir: Vector3
-	if camera:
-		origin = camera.global_position
-		shoot_dir = -camera.global_basis.z
-	else:
-		var muzzle_offset: float = config.weapon_length if config else 0.7
-		origin = global_position + global_basis.z * -muzzle_offset
-		shoot_dir = -global_basis.z
 
-	Projectile.fire_hitscan(origin, shoot_dir, config, self, world, _collect_shooter_exclusions())
+	# 摄像机准星射线（无摄像机时回退武器朝向）
+	var aim_origin: Vector3
+	var aim_dir: Vector3
+	if camera:
+		aim_origin = camera.global_position
+		aim_dir = -camera.global_basis.z
+	else:
+		aim_origin = _get_muzzle_position()
+		aim_dir = -global_basis.z
+
+	if config and config.use_ballistic_simulation:
+		# 瞄准收敛：先用准星射线找到玩家实际瞄准的点，
+		# 弹丸再从枪口朝该点飞行，消除枪口/准星视差
+		var aim_point := _resolve_aim_point(aim_origin, aim_dir, world, exclusions)
+		var muzzle := _get_muzzle_position()
+		BallisticProjectileSystem.get_or_create(get_tree()).spawn(
+			muzzle, aim_point - muzzle, config, self, exclusions, world
+		)
+	else:
+		Projectile.fire_hitscan(aim_origin, aim_dir, config, self, world, exclusions)
+
+
+## 枪口世界坐标（武器局部 -Z 方向延伸 weapon_length）
+func _get_muzzle_position() -> Vector3:
+	var muzzle_offset: float = config.weapon_length if config else 0.7
+	return global_position + global_basis.z * -muzzle_offset
+
+
+## 沿准星射线查找瞄准点（环境或目标）；未命中时取 2000m 远点
+func _resolve_aim_point(origin: Vector3, dir: Vector3, world: World3D, exclusions: Array[RID]) -> Vector3:
+	var far_point := origin + dir.normalized() * 2000.0
+	var space_state := world.direct_space_state
+	if not space_state:
+		return far_point
+	var query := PhysicsRayQueryParameters3D.create(origin, far_point, 1 | 2, exclusions)
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	var result := space_state.intersect_ray(query)
+	return result.get("position", far_point) if not result.is_empty() else far_point
 
 
 ## 收集射手自身的物理 RID（胶囊体 + 全部 BodyHitbox），

@@ -133,10 +133,15 @@ extends Resource
 # 以下字段是预留的弹药类型配置，后续需要实现弹种切换功能时启用
 # ============================================================
 # @export var bullet_type: String = "fmj"              # 弹种：fmj（全被甲）/ hp（空尖）/ ap（穿甲）
-# @export var ballistic_coefficient: float = 0.3       # 弹道系数（BC），用于远距离弹道下坠计算
 
 # 弹道学参数 ────────────────────────────────────────────────
 @export_group("弹道学参数 / Ballistics")
 ## 子弹质量（克）；用于弹道动能计算 KE = 0.5 × m × v²
 ## 5.45×39mm 弹头约 3.4–5.2 g；7.62×39mm 约 7.9–8.0 g
 @export var bullet_mass_g: float = 5.2
+## 弹道系数（G1 近似），驱动空气阻力衰减：k = 0.00025 / BC（见 Ballistics）
+## 越大越"滑"，远距离存速越好。5.45×39 ≈ 0.22，7.62×39 ≈ 0.27，7.62×54R ≈ 0.4
+@export_range(0.05, 1.0, 0.01) var ballistic_coefficient: float = 0.25
+## 启用弹道模拟（飞行时间 + 重力下坠 + 空气阻力 + 远距离伤害衰减）。
+## 关闭时回退为瞬时 hitscan（无下坠、满动能命中），便于 A/B 对比调参。
+@export var use_ballistic_simulation: bool = true

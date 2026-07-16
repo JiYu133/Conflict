@@ -21,4 +21,5 @@ weapon_scene = ExtResource("2_ixgqf")
 weapon_length = 0.943
 muzzle_velocity = 880.0
 bullet_mass_g = 3.45
+ballistic_coefficient = 0.22
 caliber = "5.45x39mm"
