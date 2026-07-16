@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="ModelLookupConfig" format=3 uid="uid://v1h5icka80bd"]
 
-[ext_resource type="Script" uid="uid://bi5o6tknd7k8g" path="res://Classes/Player/model_lookup_config.gd" id="1_b8bmj"]
+[ext_resource type="Script" uid="uid://bi5o6tknd7k8g" path="res://classes/player/model_lookup_config.gd" id="1_b8bmj"]
 
 [resource]
 script = ExtResource("1_b8bmj")

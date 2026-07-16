@@ -1,8 +1,8 @@
 [gd_resource type="Resource" script_class="TopRightNotificationConfig" format=3 uid="uid://ke76oc81381y"]
 
 [ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://res/fonts/ConflictCJKUI.ttf" id="1_uaoa6"]
-[ext_resource type="Script" uid="uid://bqr8abj4oymfx" path="res://Classes/ui/top_right_notification_config.gd" id="2_7bx85"]
-[ext_resource type="Script" uid="uid://couuqrmdo0grd" path="res://Classes/ui/top_right_notification_entry.gd" id="3_s74ca"]
+[ext_resource type="Script" uid="uid://dblt8r4wcqoat" path="res://classes/ui/top_right_notification_config.gd" id="2_7bx85"]
+[ext_resource type="Script" uid="uid://cam8vgw06i5w6" path="res://classes/ui/top_right_notification_entry.gd" id="3_s74ca"]
 [ext_resource type="Texture2D" uid="uid://cmd8x3rrp3sri" path="res://icon.svg" id="4_734jp"]
 
 [sub_resource type="Resource" id="Resource_3xd07"]
@@ -133,21 +133,6 @@ duration = 3.0
 block_next = true
 metadata/_custom_type_script = "uid://u2poq2a3v32q"
 
-[sub_resource type="Resource" id="Resource_r_revive"]
-script = ExtResource("3_s74ca")
-text = "DEBUG: 死亡后按下R原地复活
-并清除全部伤情"
-duration = 3.0
-block_next = true
-metadata/_custom_type_script = "uid://u2poq2a3v32q"
-
-[sub_resource type="Resource" id="Resource_m_menu"]
-script = ExtResource("3_s74ca")
-text = "DEBUG: 按下M打开医疗调试菜单"
-duration = 3.0
-block_next = true
-metadata/_custom_type_script = "uid://u2poq2a3v32q"
-
 [sub_resource type="Resource" id="Resource_uaoa6"]
 script = ExtResource("3_s74ca")
 text = "按下ESC来显示光标"
@@ -156,5 +141,5 @@ metadata/_custom_type_script = "uid://u2poq2a3v32q"
 
 [resource]
 script = ExtResource("2_7bx85")
-startup_notifications = Array[ExtResource("3_s74ca")]([SubResource("Resource_3xd07"), SubResource("Resource_muw3u"), SubResource("Resource_ntr6m"), SubResource("Resource_r7er6"), SubResource("Resource_tmv8l"), SubResource("Resource_f0l5x"), SubResource("Resource_on76t"), SubResource("Resource_a24ph"), SubResource("Resource_s6j0y"), SubResource("Resource_4e16f"), SubResource("Resource_e6m45"), SubResource("Resource_n261e"), SubResource("Resource_gtpt7"), SubResource("Resource_wynk3"), SubResource("Resource_8lp8y"), SubResource("Resource_h_key"), SubResource("Resource_r_revive"), SubResource("Resource_m_menu"), SubResource("Resource_uaoa6")])
+startup_notifications = [SubResource("Resource_3xd07"), SubResource("Resource_muw3u"), SubResource("Resource_ntr6m"), SubResource("Resource_r7er6"), SubResource("Resource_tmv8l"), SubResource("Resource_f0l5x"), SubResource("Resource_on76t"), SubResource("Resource_a24ph"), SubResource("Resource_s6j0y"), SubResource("Resource_4e16f"), SubResource("Resource_e6m45"), SubResource("Resource_n261e"), SubResource("Resource_gtpt7"), SubResource("Resource_wynk3"), SubResource("Resource_8lp8y"), SubResource("Resource_h_key"), SubResource("Resource_uaoa6")]
 font = ExtResource("1_uaoa6")

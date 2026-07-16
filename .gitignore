@@ -16,4 +16,5 @@ user/
 Thumbs.db
 *.tmp
 *.log
+*.uid
 
