@@ -24,7 +24,9 @@ var body_part: MedicalEnums.BodyPartId = MedicalEnums.BodyPartId.TORSO
 ## 伤口类型
 var type: MedicalEnums.WoundType = MedicalEnums.WoundType.PENETRATING
 
-## 伤口严重程度：0.0（轻微）~ 1.0（部位摧毁级）
+## 伤口严重程度：开放量表，无上限。
+## 0.0 = 轻微，1.0 ≈ 部位摧毁级，>1.0 = 灾难性创伤（高动能步枪弹常见）。
+## 由 HealthSystem 按 KE / ke_per_severity_unit 计算，7.62×39 全威力弹可达 ~1.76。
 var severity: float = 0.0
 
 ## 外部出血等级（直接影响血量）
