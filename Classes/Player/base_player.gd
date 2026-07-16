@@ -216,19 +216,6 @@ func _input(event: InputEvent) -> void:
 		# 换弹
 		if event.is_action_pressed("reload"):
 			weapon_manager.reload()
-		# 开火：按下扣扳机，松开释放（全自动依赖持续按住）
-		# 仅在鼠标捕捉时允许扣扳机，防止菜单/失焦状态误击发
-		if event.is_action_pressed("fire") and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
-			weapon_manager.press_trigger()
-		elif event.is_action_released("fire"):
-			weapon_manager.release_trigger()
-		# 瞄准（ADS）：按住进入，松开退出
-		# 注意：此处刻意不调用 hand_ik_controller.set_ads_state()——
-		# IK 侧的 ADS 联动由 JiYu 的 IK 工作分支负责接线，避免合并冲突
-		if event.is_action_pressed("aim"):
-			weapon_manager.set_aiming(true)
-		elif event.is_action_released("aim"):
-			weapon_manager.set_aiming(false)
 
 	if not OS.is_debug_build():
 		return
@@ -268,13 +255,12 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 	if not ragdoll_system.ragdoll_physics_started.is_connected(camera_controller.on_ragdoll_physics_started):
 		ragdoll_system.ragdoll_physics_started.connect(camera_controller.on_ragdoll_physics_started, CONNECT_ONE_SHOT)
 	ragdoll_system.enable(death_type, impact_direction)
-	DeathScreen.play_death()
-	GlobalLogger.info("Player", "Player %s has died. (type: %d)" % [name, death_type])
+	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
 
 func revive() -> void:
 	if is_alive:
 		return
-
+	
 	is_alive = true
 	ragdoll_system.disable()
 	camera_controller.enable_camera()
@@ -282,13 +268,12 @@ func revive() -> void:
 	# 恢复玩家碰撞体
 	_set_collision_enabled(true)
 
-	DeathScreen.restore()
-	GlobalLogger.info("Player", "Player %s has revived." % name)
+	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
 
 
 func set_controllable(enabled: bool) -> void:
 	controllable = enabled
-	GlobalLogger.info("Player", "Controller of player %s has been %s" % [name, "ENABLED" if enabled else "DISABLED"])
+	GlobalLogger.info("Player", "Controller of player " + get_parent().name + " has been" + ("ENABLED" if enabled else "DISABLED"))
 
 
 # Mod热重载

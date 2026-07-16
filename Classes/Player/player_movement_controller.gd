@@ -260,25 +260,23 @@ func _physics_process(delta: float) -> void:
 	elif _velocity.y < 0:
 		_velocity.y = _config.floor_snap_velocity
 
-	# ──────────────────────────────────────────────────────
-	# 7. 速度死区：接地且无输入时微速直接归零，防止浮点滑动
-	#    （原先误嵌套在 velocity.y < 0 分支内，只在特定帧生效）
-	# ──────────────────────────────────────────────────────
-	const VEL_DEAD_ZONE_SQ := 0.001
-	if _player.is_on_floor() and not has_input \
-			and Vector2(_velocity.x, _velocity.z).length_squared() < VEL_DEAD_ZONE_SQ:
-		_velocity.x = 0.0
-		_velocity.z = 0.0
+		# -----------------------------------------------------
+		# 7. 速度死区：无输入时微速直接归零，防止浮点滑动
+		# -----------------------------------------------------
+		const VEL_DEAD_ZONE_SQ := 0.001
+		if not has_input and Vector2(_velocity.x, _velocity.z).length_squared() < VEL_DEAD_ZONE_SQ:
+			_velocity.x = 0.0
+			_velocity.z = 0.0
 
 	# ──────────────────────────────────────────────────────
-	# 8. 应用移动，同步碰撞后实际速度
+	# 7. 应用移动，同步碰撞后实际速度
 	# ──────────────────────────────────────────────────────
 	_player.velocity = _velocity
 	_player.move_and_slide()
 	_velocity = _player.velocity
 
 	# ──────────────────────────────────────────────────────
-	# 9. 落地检测（is_on_floor 上升沿）及帧末状态更新
+	# 8. 落地检测（is_on_floor 上升沿）及帧末状态更新
 	# ──────────────────────────────────────────────────────
 	var on_floor := _player.is_on_floor()
 	if on_floor and not _was_on_floor:
@@ -352,27 +350,13 @@ func _is_blocked_above() -> bool:
 	var clearance: float = _config.collision_shape_height - _config.crouch_capsule_height
 	if clearance <= 0.0:
 		return false
-
-	# 用"站立尺寸的胶囊体"做形状检测，而非单条中心射线——
-	# 射线只覆盖胶囊中轴，悬在胶囊边缘上方的横梁/斜面会漏检导致站起穿模。
-	# 胶囊体在玩家局部空间以原点为中心（见 PlayerModelManager），蹲下时原点
-	# 随胶囊底部贴地下移，因此测试胶囊需上移 clearance/2 使底部与当前底部对齐。
-	var radius: float = _config.collision_shape_radius
-	if is_instance_valid(_collision_shape) and _collision_shape.shape is CapsuleShape3D:
-		radius = (_collision_shape.shape as CapsuleShape3D).radius
-	var test_shape := CapsuleShape3D.new()
-	# 略微收缩半径/高度，避免与地面和贴身墙面的数值容差误报
-	test_shape.radius = maxf(radius - 0.01, 0.01)
-	test_shape.height = maxf(_config.collision_shape_height - 0.02, test_shape.radius * 2.0)
-
-	var params := PhysicsShapeQueryParameters3D.new()
-	params.shape = test_shape
-	params.transform = Transform3D(Basis.IDENTITY, _player.global_position + Vector3.UP * (clearance * 0.5))
-	params.collision_mask = 1  # 仅环境层；忽略 layer 2 的 hitbox/布娃娃骨骼
-	params.exclude = [_player.get_rid()]
-
 	var space: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
-	return space.intersect_shape(params, 1).size() > 0
+	var params := PhysicsRayQueryParameters3D.new()
+	params.from = _player.global_position + Vector3.UP * _config.crouch_capsule_height
+	params.to = _player.global_position + Vector3.UP * _config.collision_shape_height
+	params.exclude = [_player.get_rid()]
+	var result := space.intersect_ray(params)
+	return result.size() > 0
 
 
 func _animate_crouch(crouching: bool) -> void:
