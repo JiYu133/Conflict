@@ -223,12 +223,12 @@ func _input(event: InputEvent) -> void:
 		elif event.is_action_released("fire"):
 			weapon_manager.release_trigger()
 		# 瞄准（ADS）：按住进入，松开退出
+		# 注意：此处刻意不调用 hand_ik_controller.set_ads_state()——
+		# IK 侧的 ADS 联动由 JiYu 的 IK 工作分支负责接线，避免合并冲突
 		if event.is_action_pressed("aim"):
 			weapon_manager.set_aiming(true)
-			hand_ik_controller.set_ads_state(true)
 		elif event.is_action_released("aim"):
 			weapon_manager.set_aiming(false)
-			hand_ik_controller.set_ads_state(false)
 
 	if not OS.is_debug_build():
 		return
