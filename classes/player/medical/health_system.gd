@@ -31,6 +31,10 @@ signal blood_changed(pct: float)
 signal state_changed(new_state: MedicalEnums.HealthState)
 signal went_unconscious
 signal medically_died(death_type: PlayerRagdollSystem.DeathType, direction: Vector3)
+## P2：器官受损/被摧毁（structure_id 见 AnatomyConfig，如 &"heart"）
+signal organ_damaged(part: MedicalEnums.BodyPartId, structure_id: StringName, new_state: MedicalEnums.OrganState)
+## P2：骨折
+signal bone_fractured(part: MedicalEnums.BodyPartId, structure_id: StringName)
 
 # 公开属性 ────────────────────────────────────────────────────
 var vitals: VitalsModel = null
@@ -43,6 +47,9 @@ var _tick_timer: float = 0.0
 var _is_dead: bool = false
 var _hitboxes: Array[BodyHitbox] = []  # 存活时的命中检测区域
 var _last_hit_direction: Vector3 = Vector3.ZERO  # 最后一次受击方向，供失血死亡时选择死亡动画
+var _anatomy: AnatomyConfig = null  # P2 解剖模型
+var _rng := RandomNumberGenerator.new()  # 解剖损伤概率判定
+var _lethal_organ_destroyed: bool = false  # 心/脑等关键器官被摧毁 → 直接死亡
 
 # 初始化 ────────────────────────────────────────────────────
 
@@ -51,6 +58,8 @@ func initialize(player: BasePlayer, config: HealthConfig) -> void:
 	_config = config if config else HealthConfig.new()
 	vitals = VitalsModel.new()
 	vitals.initialize(_config)
+	_anatomy = _config.anatomy_config if _config.anatomy_config else AnatomyConfig.create_default()
+	_rng.randomize()
 
 	# 监听模型加载完成，创建 hitbox
 	if _player.model_manager:
@@ -150,8 +159,12 @@ func _apply_structural_damage(info: DamageInfo) -> void:
 	# 例：600J 基准，600J → 1.0 severity（重伤），1200J → 2.0（极重）
 	var severity: float = info.amount / _config.ke_per_severity_unit
 
-	# 创建伤口
+	# 创建伤口（软组织出血分类；动脉出血由下方解剖判定升级）
 	var wound := _build_wound(info, severity, region)
+
+	# P2：解剖判定——伤道是否伤及器官/骨骼/大血管
+	_resolve_anatomy(info, wound, severity, region)
+
 	region.add_wound(wound)
 	wound_added.emit(wound)
 
@@ -160,13 +173,86 @@ func _apply_structural_damage(info: DamageInfo) -> void:
 	vitals.blood_volume_ml = maxf(0.0, vitals.blood_volume_ml - immediate_loss)
 
 	bleeding_changed.emit(vitals.total_bleed_rate())
-	GlobalLogger.debug("HealthSystem", "Damage on %s: %.1f J → severity %.2f, wound #%d, bleed %s" % [
+	GlobalLogger.debug("HealthSystem", "Damage on %s: %.1f J → severity %.2f, wound #%d, bleed %s/int %s" % [
 		MedicalEnums.BodyPartId.keys()[info.body_part],
 		info.amount,
 		severity,
 		wound.wound_id,
-		MedicalEnums.BleedRate.keys()[wound.bleed_rate]
+		MedicalEnums.BleedRate.keys()[wound.bleed_rate],
+		MedicalEnums.BleedRate.keys()[wound.internal_bleed_rate]
 	])
+
+
+## P2：沿伤道求解内部结构损伤，并将结果写回伤口/部位状态。
+## 有伤道信息（存活时命中 hitbox）→ 几何相交判定；
+## 无伤道信息（爆炸/调试注入）→ 按截面占比盲判。
+func _resolve_anatomy(info: DamageInfo, wound: Wound, severity: float, region: BodyRegion) -> void:
+	var hits: Array
+	if info.has_wound_channel():
+		hits = AnatomySolver.solve_channel(
+			info.local_entry, info.local_direction, info.amount,
+			_anatomy.get_structures_for_bone(info.anchor_bone), _anatomy, _rng
+		)
+	else:
+		hits = AnatomySolver.solve_blind(
+			info.amount, _anatomy.get_structures_for_part(info.body_part), _rng
+		)
+
+	for h in hits:
+		var hit := h as AnatomySolver.StructureHit
+		var s := hit.structure
+		match s.type:
+			MedicalEnums.StructureType.MAJOR_VESSEL:
+				_apply_vessel_damage(s, wound)
+			MedicalEnums.StructureType.ORGAN:
+				_apply_organ_damage(s, wound, severity * hit.damage_factor, region)
+			MedicalEnums.StructureType.BONE:
+				_apply_bone_fracture(s, wound, region)
+
+
+## 大血管破裂：按血管定义升级伤口的外部/内部出血等级
+func _apply_vessel_damage(s: AnatomyStructure, wound: Wound) -> void:
+	if s.bleed_is_internal:
+		wound.internal_bleed_rate = maxi(wound.internal_bleed_rate, s.severed_bleed) as MedicalEnums.BleedRate
+	else:
+		wound.bleed_rate = maxi(wound.bleed_rate, s.severed_bleed) as MedicalEnums.BleedRate
+	GlobalLogger.info("HealthSystem", "Vessel severed: %s (%s, %s)" % [
+		s.display_name, MedicalEnums.BleedRate.keys()[s.severed_bleed],
+		"internal" if s.bleed_is_internal else "external"
+	])
+
+
+## 器官损伤：累积伤情、状态迁移（INTACT→DAMAGED→DESTROYED）、
+## 内出血、呼吸惩罚；关键器官被摧毁直接致死
+func _apply_organ_damage(s: AnatomyStructure, wound: Wound, damage: float, region: BodyRegion) -> void:
+	var total: float = region.add_organ_damage(s.structure_id, damage)
+	var new_state := MedicalEnums.OrganState.DESTROYED if total >= s.destroy_damage_threshold \
+		else MedicalEnums.OrganState.DAMAGED
+
+	var bleed: MedicalEnums.BleedRate = s.internal_bleed_destroyed \
+		if new_state == MedicalEnums.OrganState.DESTROYED else s.internal_bleed_damaged
+	wound.internal_bleed_rate = maxi(wound.internal_bleed_rate, bleed) as MedicalEnums.BleedRate
+
+	if s.breathing_penalty > 0.0:
+		vitals.breathing_effectiveness = maxf(0.0, vitals.breathing_effectiveness - s.breathing_penalty * damage)
+
+	if new_state == MedicalEnums.OrganState.DESTROYED and s.lethal_when_destroyed:
+		_lethal_organ_destroyed = true
+
+	organ_damaged.emit(s.body_part, s.structure_id, new_state)
+	GlobalLogger.info("HealthSystem", "Organ %s: damage %.2f (total %.2f) → %s" % [
+		s.display_name, damage, total, MedicalEnums.OrganState.keys()[new_state]
+	])
+
+
+## 骨折：记录到部位、追加疼痛（幂等——同一骨骼只折一次）
+func _apply_bone_fracture(s: AnatomyStructure, wound: Wound, region: BodyRegion) -> void:
+	if region.is_fractured(s.structure_id):
+		return
+	region.add_fracture(s.structure_id)
+	wound.pain_contribution += 0.3  # 骨折剧痛（P4 神经系统消费）
+	bone_fractured.emit(s.body_part, s.structure_id)
+	GlobalLogger.info("HealthSystem", "Bone fractured: %s" % s.display_name)
 
 ## 根据 DamageInfo 和 severity 构建 Wound 实例。
 ## WoundType 由伤害类型决定：BULLET→PENETRATING，EXPLOSION→BLAST_TRAUMA，其余→BLUNT_TRAUMA。
@@ -180,34 +266,33 @@ func _build_wound(info: DamageInfo, severity: float, region: BodyRegion) -> Woun
 		w.type = MedicalEnums.WoundType.BLAST_TRAUMA
 
 	w.severity = severity
-	w.bleed_rate = _classify_bleed(severity, info.body_part)
+	w.bleed_rate = _classify_soft_tissue_bleed(severity)
 	w.pain_contribution = severity * 0.5  # P4 存根
 	return w
 
-## 根据伤口严重度和命中部位，确定出血等级。
-## 阈值：头/躯干/大腿 severity≥0.6 → ARTERIAL；任意部位 ≥0.4 → VENOUS；≥0.1 → CAPILLARY。
-## 大腿单独处理是因为股动脉受损后出血极快（同头躯干动脉阈值）。
-func _classify_bleed(severity: float, part: MedicalEnums.BodyPartId) -> MedicalEnums.BleedRate:
-	var is_vital: bool = part in [MedicalEnums.BodyPartId.HEAD, MedicalEnums.BodyPartId.TORSO]
-	# 大腿动脉出血阈值更低（股动脉）
-	var is_thigh: bool = part in [MedicalEnums.BodyPartId.LEFT_THIGH, MedicalEnums.BodyPartId.RIGHT_THIGH]
-	if severity >= 0.6 and (is_vital or is_thigh):
-		return MedicalEnums.BleedRate.ARTERIAL
-	elif severity >= 0.4:
+## P2 软组织出血分类：仅产生 毛细/静脉 两级。
+## 动脉出血【不再】由"部位 + 能量"直接决定——旧逻辑对大腿/躯干命中
+## 100% 判定动脉出血是错误的。现在 ARTERIAL 只能由 _resolve_anatomy()
+## 判定伤道确实伤及大血管（AnatomyStructure MAJOR_VESSEL）后升级产生；
+## 动能只影响伤道长度/空腔大小/损伤概率，不直接决定出血类型。
+func _classify_soft_tissue_bleed(severity: float) -> MedicalEnums.BleedRate:
+	if severity >= _config.venous_severity_threshold:
 		return MedicalEnums.BleedRate.VENOUS
-	elif severity >= 0.1:
+	elif severity >= _config.capillary_severity_threshold:
 		return MedicalEnums.BleedRate.CAPILLARY
 	return MedicalEnums.BleedRate.NONE
 
 # 私有 — 生理 Tick ──────────────────────────────────────────
 
-## P1 生理 tick：每 tick_interval 秒调用一次，处理外部持续出血。
-## P2 将在此处加入内部出血；P3 加入呼吸系统；P4 加入疼痛/意识。
+## 生理 tick：每 tick_interval 秒调用一次。
+## P1 外部出血 + P2 内部出血（器官/体腔内大血管，绷带无效）；
+## P3 加入呼吸系统；P4 加入疼痛/意识。
 func _run_physiology_tick(dt: float) -> void:
-	# P1: 仅处理外部出血
-	var bleed: float = vitals.total_bleed_rate()
-	if bleed > 0.0:
-		vitals.blood_volume_ml = maxf(0.0, vitals.blood_volume_ml - bleed * dt)
+	var external: float = vitals.total_bleed_rate()
+	var internal: float = vitals.total_internal_bleed_rate()
+	var total: float = external + internal
+	if total > 0.0:
+		vitals.blood_volume_ml = maxf(0.0, vitals.blood_volume_ml - total * dt)
 		blood_changed.emit(vitals.get_blood_pct())
 
 	# 使用缓存的最后受击方向：失血死亡也能选择方向正确的死亡动画
@@ -234,6 +319,10 @@ func _evaluate_state(last_hit_direction: Vector3) -> void:
 				went_unconscious.emit()
 
 func _compute_state() -> MedicalEnums.HealthState:
+	# P2：关键器官（心/脑）被摧毁 → 直接死亡
+	if _lethal_organ_destroyed:
+		return MedicalEnums.HealthState.DEAD
+
 	# 单发致命伤判定（头部/躯干被摧毁性创伤击中）
 	var head_region := vitals.get_region(MedicalEnums.BodyPartId.HEAD)
 	if head_region and head_region.has_lethal_wound(_config.head_lethal_severity):
@@ -322,6 +411,7 @@ func _on_player_died() -> void:
 func _on_player_revived() -> void:
 	vitals.initialize(_config)
 	_last_hit_direction = Vector3.ZERO
+	_lethal_organ_destroyed = false
 	_is_dead = false
 	_tick_timer = 0.0
 	current_state = MedicalEnums.HealthState.HEALTHY
@@ -405,9 +495,30 @@ func _create_hitboxes() -> void:
 
 		bone_attach.add_child(hitbox)
 
+		# P2：为锚定在该骨骼上的内部结构创建可视化网格（H 键切换显示，
+		# 用于目视校准 AnatomyConfig 的几何位置）
+		for s in _anatomy.get_structures_for_bone(bone_name):
+			var structure := s as AnatomyStructure
+			hitbox.add_anatomy_debug_mesh(
+				structure.start_point, structure.end_point, structure.radius,
+				_anatomy_debug_color(structure.type)
+			)
+
 		_hitboxes.append(hitbox)
 
 	GlobalLogger.info("HealthSystem", "Created %d hitboxes" % _hitboxes.size())
+
+
+## 内部结构可视化配色：器官红、骨骼白、血管深红
+func _anatomy_debug_color(type: MedicalEnums.StructureType) -> Color:
+	match type:
+		MedicalEnums.StructureType.ORGAN:
+			return Color(1.0, 0.25, 0.25, 0.55)
+		MedicalEnums.StructureType.BONE:
+			return Color(0.95, 0.95, 0.85, 0.55)
+		MedicalEnums.StructureType.MAJOR_VESSEL:
+			return Color(0.75, 0.0, 0.12, 0.7)
+	return Color(1, 1, 1, 0.5)
 
 
 ## 销毁全部 hitbox 及其 BoneAttachment3D 父节点，并清空引用列表
@@ -426,6 +537,8 @@ func _destroy_hitboxes() -> void:
 # ── 调试接口（仅供 MedicalDebugMenu 使用）────────────────────
 
 ## 直接注入一个伤口，用于测试出血/死亡流程。
+## bleed_override < 0 时按软组织规则自动分类（P2：调试注入无伤道信息，
+## 不会自动产生动脉出血；需要动脉测试请显式指定 ARTERIAL）。
 func debug_add_wound(part: MedicalEnums.BodyPartId, severity: float, bleed_override: int = -1) -> void:
 	if _is_dead or not vitals:
 		return
@@ -437,7 +550,7 @@ func debug_add_wound(part: MedicalEnums.BodyPartId, severity: float, bleed_overr
 	w.body_part = part
 	w.type = MedicalEnums.WoundType.PENETRATING
 	w.severity = severity
-	w.bleed_rate = (bleed_override as MedicalEnums.BleedRate) if bleed_override >= 0 else _classify_bleed(severity, part)
+	w.bleed_rate = (bleed_override as MedicalEnums.BleedRate) if bleed_override >= 0 else _classify_soft_tissue_bleed(severity)
 	w.pain_contribution = severity * 0.5
 	region.add_wound(w)
 	wound_added.emit(w)
@@ -458,12 +571,18 @@ func debug_set_blood_pct(pct: float) -> void:
 	_evaluate_state(Vector3.ZERO)
 
 
-## 清除全部伤口（不恢复已流失的血量；如需满血用 debug_set_blood_pct(1.0)）
+## 清除全部伤口及 P2 结构伤情（器官损伤/骨折/呼吸惩罚）
+## （不恢复已流失的血量；如需满血用 debug_set_blood_pct(1.0)）
 func debug_clear_wounds() -> void:
 	if not vitals:
 		return
 	for part_id: int in vitals.regions:
-		(vitals.regions[part_id] as BodyRegion).wounds.clear()
+		var region := vitals.regions[part_id] as BodyRegion
+		region.wounds.clear()
+		region.organ_damage.clear()
+		region.fractured_bones.clear()
+	vitals.breathing_effectiveness = 1.0
+	_lethal_organ_destroyed = false
 	bleeding_changed.emit(0.0)
-	GlobalLogger.debug("HealthSystem", "[DEBUG] All wounds cleared")
+	GlobalLogger.debug("HealthSystem", "[DEBUG] All wounds and structural damage cleared")
 	_evaluate_state(Vector3.ZERO)
