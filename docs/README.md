@@ -7,6 +7,7 @@
 ## 模块索引
 
 - [Player 系统](#player-系统)
+- [医疗与伤害系统](#医疗与伤害系统)
 - [Weapon 核心](#weapon-核心)
 - [Weapon 配件](#weapon-配件)
 - [工具类](#工具类)
@@ -27,6 +28,9 @@ BasePlayer (CharacterBody3D)
 ├── PlayerAnimationController  动画状态机
 ├── PlayerRagdollSystem        死亡布娃娃
 ├── FootIKController           脚部 IK（预留）
+├── HealthSystem               伤害、生理状态与医疗死亡
+│   ├── VitalsModel            血量、呼吸与身体部位状态
+│   └── AnatomyConfig          器官/骨骼/大血管及伤道参数
 │
 ├── WeaponManager              武器装备/切换
 │   └── WeaponObstructionDetector  顶墙收枪射线检测
@@ -80,6 +84,13 @@ BasePlayer
   died            → PlayerAnimationController._on_died()
   revived         → PlayerAnimationController._on_revived()
 
+HealthSystem
+  wound_added     → 医疗 HUD / 后续治疗系统
+  organ_damaged  → 医疗 HUD / 后续器官机能系统
+  bone_fractured → 医疗 HUD / 后续移动惩罚系统
+  medically_died → 死亡类型/方向观察者
+  医疗死亡判定    → BasePlayer.die() → PlayerRagdollSystem
+
 WeaponManager
   weapon_changed  → BasePlayer._on_weapon_changed()
                     → PlayerCameraController.set_recoil_component()
@@ -105,6 +116,14 @@ BaseWeapon
 | [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `Classes/Player/player_ragdoll_system.gd` | 死亡布娃娃开关 |
 | [FootIKController](player/FootIKController.md) | `Classes/Player/foot_ik_controller.gd` | 脚部 IK（存根，未实现） |
 | [WeaponObstructionDetector](player/WeaponObstructionDetector.md) | `Classes/Weapon/Weapon/weapon_obstruction_detector.gd` | 顶墙收枪射线检测 |
+
+---
+
+## 医疗与伤害系统
+
+| 文档 | 核心文件 | 说明 |
+|------|----------|------|
+| [Medical & Anatomy System](player/MedicalSystem.md) | `classes/player/medical/health_system.gd` | P1/P2 伤害管线、27 结构解剖模型、伤道、器官损伤、骨折、内外出血与调试工具 |
 
 ---
 
