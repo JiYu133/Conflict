@@ -20,7 +20,7 @@ config/icon="res://icon.svg"
 AppManager="*res://classes/app_manager.gd"
 DeathScreen="*res://classes/ui/death_screen.gd"
 KeyPromptManager="*res://classes/ui/key_prompt_manager.gd"
-GlobalLogger="*uid://cubcslg46kl2q"
+GlobalLogger="*uid://dmqv8fl7418mg"
 
 [display]
 

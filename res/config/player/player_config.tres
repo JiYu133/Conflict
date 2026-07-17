@@ -2,16 +2,12 @@
 
 [ext_resource type="Resource" uid="uid://v1h5icka80bd" path="res://res/config/player/player_model_lookup_default.tres" id="1_6gouf"]
 [ext_resource type="Script" uid="uid://6u3qnxvobvio" path="res://classes/player/player_config.gd" id="1_vyh63"]
-[ext_resource type="Script" uid="uid://ri18tcp25jof" path="res://classes/player/hand_ik_config.gd" id="2_fup21"]
 [ext_resource type="PackedScene" uid="uid://b56qxlux3spui" path="res://res/models/player/test_model/swat.tscn" id="3_f37k6"]
 [ext_resource type="Resource" uid="uid://bak74m001" path="res://res/config/weapons/ak74m_config.tres" id="4_f37k6"]
 [ext_resource type="Resource" uid="uid://juhdg5d5h5ju" path="res://res/config/player/camera_config_default.tres" id="5_camcfg"]
 [ext_resource type="Resource" uid="uid://dw84v6n2k5p1x" path="res://res/config/player/ragdoll_config_default.tres" id="6_ragdoll"]
 [ext_resource type="Resource" path="res://res/config/player/health_config_default.tres" id="7_healthcfg"]
-
-[sub_resource type="Resource" id="Resource_f37k6"]
-script = ExtResource("2_fup21")
-metadata/_custom_type_script = "uid://b304dqmhgyp3b"
+[ext_resource type="Resource" uid="uid://7v30cxyumx43" path="res://res/config/player/hand_ik_config_default.tres" id="8_handik"]
 
 [resource]
 script = ExtResource("1_vyh63")
@@ -23,7 +19,7 @@ collision_shape_height = 1.0
 collision_shape_radius = 0.3
 model_y_offset = -0.56
 ragdoll_config = ExtResource("6_ragdoll")
-hand_ik_config = SubResource("Resource_f37k6")
+hand_ik_config = ExtResource("8_handik")
 starting_weapon = ExtResource("4_f37k6")
 camera_stand_eye_height = 1.08
 camera_crouch_eye_height = 0.6

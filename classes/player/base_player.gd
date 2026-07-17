@@ -41,6 +41,7 @@ var weapon_manager: WeaponManager
 var animation_controller: PlayerAnimationController
 var health_system: HealthSystem
 var free_camera_controller: FreeCameraController
+var medical_debug_menu: MedicalDebugMenu
 
 # 信号
 
@@ -119,6 +120,8 @@ func _initialize_subsystems() -> void:
 
 	if OS.is_debug_build():
 		free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
+		medical_debug_menu = _create_subsystem(MedicalDebugMenu.new(), "MedicalDebugMenu") as MedicalDebugMenu
+		medical_debug_menu.initialize(self)
 
 	# 连接信号
 	_connect_signals()
@@ -223,6 +226,14 @@ func _input(event: InputEvent) -> void:
 
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
+			KEY_F11:
+				# 切换全屏/窗口模式
+				if DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN:
+					DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+					GlobalLogger.info("Player", "切换到窗口模式")
+				else:
+					DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+					GlobalLogger.info("Player", "切换到全屏模式")
 			KEY_F:
 				if free_camera_controller:
 					free_camera_controller.toggle()
@@ -235,6 +246,10 @@ func _input(event: InputEvent) -> void:
 			KEY_U:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot_explosion()
+			KEY_R:
+				# 调试复活（仅 debug 构建）：死亡状态下按 R 原地复活并清除全部伤情。
+				if not is_alive:
+					revive()
 
 
 func _on_started_sprinting() -> void:
@@ -265,6 +280,7 @@ func revive() -> void:
 	is_alive = true
 	ragdoll_system.disable()
 	camera_controller.enable_camera()
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 	# 恢复玩家碰撞体
 	_set_collision_enabled(true)

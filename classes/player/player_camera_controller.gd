@@ -304,6 +304,8 @@ func _input(event: InputEvent) -> void:
 		return
 	if not is_instance_valid(_player) or not controllable:
 		return
+	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+		return
 	_player.rotate_y(-event.relative.x * _mouse_sensitivity)
 	_vertical_angle -= event.relative.y * _mouse_sensitivity
 	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)

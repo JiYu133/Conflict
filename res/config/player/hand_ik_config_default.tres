@@ -4,6 +4,11 @@
 
 [resource]
 script = ExtResource("1_hq47r")
-forearm_roll_align = 0.0
-default_ik_weight = 0.565
+ik_node_name = "LeftHandIK"
+default_ik_weight = 1.0
+walk_ik_weight = 1.0
+run_ik_weight = 0.85
+sprint_ik_weight = 0.6
+ads_ik_weight = 1.0
+weight_blend_time = 0.12
 metadata/_custom_type_script = "uid://b304dqmhgyp3b"

@@ -20,10 +20,6 @@ var _is_ads: bool = false
 var _current_weight: float = 0.0
 var _target_weight: float = 0.0
 
-# 诊断用：每 N 帧打印一次状态
-var _diag_timer: int = 0
-const DIAG_INTERVAL := 180  # 约每 3 秒（60fps）
-
 
 func initialize(_model_manager: PlayerModelManager, _lookup: ModelLookupConfig) -> void:
 	pass
@@ -110,23 +106,3 @@ func process_ik(delta: float) -> void:
 	var effective_target := _target_weight if _enabled else 0.0
 	_current_weight = move_toward(_current_weight, effective_target, delta / blend_time)
 	_ik_node.influence = _current_weight
-
-	# ── 周期性诊断日志 ────────────────────────────────────────
-	_diag_timer += 1
-	if _diag_timer >= DIAG_INTERVAL:
-		_diag_timer = 0
-		_print_diag()
-
-
-func _print_diag() -> void:
-	var grip_valid := is_instance_valid(_left_hand_grip)
-	var target_pos := _hand_target.global_position if _hand_target else Vector3.ZERO
-	var grip_pos   := _left_hand_grip.global_position if grip_valid else Vector3.ZERO
-	GlobalLogger.info("HandIK", "[诊断] enabled=%s  influence=%.3f  target_weight=%.3f  grip_valid=%s  target_pos=%s  grip_pos=%s" % [
-		str(_enabled),
-		_ik_node.influence if _ik_node else -1.0,
-		_target_weight,
-		str(grip_valid),
-		str(target_pos),
-		str(grip_pos)
-	])

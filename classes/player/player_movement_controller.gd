@@ -81,7 +81,16 @@ func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
 	if not _player.controllable:
-		_velocity = Vector3.ZERO
+		# 仍然应用重力并更新物理，防止玩家悬空
+		if not _player.is_on_floor():
+			_velocity.y -= _config.gravity * delta
+		else:
+			_velocity.y = _config.floor_snap_velocity
+		_velocity.x = 0.0
+		_velocity.z = 0.0
+		_player.velocity = _velocity
+		_player.move_and_slide()
+		_velocity = _player.velocity
 		return
 
 	# ──────────────────────────────────────────────────────
