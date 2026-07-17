@@ -58,6 +58,20 @@ enum BleedRate {
 	ARTERIAL,    ## 动脉出血：~15.0 ml/s，数十秒内致命
 }
 
+## 内部解剖结构类型（P2 解剖模型）
+enum StructureType {
+	ORGAN,         ## 器官：心/肺/肝/肠/脑等，受损累积并产生内出血/机能惩罚
+	BONE,          ## 骨骼：动能超过阈值时骨折
+	MAJOR_VESSEL,  ## 大血管：伤道贯穿时产生动脉/静脉出血（外部或内部）
+}
+
+## 器官损伤状态（P2）
+enum OrganState {
+	INTACT,     ## 完好
+	DAMAGED,    ## 受损：内出血 + 机能惩罚
+	DESTROYED,  ## 摧毁：重度内出血；关键器官（心/脑）直接致死
+}
+
 ## 治疗方式
 enum TreatmentType {
 	BANDAGE,        ## 绷带（止毛细/静脉出血）
