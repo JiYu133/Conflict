@@ -30,3 +30,20 @@ var is_penetrating: bool = false
 
 ## 命中时的弹头速度（m/s）；由 Ballistics 填入，供伤口严重程度细分
 var impact_velocity: float = 0.0
+
+# ── 伤道局部信息（P2 解剖模型；由 HitResolver 填入）──────────
+# 仅存活时命中 BodyHitbox 才有值；anchor_bone 为空 = 无伤道信息，
+# AnatomySolver 走盲判回退路径（爆炸/调试注入/布娃娃命中）。
+
+## 命中 hitbox 锚定的骨骼名（如 "mixamorig_Spine2"）；"" = 无伤道信息
+var anchor_bone: String = ""
+
+## 入射点（hitbox 局部空间坐标，米）
+var local_entry: Vector3 = Vector3.ZERO
+
+## 弹道方向（hitbox 局部空间，归一化）
+var local_direction: Vector3 = Vector3.ZERO
+
+## 是否携带可用于解剖求解的伤道信息
+func has_wound_channel() -> bool:
+	return anchor_bone != "" and local_direction != Vector3.ZERO
