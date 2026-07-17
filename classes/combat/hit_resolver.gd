@@ -73,7 +73,23 @@ static func resolve(
 
 	var collider = ray_result.get("collider", null)
 	info.body_part = _resolve_part_from_collider(collider)
+	_fill_wound_channel(info, collider)
 	return info
+
+
+## P2：把世界空间命中信息转换到 hitbox 局部空间，供 AnatomySolver
+## 做伤道-结构相交测试。仅存活时命中 BodyHitbox 才有伤道信息；
+## 布娃娃（PhysicalBone3D）命中的是尸体，无需解剖判定。
+static func _fill_wound_channel(info: DamageInfo, collider: Object) -> void:
+	if not (collider is BodyHitbox) or info.direction == Vector3.ZERO:
+		return
+	var hitbox := collider as BodyHitbox
+	var xf: Transform3D = hitbox.global_transform
+	info.local_entry = xf.affine_inverse() * info.hit_position
+	info.local_direction = (xf.basis.inverse() * info.direction).normalized()
+	var attach := hitbox.get_parent()
+	if attach is BoneAttachment3D:
+		info.anchor_bone = (attach as BoneAttachment3D).bone_name
 
 
 static func _resolve_part_from_collider(collider: Object) -> MedicalEnums.BodyPartId:

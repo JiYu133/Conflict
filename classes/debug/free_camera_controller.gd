@@ -236,19 +236,17 @@ func _fire_hitscan(energy: float, dmg_type: MedicalEnums.DamageType, forced_part
 		GlobalLogger.debug("FreeCam", "命中 %s，无 HealthSystem" % collider.name)
 		return
 
-	var info := DamageInfo.new()
-	info.amount       = energy
-	info.type         = dmg_type
-	info.direction    = forward
-	info.hit_position = result.position
-	info.source       = _free_cam
+	# 走正式命中解析管线：HitResolver 会填入伤道局部信息
+	# （anchor_bone / local_entry / local_direction），P2 解剖判定
+	# （动脉/器官/骨骼）依赖这些数据做几何相交测试。
+	# 旧实现手动构造 DamageInfo 导致解剖判定永远走盲判回退路径。
+	var info := HitResolver.resolve(result, energy, dmg_type, _free_cam, forward)
 
 	if forced_part != null:
+		# 强制部位（T/Y/U 调试键）与实际命中位置可能不一致，
+		# 伤道信息作废，解剖判定按该部位盲判
 		info.body_part = forced_part
-	elif collider.has_method("get_body_part_id"):
-		info.body_part = collider.get_body_part_id()
-	else:
-		info.body_part = MedicalEnums.BodyPartId.TORSO
+		info.anchor_bone = ""
 
 	health_system.apply_damage(info)
 	_spawn_hit_marker(result.position)
