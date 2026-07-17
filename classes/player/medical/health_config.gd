@@ -12,6 +12,18 @@ extends Resource
 ## 碰撞体形状参数配置（留空则使用默认值）
 @export var hitbox_config: HitboxConfig
 
+@export_group("解剖模型 / Anatomy（P2）")
+## 内部结构（器官/骨骼/大血管）定义与伤道求解参数。
+## 留空 = 使用 AnatomyConfig.create_default() 的内置人体模板。
+@export var anatomy_config: AnatomyConfig
+
+@export_group("软组织出血阈值 / Soft-Tissue Bleed（P2）")
+## 软组织静脉出血的伤口严重度阈值。
+## 注意：动脉出血不再由部位+严重度决定，只有伤道命中大血管才会产生。
+@export var venous_severity_threshold: float = 0.4
+## 软组织毛细血管出血的伤口严重度阈值
+@export var capillary_severity_threshold: float = 0.1
+
 @export_group("血量 / Blood Volume")
 ## 初始血量（ml）。成人正常约 4700–5500 ml，建议不低于 3000。
 @export var blood_volume_ml: float = 5000.0
