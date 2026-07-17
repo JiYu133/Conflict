@@ -137,6 +137,11 @@ func _enter() -> void:
 	_was_controllable = _player.controllable
 	_player.set_controllable(false)
 
+	# 冻结动画播放（speed_scale=0 保留当前帧，不重置状态机）
+	var animator := _player.model_manager.animator if _player.model_manager else null
+	if animator:
+		animator.speed_scale = 0.0
+
 	var current_cam := _camera_controller.get_active_camera()
 	_free_cam = Camera3D.new()
 	_free_cam.name = "FreeCam"
@@ -175,6 +180,12 @@ func _exit() -> void:
 	_free_cam = null
 
 	_player.set_controllable(_was_controllable and _player.is_alive)
+
+	# 恢复动画
+	var animator := _player.model_manager.animator if _player.model_manager else null
+	if animator:
+		animator.speed_scale = 1.0
+
 	GlobalLogger.info("FreeCam", "自由视角已退出")
 
 
