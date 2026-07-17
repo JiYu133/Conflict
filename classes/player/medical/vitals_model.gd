@@ -40,10 +40,14 @@ var pain_level: float = 0.0
 var _next_wound_id: int = 0
 
 
-## 根据 HealthConfig 初始化各部位和基础血量
+## 根据 HealthConfig 初始化各部位和基础血量（复活时重复调用可完全重置）
 func initialize(config: HealthConfig) -> void:
 	blood_volume_ml = config.blood_volume_ml
 	max_blood_volume_ml = config.blood_volume_ml
+	breathing_effectiveness = 1.0
+	oxygenation = 1.0
+	consciousness_level = 1.0
+	pain_level = 0.0
 	_build_regions(config)
 
 

@@ -117,14 +117,24 @@ func _update_display() -> void:
 	elif blood_pct <= config.critical_blood_threshold_pct:
 		lines.append("[color=#ff8800]⚠ 危险：失血性休克[/color]")
 
-	# 出血速率
+	# 出血速率（P2：外部 + 内部分开显示）
 	var bleed_rate := vitals.total_bleed_rate()
+	var internal_rate := vitals.total_internal_bleed_rate()
+	var total_rate := bleed_rate + internal_rate
 	if bleed_rate > 0.0:
 		var bleed_color := "#ff4444" if bleed_rate >= 5.0 else "#ffaa44"
-		lines.append("[color=%s]失血: %.1f ml/s[/color]" % [bleed_color, bleed_rate])
-		var time_to_death := (vitals.blood_volume_ml - config.fatal_blood_threshold_pct * vitals.max_blood_volume_ml) / bleed_rate
+		lines.append("[color=%s]外部失血: %.1f ml/s[/color]" % [bleed_color, bleed_rate])
+	if internal_rate > 0.0:
+		var int_color := "#ff44aa" if internal_rate >= 5.0 else "#ffaa88"
+		lines.append("[color=%s]内出血: %.1f ml/s（绷带无效）[/color]" % [int_color, internal_rate])
+	if total_rate > 0.0:
+		var time_to_death := (vitals.blood_volume_ml - config.fatal_blood_threshold_pct * vitals.max_blood_volume_ml) / total_rate
 		if time_to_death > 0.0:
 			lines.append("[color=#888888]预计 %.0fs 后失血死亡[/color]" % time_to_death)
+
+	# P2：呼吸效率（肺部受损时显示）
+	if vitals.breathing_effectiveness < 1.0:
+		lines.append("[color=#88ccff]呼吸效率: %.0f%%[/color]" % (vitals.breathing_effectiveness * 100.0))
 
 	# === 各部位详情 ===
 	lines.append("")
@@ -193,15 +203,32 @@ func _update_display() -> void:
 				var wound_type : String = MedicalEnums.WoundType.keys()[w.type]
 				var bleed_name : String = MedicalEnums.BleedRate.keys()[w.bleed_rate]
 				var wound_color := _get_severity_color(w.severity)
-				lines.append("  [color=%s]#%d: %s (%.2f) - %s[/color]" % [
+				var internal_suffix := ""
+				if w.internal_bleed_rate != MedicalEnums.BleedRate.NONE:
+					internal_suffix = " / 内%s" % MedicalEnums.BleedRate.keys()[w.internal_bleed_rate]
+				lines.append("  [color=%s]#%d: %s (%.2f) - %s%s[/color]" % [
 					wound_color,
 					w.wound_id,
 					wound_type,
 					w.severity,
-					bleed_name
+					bleed_name,
+					internal_suffix
 				])
 		else:
-			lines.append("[color=#888888]• %s: 完好[/color]" % part_name)
+			if region.organ_damage.is_empty() and region.fractured_bones.is_empty():
+				lines.append("[color=#888888]• %s: 完好[/color]" % part_name)
+			else:
+				lines.append("[color=#ffaa44]• %s:[/color]" % part_name)
+
+		# P2：器官伤情
+		for organ_id: StringName in region.organ_damage:
+			var dmg: float = region.organ_damage[organ_id]
+			var organ_color := "#ff4444" if dmg >= 1.0 else "#ff8800"
+			lines.append("  [color=%s]器官 %s: 损伤 %.2f[/color]" % [organ_color, organ_id, dmg])
+
+		# P2：骨折
+		for bone_id: StringName in region.fractured_bones:
+			lines.append("  [color=#ffffff]骨折: %s[/color]" % bone_id)
 	text = "\n".join(lines)
 
 func _get_state_color(state: MedicalEnums.HealthState) -> String:
