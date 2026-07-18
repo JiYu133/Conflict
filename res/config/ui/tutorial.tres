@@ -135,7 +135,8 @@ metadata/_custom_type_script = "uid://u2poq2a3v32q"
 
 [sub_resource type="Resource" id="Resource_uaoa6"]
 script = ExtResource("3_s74ca")
-text = "按下ESC来显示光标"
+text = "按下ESC打开设置菜单
+可在其中重新绑定键位"
 duration = 3.0
 metadata/_custom_type_script = "uid://u2poq2a3v32q"
 
