@@ -38,11 +38,11 @@ func _input(event: InputEvent) -> void:
 	if not _player.is_alive or not _player.controllable:
 		return
 
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			adjust_stance(-0.1)  # 站起一档
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			adjust_stance(0.1)   # 蹲下一档
+	# 姿态微调：默认绑定滚轮上/下，可在设置菜单改绑按键（允许 echo → 按住连续调整）
+	if event.is_action_pressed("stance_raise", true):
+		adjust_stance(-0.1)  # 站起一档
+	elif event.is_action_pressed("stance_lower", true):
+		adjust_stance(0.1)   # 蹲下一档
 
 	# C 键：完全站立 → 最低姿态；非完全站立 → 完全站立
 	if event.is_action_pressed("crouch"):
