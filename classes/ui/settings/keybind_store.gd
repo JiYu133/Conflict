@@ -15,8 +15,10 @@ extends RefCounted
 const SAVE_PATH := "user://keybinds.cfg"
 const CONFIG_SECTION := "keybinds"
 
-## 可重绑定动作清单：{ action, display（中文·英文）, category }
+## 可重绑定动作清单：{ action, display（中文·英文）, category, slots? }
 ## 顺序即 UI 显示顺序；category 用于分组标题。
+## slots：该动作显示几个绑定槽（默认 1）。姿态微调为 2（主=滚轮，次=可选按键），
+##        实现「滚轮 + 按键」两种触发方式并存。
 const ACTIONS: Array[Dictionary] = [
 	{ "action": "move_forward",  "display": "前进 Forward",     "category": "移动 MOVEMENT" },
 	{ "action": "move_backward", "display": "后退 Backward",    "category": "移动 MOVEMENT" },
@@ -25,10 +27,20 @@ const ACTIONS: Array[Dictionary] = [
 	{ "action": "jump",          "display": "跳跃 Jump",        "category": "移动 MOVEMENT" },
 	{ "action": "sprint",        "display": "奔跑 Sprint",      "category": "移动 MOVEMENT" },
 	{ "action": "crouch",        "display": "蹲姿 Crouch",      "category": "移动 MOVEMENT" },
+	{ "action": "stance_raise",  "display": "姿态升高 Stance Up",   "category": "姿态微调 STANCE", "slots": 2 },
+	{ "action": "stance_lower",  "display": "姿态降低 Stance Down", "category": "姿态微调 STANCE", "slots": 2 },
 	{ "action": "fire",          "display": "开火 Fire",        "category": "战斗 COMBAT" },
 	{ "action": "aim",           "display": "瞄准 Aim",         "category": "战斗 COMBAT" },
 	{ "action": "reload",        "display": "换弹 Reload",      "category": "战斗 COMBAT" },
 ]
+
+
+## 返回动作的绑定槽数量（默认 1）。
+static func slot_count(action: String) -> int:
+	for entry in ACTIONS:
+		if entry["action"] == action:
+			return int(entry.get("slots", 1))
+	return 1
 
 static var _applied: bool = false
 
@@ -109,6 +121,49 @@ static func rebind_action(action: String, event: InputEvent) -> void:
 	save_action(action)
 
 
+# ── 分槽绑定（用于多槽动作，如姿态微调的 主=滚轮 + 次=按键）──────
+
+## 返回指定槽当前绑定的事件；空槽返回 null。
+static func get_slot_event(action: String, slot: int) -> InputEvent:
+	if not InputMap.has_action(action):
+		return null
+	var evs := InputMap.action_get_events(action)
+	return evs[slot] if slot < evs.size() else null
+
+
+## 设置指定槽的绑定事件（保留其它槽），并持久化。
+static func set_slot(action: String, slot: int, event: InputEvent) -> void:
+	var evs := InputMap.action_get_events(action).duplicate()
+	while evs.size() <= slot:
+		evs.append(null)
+	evs[slot] = event
+	_apply_events(action, evs)
+	save_action(action)
+
+
+## 清空指定槽的绑定（其它槽保留），并持久化。
+static func clear_slot(action: String, slot: int) -> void:
+	var evs := InputMap.action_get_events(action).duplicate()
+	if slot < evs.size():
+		evs[slot] = null
+		_apply_events(action, evs)
+		save_action(action)
+
+
+## 返回指定槽的可读标签（空槽返回 ""）。
+static func describe_slot(action: String, slot: int) -> String:
+	var ev := get_slot_event(action, slot)
+	return describe_event(ev) if ev else ""
+
+
+## 用事件数组（含 null 表示空槽）重建动作的 InputMap 事件。
+static func _apply_events(action: String, events: Array) -> void:
+	InputMap.action_erase_events(action)
+	for ev in events:
+		if ev:
+			InputMap.action_add_event(action, ev)
+
+
 ## 返回动作当前主要绑定的可读文本（用于键帽显示）。
 static func describe_action(action: String) -> String:
 	if not InputMap.has_action(action):
@@ -138,32 +193,35 @@ static func describe_event(event: InputEvent) -> String:
 	return ""
 
 
-## 返回与指定动作共用同一按键的其它动作列表（用于冲突检测）。
+## 返回与指定动作共用任一按键的其它动作列表（用于冲突检测；比较全部槽）。
 static func find_conflicts(action: String) -> Array[String]:
 	var result: Array[String] = []
-	var sig := _action_signature(action)
-	if sig == "":
+	var sigs := _action_signatures(action)
+	if sigs.is_empty():
 		return result
 	for entry in ACTIONS:
 		var other: String = entry["action"]
 		if other == action:
 			continue
-		if _action_signature(other) == sig:
-			result.append(other)
+		for s in _action_signatures(other):
+			if s in sigs:
+				result.append(other)
+				break
 	return result
 
 
 # 私有 ──────────────────────────────────────────────────────
 
-## 动作主绑定的签名字符串（用于比较是否同键）。
-static func _action_signature(action: String) -> String:
+## 动作全部绑定事件的签名集合（用于比较是否有同键重叠）。
+static func _action_signatures(action: String) -> Array:
+	var out: Array = []
 	if not InputMap.has_action(action):
-		return ""
+		return out
 	for ev in InputMap.action_get_events(action):
 		var enc := _encode_event(ev)
 		if not enc.is_empty():
-			return "%s:%d" % [enc["t"], enc["code"]]
-	return ""
+			out.append("%s:%d" % [enc["t"], enc["code"]])
+	return out
 
 
 static func _project_default_events(action: String) -> Array:
