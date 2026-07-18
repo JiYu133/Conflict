@@ -15,10 +15,10 @@ extends RefCounted
 const SAVE_PATH := "user://keybinds.cfg"
 const CONFIG_SECTION := "keybinds"
 
-## 可重绑定动作清单：{ action, display（中文·英文）, category, slots? }
-## 顺序即 UI 显示顺序；category 用于分组标题。
-## slots：该动作显示几个绑定槽（默认 1）。姿态微调为 2（主=滚轮，次=可选按键），
-##        实现「滚轮 + 按键」两种触发方式并存。
+## 可重绑定动作清单：{ action, display（中文·英文）, category, debug_only? }
+## 顺序即 UI 显示顺序；category 用于分组标题；
+## debug_only 为 true 的条目仅在 debug 构建的设置菜单中显示。
+## 每个动作单键绑定（重绑定覆盖旧键）。姿态微调默认绑定滚轮，可改绑单个按键。
 const ACTIONS: Array[Dictionary] = [
 	{ "action": "move_forward",  "display": "前进 Forward",     "category": "移动 MOVEMENT" },
 	{ "action": "move_backward", "display": "后退 Backward",    "category": "移动 MOVEMENT" },
@@ -27,20 +27,13 @@ const ACTIONS: Array[Dictionary] = [
 	{ "action": "jump",          "display": "跳跃 Jump",        "category": "移动 MOVEMENT" },
 	{ "action": "sprint",        "display": "奔跑 Sprint",      "category": "移动 MOVEMENT" },
 	{ "action": "crouch",        "display": "蹲姿 Crouch",      "category": "移动 MOVEMENT" },
-	{ "action": "stance_raise",  "display": "姿态升高 Stance Up",   "category": "姿态微调 STANCE", "slots": 2 },
-	{ "action": "stance_lower",  "display": "姿态降低 Stance Down", "category": "姿态微调 STANCE", "slots": 2 },
+	{ "action": "stance_raise",  "display": "姿态升高 Stance Up",   "category": "姿态微调 STANCE" },
+	{ "action": "stance_lower",  "display": "姿态降低 Stance Down", "category": "姿态微调 STANCE" },
 	{ "action": "fire",          "display": "开火 Fire",        "category": "战斗 COMBAT" },
 	{ "action": "aim",           "display": "瞄准 Aim",         "category": "战斗 COMBAT" },
 	{ "action": "reload",        "display": "换弹 Reload",      "category": "战斗 COMBAT" },
+	{ "action": "toggle_free_cam", "display": "DEBUG: 进入自由视角 Enter Free Cam", "category": "调试 DEBUG", "debug_only": true },
 ]
-
-
-## 返回动作的绑定槽数量（默认 1）。
-static func slot_count(action: String) -> int:
-	for entry in ACTIONS:
-		if entry["action"] == action:
-			return int(entry.get("slots", 1))
-	return 1
 
 static var _applied: bool = false
 
@@ -119,49 +112,6 @@ static func rebind_action(action: String, event: InputEvent) -> void:
 	InputMap.action_erase_events(action)
 	InputMap.action_add_event(action, event)
 	save_action(action)
-
-
-# ── 分槽绑定（用于多槽动作，如姿态微调的 主=滚轮 + 次=按键）──────
-
-## 返回指定槽当前绑定的事件；空槽返回 null。
-static func get_slot_event(action: String, slot: int) -> InputEvent:
-	if not InputMap.has_action(action):
-		return null
-	var evs := InputMap.action_get_events(action)
-	return evs[slot] if slot < evs.size() else null
-
-
-## 设置指定槽的绑定事件（保留其它槽），并持久化。
-static func set_slot(action: String, slot: int, event: InputEvent) -> void:
-	var evs := InputMap.action_get_events(action).duplicate()
-	while evs.size() <= slot:
-		evs.append(null)
-	evs[slot] = event
-	_apply_events(action, evs)
-	save_action(action)
-
-
-## 清空指定槽的绑定（其它槽保留），并持久化。
-static func clear_slot(action: String, slot: int) -> void:
-	var evs := InputMap.action_get_events(action).duplicate()
-	if slot < evs.size():
-		evs[slot] = null
-		_apply_events(action, evs)
-		save_action(action)
-
-
-## 返回指定槽的可读标签（空槽返回 ""）。
-static func describe_slot(action: String, slot: int) -> String:
-	var ev := get_slot_event(action, slot)
-	return describe_event(ev) if ev else ""
-
-
-## 用事件数组（含 null 表示空槽）重建动作的 InputMap 事件。
-static func _apply_events(action: String, events: Array) -> void:
-	InputMap.action_erase_events(action)
-	for ev in events:
-		if ev:
-			InputMap.action_add_event(action, ev)
 
 
 ## 返回动作当前主要绑定的可读文本（用于键帽显示）。

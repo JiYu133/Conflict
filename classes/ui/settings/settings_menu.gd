@@ -33,7 +33,6 @@ var _open: bool = false
 var _was_controllable: bool = false
 
 var _listening_action: String = ""
-var _listening_slot: int = 0
 var _listen_button: Button = null
 var _listen_frame: int = 0
 var _pulse_tween: Tween = null
@@ -42,7 +41,7 @@ var _theme: Theme = null
 var _panel: PanelContainer = null
 var _rows_container: VBoxContainer = null
 var _warning_label: Label = null
-# action → Array[Button]（每个绑定槽一个按钮）；action → 行容器，供刷新与冲突高亮
+# action → 键位按钮；action → 行容器，供刷新与冲突高亮
 var _key_buttons: Dictionary = {}
 var _rows: Dictionary = {}
 
@@ -128,9 +127,8 @@ func _handle_listen_input(event: InputEvent) -> void:
 
 	if new_event:
 		var action := _listening_action
-		var slot := _listening_slot
 		_cancel_listening()  # 先复位监听态，避免刷新时跳过该行
-		KeybindStore.set_slot(action, slot, new_event.duplicate())
+		KeybindStore.rebind_action(action, new_event.duplicate())
 		_refresh_all()
 		get_viewport().set_input_as_handled()
 
@@ -228,6 +226,9 @@ func _build_scroll_list(parent: Control) -> void:
 
 	var current_category := ""
 	for entry in KeybindStore.ACTIONS:
+		# debug_only 条目仅在 debug 构建显示
+		if entry.get("debug_only", false) and not OS.is_debug_build():
+			continue
 		if entry["category"] != current_category:
 			current_category = entry["category"]
 			_add_category_header(current_category)
@@ -271,19 +272,13 @@ func _add_keybind_row(entry: Dictionary) -> void:
 	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hbox.add_child(name_label)
 
-	# 多槽动作（姿态微调）：主槽 + 次槽两个键帽，实现「滚轮 + 按键」并存
-	var slots: int = KeybindStore.slot_count(action)
-	var buttons: Array = []
-	var cap_width: float = 190.0 if slots == 1 else 120.0
-	for slot in range(slots):
-		var key_button := Button.new()
-		key_button.custom_minimum_size = Vector2(cap_width, 38)
-		key_button.focus_mode = Control.FOCUS_NONE
-		_style_keycap(key_button, false, false)
-		key_button.pressed.connect(_on_slot_pressed.bind(action, slot))
-		hbox.add_child(key_button)
-		buttons.append(key_button)
-	_key_buttons[action] = buttons
+	var key_button := Button.new()
+	key_button.custom_minimum_size = Vector2(190, 38)
+	key_button.focus_mode = Control.FOCUS_NONE
+	_style_keycap(key_button, false, false)
+	key_button.pressed.connect(_on_keycap_pressed.bind(action))
+	hbox.add_child(key_button)
+	_key_buttons[action] = key_button
 
 	var reset_button := Button.new()
 	reset_button.text = "默认"
@@ -387,14 +382,13 @@ func _set_row_hover(row: PanelContainer, hovered: bool) -> void:
 
 # ── 交互回调 ─────────────────────────────────────────────────
 
-func _on_slot_pressed(action: String, slot: int) -> void:
-	if _listening_action == action and _listening_slot == slot:
+func _on_keycap_pressed(action: String) -> void:
+	if _listening_action == action:
 		_cancel_listening()
 		return
 	_cancel_listening()  # 切换到新的监听目标
 	_listening_action = action
-	_listening_slot = slot
-	_listen_button = (_key_buttons[action] as Array)[slot]
+	_listen_button = _key_buttons[action]
 	_listen_frame = Engine.get_process_frames()
 	_listen_button.text = "▶ 按下按键…"
 	_style_keycap(_listen_button, true, false)
@@ -436,25 +430,16 @@ func _refresh_all() -> void:
 			_warning_label.text = "⚠ 存在按键冲突（红色标记）——同一按键被多个动作占用"
 
 
-## 刷新单行全部绑定槽的显示与冲突样式；返回该行是否冲突。
+## 刷新单行显示与冲突样式；返回该行是否冲突。
 func _refresh_row(action: String) -> bool:
-	var buttons: Array = _key_buttons.get(action, [])
-	if buttons.is_empty():
+	if action == _listening_action:
+		return false  # 监听中，保持提示文本
+	var button: Button = _key_buttons.get(action, null)
+	if not button:
 		return false
 	var conflict := not KeybindStore.find_conflicts(action).is_empty()
-	for slot in range(buttons.size()):
-		var button: Button = buttons[slot]
-		# 监听中的那个槽保持提示文本，跳过
-		if action == _listening_action and slot == _listening_slot:
-			continue
-		var label := KeybindStore.describe_slot(action, slot)
-		if label == "":
-			button.text = "＋ 绑定按键"
-			_style_keycap(button, false, false)
-			button.add_theme_color_override("font_color", COL_MUTED)
-		else:
-			button.text = label
-			_style_keycap(button, false, conflict)
+	button.text = KeybindStore.describe_action(action)
+	_style_keycap(button, false, conflict)
 	return conflict
 
 
