@@ -1,0 +1,367 @@
+[gd_resource type="Resource" script_class="AnatomyConfig" format=3 uid="uid://d36ybc07pv5v6"]
+
+[ext_resource type="Script" uid="uid://4wcwcfnjf6wo" path="res://classes/player/medical/anatomy_config.gd" id="1_e3mpa"]
+[ext_resource type="Script" uid="uid://bjqcij0sfumvg" path="res://classes/player/medical/anatomy_structure.gd" id="2_gtmni"]
+
+[sub_resource type="Resource" id="s_brain"]
+script = ExtResource("2_gtmni")
+structure_id = &"brain"
+display_name = "脑"
+type = 1
+body_part = 0
+anchor_bone = "mixamorig_Head"
+start_point = Vector3(0, -0.01, -0.01)
+end_point = Vector3(0, 0.05, -0.01)
+radius = 0.07
+min_damage_energy = 60.0
+blind_hit_probability = 0.5
+destroy_damage_threshold = 0.5
+lethal_when_destroyed = true
+
+[sub_resource type="Resource" id="s_skull"]
+script = ExtResource("2_gtmni")
+structure_id = &"skull"
+display_name = "颅骨"
+type = 2
+body_part = 0
+anchor_bone = "mixamorig_Head"
+start_point = Vector3(0, -0.02, 0)
+end_point = Vector3(0, 0.03, 0)
+radius = 0.1
+min_damage_energy = 300.0
+blind_hit_probability = 0.6
+
+[sub_resource type="Resource" id="s_heart"]
+script = ExtResource("2_gtmni")
+structure_id = &"heart"
+display_name = "心脏"
+type = 1
+anchor_bone = "mixamorig_Spine2"
+start_point = Vector3(0.02, -0.04, 0.04)
+end_point = Vector3(0.02, 0.05, 0.04)
+radius = 0.055
+min_damage_energy = 80.0
+blind_hit_probability = 0.08
+destroy_damage_threshold = 0.6
+lethal_when_destroyed = true
+internal_bleed_damaged = 3
+
+[sub_resource type="Resource" id="s_lung_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"lung_l"
+display_name = "左肺"
+type = 1
+anchor_bone = "mixamorig_Spine2"
+start_point = Vector3(0.085, -0.08, 0.01)
+end_point = Vector3(0.085, 0.1, 0.01)
+radius = 0.075
+min_damage_energy = 60.0
+blind_hit_probability = 0.18
+destroy_damage_threshold = 1.2
+internal_bleed_destroyed = 2
+breathing_penalty = 0.35
+
+[sub_resource type="Resource" id="s_lung_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"lung_r"
+display_name = "右肺"
+type = 1
+anchor_bone = "mixamorig_Spine2"
+start_point = Vector3(-0.085, -0.08, 0.01)
+end_point = Vector3(-0.085, 0.1, 0.01)
+radius = 0.075
+min_damage_energy = 60.0
+blind_hit_probability = 0.18
+destroy_damage_threshold = 1.2
+internal_bleed_destroyed = 2
+breathing_penalty = 0.35
+
+[sub_resource type="Resource" id="s_aorta_thoracic"]
+script = ExtResource("2_gtmni")
+structure_id = &"aorta_thoracic"
+display_name = "胸主动脉"
+anchor_bone = "mixamorig_Spine2"
+start_point = Vector3(0, -0.12, -0.02)
+end_point = Vector3(0, 0.14, -0.02)
+radius = 0.013
+min_damage_energy = 40.0
+direct_hit_probability = 0.95
+blind_hit_probability = 0.03
+bleed_is_internal = true
+
+[sub_resource type="Resource" id="s_spine_thoracic"]
+script = ExtResource("2_gtmni")
+structure_id = &"spine_thoracic"
+display_name = "胸椎"
+type = 2
+anchor_bone = "mixamorig_Spine2"
+start_point = Vector3(0, -0.14, -0.06)
+end_point = Vector3(0, 0.15, -0.06)
+radius = 0.022
+min_damage_energy = 500.0
+blind_hit_probability = 0.05
+
+[sub_resource type="Resource" id="s_liver"]
+script = ExtResource("2_gtmni")
+structure_id = &"liver"
+display_name = "肝脏"
+type = 1
+anchor_bone = "mixamorig_Spine1"
+start_point = Vector3(-0.06, 0.02, 0.04)
+end_point = Vector3(-0.01, 0.08, 0.04)
+radius = 0.06
+min_damage_energy = 60.0
+blind_hit_probability = 0.15
+
+[sub_resource type="Resource" id="s_intestines"]
+script = ExtResource("2_gtmni")
+structure_id = &"intestines"
+display_name = "肠"
+type = 1
+anchor_bone = "mixamorig_Spine1"
+start_point = Vector3(0, -0.1, 0.03)
+end_point = Vector3(0, 0, 0.03)
+radius = 0.085
+min_damage_energy = 40.0
+blind_hit_probability = 0.25
+destroy_damage_threshold = 1.5
+internal_bleed_damaged = 1
+internal_bleed_destroyed = 2
+
+[sub_resource type="Resource" id="s_aorta_abdominal"]
+script = ExtResource("2_gtmni")
+structure_id = &"aorta_abdominal"
+display_name = "腹主动脉"
+anchor_bone = "mixamorig_Spine1"
+start_point = Vector3(0, -0.12, -0.02)
+end_point = Vector3(0, 0.12, -0.02)
+radius = 0.011
+min_damage_energy = 40.0
+direct_hit_probability = 0.95
+blind_hit_probability = 0.03
+bleed_is_internal = true
+
+[sub_resource type="Resource" id="s_spine_lumbar"]
+script = ExtResource("2_gtmni")
+structure_id = &"spine_lumbar"
+display_name = "腰椎"
+type = 2
+anchor_bone = "mixamorig_Spine1"
+start_point = Vector3(0, -0.12, -0.055)
+end_point = Vector3(0, 0.12, -0.055)
+radius = 0.022
+min_damage_energy = 450.0
+blind_hit_probability = 0.05
+
+[sub_resource type="Resource" id="s_femoral_artery_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"femoral_artery_l"
+display_name = "左股动脉"
+body_part = 6
+anchor_bone = "mixamorig_LeftUpLeg"
+start_point = Vector3(0.025, 0.06, 0.025)
+end_point = Vector3(0.02, 0.18, 0.02)
+radius = 0.007
+min_damage_energy = 30.0
+direct_hit_probability = 0.9
+blind_hit_probability = 0.05
+
+[sub_resource type="Resource" id="s_femoral_artery_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"femoral_artery_r"
+display_name = "右股动脉"
+body_part = 8
+anchor_bone = "mixamorig_RightUpLeg"
+start_point = Vector3(-0.025, 0.06, 0.025)
+end_point = Vector3(-0.02, 0.18, 0.02)
+radius = 0.007
+min_damage_energy = 30.0
+direct_hit_probability = 0.9
+blind_hit_probability = 0.05
+
+[sub_resource type="Resource" id="s_femur_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"femur_l"
+display_name = "左股骨"
+type = 2
+body_part = 6
+anchor_bone = "mixamorig_LeftUpLeg"
+start_point = Vector3(0, -0.17, 0)
+end_point = Vector3(0, 0.17, 0)
+radius = 0.017
+min_damage_energy = 350.0
+blind_hit_probability = 0.12
+
+[sub_resource type="Resource" id="s_femur_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"femur_r"
+display_name = "右股骨"
+type = 2
+body_part = 8
+anchor_bone = "mixamorig_RightUpLeg"
+start_point = Vector3(0, -0.17, 0)
+end_point = Vector3(0, 0.17, 0)
+radius = 0.017
+min_damage_energy = 350.0
+blind_hit_probability = 0.12
+
+[sub_resource type="Resource" id="s_tibial_artery_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"tibial_artery_l"
+display_name = "左胫后动脉"
+body_part = 7
+anchor_bone = "mixamorig_LeftLeg"
+start_point = Vector3(0.01, -0.17, -0.02)
+end_point = Vector3(0.01, 0.15, -0.025)
+radius = 0.004
+min_damage_energy = 30.0
+direct_hit_probability = 0.85
+blind_hit_probability = 0.03
+
+[sub_resource type="Resource" id="s_tibial_artery_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"tibial_artery_r"
+display_name = "右胫后动脉"
+body_part = 9
+anchor_bone = "mixamorig_RightLeg"
+start_point = Vector3(-0.01, -0.17, -0.02)
+end_point = Vector3(-0.01, 0.15, -0.025)
+radius = 0.004
+min_damage_energy = 30.0
+direct_hit_probability = 0.85
+blind_hit_probability = 0.03
+
+[sub_resource type="Resource" id="s_tibia_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"tibia_l"
+display_name = "左胫骨"
+type = 2
+body_part = 7
+anchor_bone = "mixamorig_LeftLeg"
+start_point = Vector3(0, -0.17, 0.01)
+end_point = Vector3(0, 0.17, 0.01)
+radius = 0.015
+min_damage_energy = 300.0
+blind_hit_probability = 0.12
+
+[sub_resource type="Resource" id="s_tibia_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"tibia_r"
+display_name = "右胫骨"
+type = 2
+body_part = 9
+anchor_bone = "mixamorig_RightLeg"
+start_point = Vector3(0, -0.17, 0.01)
+end_point = Vector3(0, 0.17, 0.01)
+radius = 0.015
+min_damage_energy = 300.0
+blind_hit_probability = 0.12
+
+[sub_resource type="Resource" id="s_brachial_artery_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"brachial_artery_l"
+display_name = "左肱动脉"
+body_part = 2
+anchor_bone = "mixamorig_LeftArm"
+start_point = Vector3(0.015, -0.1, 0.015)
+end_point = Vector3(0.015, 0.02, 0.015)
+radius = 0.005
+min_damage_energy = 30.0
+direct_hit_probability = 0.9
+blind_hit_probability = 0.04
+
+[sub_resource type="Resource" id="s_brachial_artery_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"brachial_artery_r"
+display_name = "右肱动脉"
+body_part = 4
+anchor_bone = "mixamorig_RightArm"
+start_point = Vector3(-0.015, -0.1, 0.015)
+end_point = Vector3(-0.015, 0.02, 0.015)
+radius = 0.005
+min_damage_energy = 30.0
+direct_hit_probability = 0.9
+blind_hit_probability = 0.04
+
+[sub_resource type="Resource" id="s_humerus_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"humerus_l"
+display_name = "左肱骨"
+type = 2
+body_part = 2
+anchor_bone = "mixamorig_LeftArm"
+start_point = Vector3(0, -0.11, 0)
+end_point = Vector3(0, 0.02, 0)
+radius = 0.014
+min_damage_energy = 250.0
+blind_hit_probability = 0.12
+
+[sub_resource type="Resource" id="s_humerus_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"humerus_r"
+display_name = "右肱骨"
+type = 2
+body_part = 4
+anchor_bone = "mixamorig_RightArm"
+start_point = Vector3(0, -0.11, 0)
+end_point = Vector3(0, 0.02, 0)
+radius = 0.014
+min_damage_energy = 250.0
+blind_hit_probability = 0.12
+
+[sub_resource type="Resource" id="s_radial_artery_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"radial_artery_l"
+display_name = "左桡动脉"
+body_part = 3
+anchor_bone = "mixamorig_LeftForeArm"
+start_point = Vector3(0.01, -0.1, 0.01)
+end_point = Vector3(0.01, 0.02, 0.01)
+radius = 0.003
+min_damage_energy = 25.0
+direct_hit_probability = 0.85
+blind_hit_probability = 0.02
+
+[sub_resource type="Resource" id="s_radial_artery_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"radial_artery_r"
+display_name = "右桡动脉"
+body_part = 5
+anchor_bone = "mixamorig_RightForeArm"
+start_point = Vector3(-0.01, -0.1, 0.01)
+end_point = Vector3(-0.01, 0.02, 0.01)
+radius = 0.003
+min_damage_energy = 25.0
+direct_hit_probability = 0.85
+blind_hit_probability = 0.02
+
+[sub_resource type="Resource" id="s_forearm_bones_l"]
+script = ExtResource("2_gtmni")
+structure_id = &"forearm_bones_l"
+display_name = "左尺桡骨"
+type = 2
+body_part = 3
+anchor_bone = "mixamorig_LeftForeArm"
+start_point = Vector3(0, -0.11, 0)
+end_point = Vector3(0, 0.02, 0)
+radius = 0.013
+min_damage_energy = 220.0
+blind_hit_probability = 0.12
+
+[sub_resource type="Resource" id="s_forearm_bones_r"]
+script = ExtResource("2_gtmni")
+structure_id = &"forearm_bones_r"
+display_name = "右尺桡骨"
+type = 2
+body_part = 5
+anchor_bone = "mixamorig_RightForeArm"
+start_point = Vector3(0, -0.11, 0)
+end_point = Vector3(0, 0.02, 0)
+radius = 0.013
+min_damage_energy = 220.0
+blind_hit_probability = 0.12
+
+[resource]
+script = ExtResource("1_e3mpa")
+structures = Array[ExtResource("2_gtmni")]([SubResource("s_brain"), SubResource("s_skull"), SubResource("s_heart"), SubResource("s_lung_l"), SubResource("s_lung_r"), SubResource("s_aorta_thoracic"), SubResource("s_spine_thoracic"), SubResource("s_liver"), SubResource("s_intestines"), SubResource("s_aorta_abdominal"), SubResource("s_spine_lumbar"), SubResource("s_femoral_artery_l"), SubResource("s_femoral_artery_r"), SubResource("s_femur_l"), SubResource("s_femur_r"), SubResource("s_tibial_artery_l"), SubResource("s_tibial_artery_r"), SubResource("s_tibia_l"), SubResource("s_tibia_r"), SubResource("s_brachial_artery_l"), SubResource("s_brachial_artery_r"), SubResource("s_humerus_l"), SubResource("s_humerus_r"), SubResource("s_radial_artery_l"), SubResource("s_radial_artery_r"), SubResource("s_forearm_bones_l"), SubResource("s_forearm_bones_r")])
+metadata/_custom_type_script = "uid://4wcwcfnjf6wo"

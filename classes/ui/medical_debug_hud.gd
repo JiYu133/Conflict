@@ -114,6 +114,8 @@ func _update_display() -> void:
 	var config := _health_system._config
 	if blood_pct <= config.fatal_blood_threshold_pct:
 		lines.append("[color=#ff0000][b]⚠ 失血性死亡！[/b][/color]")
+	elif blood_pct <= config.unconscious_blood_threshold_pct:
+		lines.append("[color=#ff4444]⚠ 昏迷中（血量过低）[/color]")
 	elif blood_pct <= config.critical_blood_threshold_pct:
 		lines.append("[color=#ff8800]⚠ 危险：失血性休克[/color]")
 

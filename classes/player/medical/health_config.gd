@@ -30,6 +30,9 @@ extends Resource
 ## 触发 CRITICAL 状态的血量百分比阈值（跌破此值进入濒危）。
 ## 医学参考：失血 20–30%（1000–1500 ml）进入失血性休克 Class II。
 @export_range(0.0, 1.0) var critical_blood_threshold_pct: float = 0.6
+## 触发 UNCONSCIOUS（失去意识）状态的血量百分比阈值（跌破此值无法操控，但仍存活可被救治）。
+## 医学参考：失血 30–40% 进入 Class III，通常导致意识模糊乃至昏迷。
+@export_range(0.0, 1.0) var unconscious_blood_threshold_pct: float = 0.4
 ## 血液耗尽死亡阈值（跌破此值即死亡）。
 ## 医学参考：失血 >40%（>2000 ml）为危及生命的 Class IV 失血性休克。
 @export_range(0.0, 1.0) var fatal_blood_threshold_pct: float = 0.3

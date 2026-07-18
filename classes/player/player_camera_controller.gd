@@ -348,9 +348,14 @@ func _process(delta: float) -> void:
 	var stiffness_mult: float = 1.0
 	if _is_ads:
 		stiffness_mult += (_camera_config.ads_stiffness_multiplier - 1.0) * _ads_progress
-	_spring_x.stiffness = _stiffness_h * stiffness_mult
-	_spring_y.stiffness = _stiffness_v * stiffness_mult
-	_spring_z.stiffness = _stiffness_h * stiffness_mult
+
+	# 功能性损伤：稳定性低 → 弹簧更软 → 摄像机晃动更多
+	var stability := 1.0
+	if is_instance_valid(_player) and _player.health_system:
+		stability = _player.health_system.get_aim_stability_multiplier()
+	_spring_x.stiffness = _stiffness_h * stiffness_mult * stability
+	_spring_y.stiffness = _stiffness_v * stiffness_mult * stability
+	_spring_z.stiffness = _stiffness_h * stiffness_mult * stability
 
 	var filtered_local := Vector3(
 		_spring_x.update(delta, head_local.x),
@@ -390,9 +395,16 @@ func _get_head_local_position() -> Vector3:
 	return Vector3.ZERO
 
 
-## 由 PlayerMovementController 在蹲下/站起时调用，更新摄像机眼部目标高度
-func set_crouch_state(crouching: bool, config: PlayerConfig) -> void:
-	_target_eye_height = config.camera_crouch_eye_height if crouching else config.camera_stand_eye_height
+## 响应姿态变化，更新摄像机眼部目标高度
+func _on_stance_changed(value: float) -> void:
+	if not _player or not _player.player_config:
+		return
+	var config = _player.player_config
+	_target_eye_height = lerp(
+		config.camera_stand_eye_height,
+		config.camera_crouch_eye_height,
+		value
+	)
 
 
 # ============================================================

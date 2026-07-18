@@ -6,18 +6,16 @@
 [ext_resource type="Resource" uid="uid://bak74m001" path="res://res/config/weapons/ak74m_config.tres" id="4_f37k6"]
 [ext_resource type="Resource" uid="uid://juhdg5d5h5ju" path="res://res/config/player/camera_config_default.tres" id="5_camcfg"]
 [ext_resource type="Resource" uid="uid://dw84v6n2k5p1x" path="res://res/config/player/ragdoll_config_default.tres" id="6_ragdoll"]
-[ext_resource type="Resource" path="res://res/config/player/health_config_default.tres" id="7_healthcfg"]
+[ext_resource type="Resource" path="res://res/config/medic/health_config_default.tres" id="7_healthcfg"]
 [ext_resource type="Resource" uid="uid://7v30cxyumx43" path="res://res/config/player/hand_ik_config_default.tres" id="8_handik"]
+[ext_resource type="Resource" path="res://res/config/player/movement_config_default.tres" id="9_movcfg"]
 
 [resource]
 script = ExtResource("1_vyh63")
-sprint_speed = 5.0
+movement_config = ExtResource("9_movcfg")
 model_scene = ExtResource("3_f37k6")
 model_config = ExtResource("1_6gouf")
 camera_config = ExtResource("5_camcfg")
-collision_shape_height = 1.0
-collision_shape_radius = 0.3
-model_y_offset = -0.56
 ragdoll_config = ExtResource("6_ragdoll")
 hand_ik_config = ExtResource("8_handik")
 starting_weapon = ExtResource("4_f37k6")

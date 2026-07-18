@@ -3,148 +3,142 @@ extends Resource
 
 # ============================================================
 # 玩家配置资源
-# 功能：定义玩家的全部初始参数，包括移动物理、碰撞体尺寸、
-#       摄像机配置引用和初始武器。
-# 用法：在 Godot 编辑器中创建 .tres 资源，填入具体数值，
-#       然后传入 BasePlayer 完成初始化。
+# 功能：汇总所有子系统配置引用，各子系统参数见对应 Config 资源。
 # ============================================================
 
-# 移动参数 ─────────────────────────────────────────────────
-@export_group("移动参数")
-## 行走速度（m/s），负重 40kg 士兵战术行走约 1.2–1.5 m/s / Walk speed in m/s
-@export var walk_speed: float = 1.5
-## 奔跑速度（m/s），负重士兵持续跑步约 3.5–4.0 m/s / Run speed in m/s
-@export var run_speed: float = 3.5
-## 全力冲刺速度（m/s），长按 Shift 激活，比奔跑更快 / Sprint speed in m/s
-@export var sprint_speed: float = 6.0
-## 触发冲刺所需的最短按压时长（秒），低于此值视为单击切换奔跑 / Hold duration threshold to activate sprint vs. tap-to-toggle-run
-@export var sprint_hold_threshold: float = 0.25
-## 地面加速度（m/s²），约 6 m/s² 使起步有明显惯性 / Ground acceleration in m/s²
-@export var ground_acceleration: float = 6.0
-## 跳跃力（m/s）/ Jump impulse in m/s
-@export var jump_force: float = 3.2
-## 重力加速度（m/s²）/ Gravity in m/s²
-@export var gravity: float = 9.8
-## 空中加速度（m/s²）/ Air acceleration in m/s²
-@export var air_acceleration: float = 1.0
-## 空中减速度（m/s²）/ Air deceleration in m/s²
-@export var air_deceleration: float = 2.0
-## 输入死区（方向长度低于此值视为无输入）/ Input dead zone threshold for analog/keyboard direction
-@export var input_dead_zone: float = 0.1
-## 接地时 Y 速度钳制值（防止向下加速累积）/ Y velocity clamp when grounded to prevent downward accumulation
-@export var floor_snap_velocity: float = -0.5
-## 后退判定 dot 阈值（dot < 此值视为向后移动）/ Dot product threshold below which movement is treated as backward
-@export var backward_dot_threshold: float = -0.3
-## 横移判定 dot 阈值（dot > 此值视为横向移动）/ Dot product threshold above which movement is treated as lateral
-@export var lateral_dot_threshold: float = 0.7
-## 启用转向减速的最低水平速度（m/s）/ Min horizontal speed to activate turn deceleration
-@export var turn_decel_min_speed: float = 0.1
-## 空中加速/减速切换的目标速度阈值（m/s）/ Air input speed threshold for switching between accel and decel
-@export var air_input_threshold: float = 0.1
-
-# 运动手感 ─────────────────────────────────────────────────
-@export_group("运动手感")
-
-# 起步爆发：从静止蹬地时的短暂速度峰值，游戏手感夸张而非物理精确
-## 起步峰值速度倍率，1.2 = 起步时速度短暂超出基础值 20% / Burst speed multiplier on movement start
-@export var burst_strength: float = 1.2
-## 爆发持续时间（秒）/ Burst duration in seconds
-@export var burst_duration: float = 0.12
-
-# 步态波动：行走/奔跑时速度随脚步的周期性起伏，模拟重心摆动
-# 参考人体步频数据：走路约 1.8 Hz（108 步/分），奔跑约 2.5 Hz（150 步/分）
-## 走路步频（Hz）/ Walk gait frequency in Hz
-@export var gait_frequency_walk: float = 1.8
-## 跑步步频（Hz）/ Run gait frequency in Hz
-@export var gait_frequency_run: float = 2.5
-## 冲刺步频（Hz）/ Sprint gait frequency in Hz
-@export var gait_frequency_sprint: float = 3.2
-## 走路速度波动振幅（m/s）/ Walk gait speed ripple amplitude in m/s
-@export var gait_amplitude_walk: float = 0.06
-## 跑步速度波动振幅（m/s）/ Run gait speed ripple amplitude in m/s
-@export var gait_amplitude_run: float = 0.12
-## 冲刺速度波动振幅（m/s）/ Sprint gait speed ripple amplitude in m/s
-@export var gait_amplitude_sprint: float = 0.18
-
-# 转向减速：基于 dot product 的物理公式，90° 急转约损失 35–50% 速度
-## 转向减速强度，0.0 = 不减速，1.0 = 完全余弦削减 / Turn deceleration factor; 0 = none, 1 = full cosine reduction
-@export var turn_decel_factor: float = 0.85
-
-# 停止卸力：负重士兵从步行速度停止约需 0.3–0.6m，对应制动强度约 4–6 m/s²
-## 制动强度（m/s²），无输入时快速减速 / Braking strength in m/s² when no input
-@export var stop_brake_strength: float = 5.0
-
-# 方向速度上限：参考 Arma 3 实现，有士兵负重运动研究支撑
-## 横向（纯侧移）速度上限，相对前进速度的比例 / Lateral speed cap as a ratio of forward speed
-@export var lateral_speed_ratio: float = 0.8
-## 后退速度上限，相对前进速度的比例 / Backward speed cap as a ratio of forward speed
-@export var backward_speed_ratio: float = 0.7
+# 运动配置 ─────────────────────────────────────────────────
+@export_group("运动配置")
+## 运动系统参数（速度、物理、姿态、蹲下等）
+@export var movement_config: MovementConfig
 
 # 模型配置 ─────────────────────────────────────────────────
 @export_group("模型")
-## 玩家 3D 模型场景，需要包含 Skeleton3D 和 AnimationPlayer / Player 3D model scene
+## 玩家 3D 模型场景
 @export var model_scene: PackedScene
-## 节点查找规则，告诉 ModelManager 去哪里找骨骼、摄像机挂载点等 / Node lookup rules for ModelManager
+## 节点查找规则
 @export var model_config: ModelLookupConfig
-## 摄像机与视角效果配置（FOV、晃动、落地冲击等）/ Camera and procedural effect config
+## 摄像机与视角效果配置
 @export var camera_config: CameraConfig
-## 碰撞胶囊体高度（m），约等于角色身高 / Collision capsule height in meters
-@export var collision_shape_height: float = 1.8
-## 碰撞胶囊体半径（m），约等于角色身体厚度 / Collision capsule radius in meters
-@export var collision_shape_radius: float = 0.4
-## 碰撞体 Y 轴偏移（m），正值上移，负值下移 / Collision shape Y offset in meters
-@export var collision_shape_y_offset: float = 0.0
-## 模型垂直偏移（m），正值上移，负值下移。用于使模型脚部对齐胶囊体底部 / Model vertical offset to align feet with collision capsule bottom
-@export var model_y_offset: float = -0.5
 
+# 动画配置 ─────────────────────────────────────────────────
+@export_group("动画配置")
+## 进入行走状态的水平速度平方阈值（m²/s²）
+@export var walk_enter_speed_sq: float = 0.25
+## 退出行走状态的水平速度平方阈值（m²/s²）
+@export var walk_exit_speed_sq: float = 0.0225
+## 落地恢复时间（秒）
+@export var land_recovery_time: float = 0.3
+
+# 摄像机眼部高度 ────────────────────────────────────────────
+@export_group("摄像机眼部高度")
+## 站立时摄像机眼部高度（玩家局部 Y）
+@export var camera_stand_eye_height: float = 1.6
+## 蹲下时摄像机眼部高度（玩家局部 Y）
+@export var camera_crouch_eye_height: float = 1.0
+
+# 布娃娃配置 ────────────────────────────────────────────────
 @export_group("布娃娃配置")
-## 布娃娃物理配置（留空则使用代码内默认值）/ Ragdoll physics configuration (uses code defaults if empty)
+## 布娃娃物理配置
 @export var ragdoll_config: RagdollConfig
 
 # 手部 IK 配置 ──────────────────────────────────────────────
 @export_group("手部 IK 配置")
-## 左手 IK 参数（骨骼链、FABRIK、肘部方向等，留空则使用默认值）
+## 左手 IK 参数
 @export var hand_ik_config: HandIKConfig
 
 # 武器配置 ─────────────────────────────────────────────────
 @export_group("武器配置")
-## 初始武器 / Starting weapon config
+## 初始武器
 @export var starting_weapon: WeaponConfig
 
-# 动画配置 ─────────────────────────────────────────────────
-@export_group("动画配置")
-## 进入行走状态的水平速度平方阈值（m²/s²），默认 0.25 = 0.5 m/s / Walk enter threshold (squared speed)
-@export var walk_enter_speed_sq: float = 0.25
-## 退出行走状态的水平速度平方阈值（m²/s²），默认 0.0225 = 0.15 m/s / Walk exit threshold (squared speed)
-@export var walk_exit_speed_sq: float = 0.0225
-## 落地恢复时间（秒），落地动画播放完毕后自动切回地面状态的等待时间 / Landing recovery time in seconds
-@export var land_recovery_time: float = 0.3
-
-# 蹲下 ──────────────────────────────────────────────────────
-@export_group("蹲下")
-## 蹲走速度（m/s）
-@export var crouch_speed: float = 1.0
-## 蹲下/站起过渡时间（秒）
-@export var crouch_transition_time: float = 0.35
-## 蹲下碰撞胶囊体高度（m）
-@export var crouch_capsule_height: float = 0.6
-## 站立时摄像机眼部高度（玩家局部 Y，从原点算）
-@export var camera_stand_eye_height: float = 1.6
-## 蹲下时摄像机眼部高度（玩家局部 Y，从原点算）
-@export var camera_crouch_eye_height: float = 1.0
-## 蹲下时模型 Y 轴偏移（让脚踩地，通常比 model_y_offset 更负）
-@export var crouch_y_offset: float = -0.85
+# 医疗配置 ─────────────────────────────────────────────────
+@export_group("医疗配置")
+## 医疗系统配置
+@export var health_config: HealthConfig
 
 # 转身动画 ──────────────────────────────────────────────────
 @export_group("转身动画")
-## 是否启用转身动画（默认关闭）
+## 是否启用转身动画
 @export var turn_in_place_enabled: bool = false
-## 触发转身动画的朝向差阈值（度），超过此角度触发转身
+## 触发转身动画的朝向差阈值（度）
 @export var turn_angle_threshold: float = 60.0
 ## 低于此速度（m/s）时才能触发转身动画
 @export var turn_walk_speed_threshold: float = 1.2
 
-# 医疗配置 ─────────────────────────────────────────────────
-@export_group("医疗配置")
-## 医疗系统配置（留空则使用代码内默认值）/ Health system configuration (uses code defaults if empty)
-@export var health_config: HealthConfig
+# ── 向后兼容：直接委托给 movement_config ──────────────────────
+# 以下属性供现有代码在 movement_config 迁移完成前继续使用。
+# 迁移完成后可以删除。
+
+var walk_speed: float:
+	get: return movement_config.walk_speed if movement_config else 1.5
+var run_speed: float:
+	get: return movement_config.run_speed if movement_config else 3.5
+var sprint_speed: float:
+	get: return movement_config.sprint_speed if movement_config else 6.0
+var crouch_speed: float:
+	get: return movement_config.crouch_speed if movement_config else 1.0
+var sprint_hold_threshold: float:
+	get: return movement_config.sprint_hold_threshold if movement_config else 0.25
+var ground_acceleration: float:
+	get: return movement_config.ground_acceleration if movement_config else 6.0
+var jump_force: float:
+	get: return movement_config.jump_force if movement_config else 3.2
+var gravity: float:
+	get: return movement_config.gravity if movement_config else 9.8
+var air_acceleration: float:
+	get: return movement_config.air_acceleration if movement_config else 1.0
+var air_deceleration: float:
+	get: return movement_config.air_deceleration if movement_config else 2.0
+var floor_snap_velocity: float:
+	get: return movement_config.floor_snap_velocity if movement_config else -0.5
+var input_dead_zone: float:
+	get: return movement_config.input_dead_zone if movement_config else 0.1
+var backward_dot_threshold: float:
+	get: return movement_config.backward_dot_threshold if movement_config else -0.3
+var lateral_dot_threshold: float:
+	get: return movement_config.lateral_dot_threshold if movement_config else 0.7
+var turn_decel_min_speed: float:
+	get: return movement_config.turn_decel_min_speed if movement_config else 0.1
+var air_input_threshold: float:
+	get: return movement_config.air_input_threshold if movement_config else 0.1
+var lateral_speed_ratio: float:
+	get: return movement_config.lateral_speed_ratio if movement_config else 0.8
+var backward_speed_ratio: float:
+	get: return movement_config.backward_speed_ratio if movement_config else 0.7
+var stop_brake_strength: float:
+	get: return movement_config.stop_brake_strength if movement_config else 5.0
+var turn_decel_factor: float:
+	get: return movement_config.turn_decel_factor if movement_config else 0.85
+var burst_strength: float:
+	get: return movement_config.burst_strength if movement_config else 1.2
+var burst_duration: float:
+	get: return movement_config.burst_duration if movement_config else 0.12
+var gait_frequency_walk: float:
+	get: return movement_config.gait_frequency_walk if movement_config else 1.8
+var gait_frequency_run: float:
+	get: return movement_config.gait_frequency_run if movement_config else 2.5
+var gait_frequency_sprint: float:
+	get: return movement_config.gait_frequency_sprint if movement_config else 3.2
+var gait_amplitude_walk: float:
+	get: return movement_config.gait_amplitude_walk if movement_config else 0.06
+var gait_amplitude_run: float:
+	get: return movement_config.gait_amplitude_run if movement_config else 0.12
+var gait_amplitude_sprint: float:
+	get: return movement_config.gait_amplitude_sprint if movement_config else 0.18
+var stance_transition_speed: float:
+	get: return movement_config.stance_transition_speed if movement_config else 3.0
+var stance_step_size: float:
+	get: return movement_config.stance_step_size if movement_config else 0.1
+var crouch_capsule_height: float:
+	get: return movement_config.crouch_capsule_height if movement_config else 0.6
+var crouch_y_offset: float:
+	get: return movement_config.crouch_y_offset if movement_config else -0.85
+var collision_shape_height: float:
+	get: return movement_config.collision_shape_height if movement_config else 1.8
+var collision_shape_radius: float:
+	get: return movement_config.collision_shape_radius if movement_config else 0.4
+var collision_shape_y_offset: float:
+	get: return movement_config.collision_shape_y_offset if movement_config else 0.0
+var model_y_offset: float:
+	get: return movement_config.model_y_offset if movement_config else -0.5
+
