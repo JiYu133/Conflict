@@ -235,6 +235,11 @@ func _input(event: InputEvent) -> void:
 	if not OS.is_debug_build():
 		return
 
+	# 自由视角切换（可在设置菜单重绑定，默认 F）
+	if event.is_action_pressed("toggle_free_cam"):
+		if free_camera_controller:
+			free_camera_controller.toggle()
+
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F11:
@@ -245,9 +250,6 @@ func _input(event: InputEvent) -> void:
 				else:
 					DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 					GlobalLogger.info("Player", "切换到全屏模式")
-			KEY_F:
-				if free_camera_controller:
-					free_camera_controller.toggle()
 			KEY_T:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.TORSO)
