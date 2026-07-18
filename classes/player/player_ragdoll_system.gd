@@ -63,6 +63,7 @@ var _animator: AnimationPlayer
 var _animation_tree: AnimationTree
 var _config: RagdollConfig
 var _weapon_mount: Node3D  # 死亡时需要隐藏的武器挂载点
+var _fp_hidden_meshes: Array[MeshInstance3D] = []  # 第一人称隐藏的头部 mesh（layer 2）
 
 ## 已创建的物理骨骼列表。每项存储 {"bone": PhysicalBone3D, "bone_idx": int}
 var _physical_bone_entries: Array = []
@@ -125,6 +126,16 @@ func initialize(
 	_config = config if config else RagdollConfig.new()
 	_weapon_mount = weapon_mount
 
+	# 收集第一人称隐藏的头部 mesh（layers 包含 layer 2，即 layers & 2 != 0）
+	_fp_hidden_meshes.clear()
+	if is_instance_valid(_skeleton):
+		var model_root := _skeleton.get_parent()
+		if is_instance_valid(model_root):
+			for mi in model_root.find_children("*", "MeshInstance3D", true, false):
+				var mesh := mi as MeshInstance3D
+				if mesh and (mesh.layers & 2):
+					_fp_hidden_meshes.append(mesh)
+
 	if not _skeleton:
 		GlobalLogger.warn("RagdollSystem", "Initialized without skeleton; ragdoll disabled.")
 		return
@@ -139,6 +150,7 @@ func _reset_skeleton_state() -> void:
 	_physical_simulator = null
 	_physical_bone_entries.clear()
 	_saved_bone_poses.clear()
+	_fp_hidden_meshes.clear()
 	_is_active = false
 	_current_phase = RagdollPhase.INACTIVE
 	_death_anim_timer = 0.0
@@ -230,6 +242,11 @@ func disable() -> void:
 	# 恢复武器可见性
 	if is_instance_valid(_weapon_mount):
 		_weapon_mount.visible = true
+
+	# 复活：头部 mesh 恢复 layer 1+2，投影正常工作
+	for mesh in _fp_hidden_meshes:
+		if is_instance_valid(mesh):
+			mesh.layers = 3
 
 	_is_active = false
 	_current_phase = RagdollPhase.INACTIVE
@@ -472,6 +489,11 @@ func _start_physics_phase() -> void:
 	# 隐藏武器，避免武器挂载点仍跟骨骼动画而武器竖立不倒
 	if is_instance_valid(_weapon_mount):
 		_weapon_mount.visible = false
+
+	# 死亡物理阶段：头部 mesh 切回仅 layer 2，摄像机不可见（跟第一人称逻辑一致）
+	for mesh in _fp_hidden_meshes:
+		if is_instance_valid(mesh):
+			mesh.layers = 2
 
 	# 启动物理骨骼模拟
 	if not is_instance_valid(_physical_simulator):

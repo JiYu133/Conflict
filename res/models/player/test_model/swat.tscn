@@ -344,7 +344,8 @@ bones/53/rotation = Quaternion(-6.356673e-05, 5.51722e-10, -8.739407e-06, 1)
 bones/56/rotation = Quaternion(1.0197909e-17, 2.8176478e-17, -9.7144515e-17, 1)
 
 [node name="Soldier_head" parent="Skeleton3D" index="0" unique_id=1544579987]
-layers = 2
+layers = 3
+cast_shadow = 3
 
 [node name="BoneAttachment3D" type="BoneAttachment3D" parent="Skeleton3D" index="2" unique_id=312442521]
 transform = Transform3D(1, 5.441036e-07, -7.037968e-07, -5.441065e-07, 0.9999998, 2.9802322e-08, 7.0379815e-07, -2.9802322e-08, 0.9999998, 4.8665515e-07, 1.5773256, -0.02485289)
