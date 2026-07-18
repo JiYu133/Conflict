@@ -132,10 +132,22 @@ func toggle() -> void:
 		_enter()
 
 
+func _set_head_mesh_shadow(mode: GeometryInstance3D.ShadowCastingSetting) -> void:
+	if not _player.model_manager or not _player.model_manager.model_node:
+		return
+	for mesh in _player.model_manager.model_node.find_children("*", "MeshInstance3D", true, false):
+		var mi := mesh as MeshInstance3D
+		if mi and (mi.layers & 2):
+			mi.cast_shadow = mode
+
+
 func _enter() -> void:
 	_active = true
 	_was_controllable = _player.controllable
 	_player.set_controllable(false)
+
+	# 自由视角下头部网格需要完全可见（含阴影）
+	_set_head_mesh_shadow(GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
 
 	# 冻结动画播放（speed_scale=0 保留当前帧，不重置状态机）
 	var animator := _player.model_manager.animator if _player.model_manager else null
@@ -166,6 +178,9 @@ func _exit() -> void:
 	_label_alpha = 0.0
 	_aimed_part = -1
 	_aimed_health_system = null
+
+	# 退出自由视角，头部恢复 SHADOWS_ONLY 模式
+	_set_head_mesh_shadow(GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY)
 
 	# 死亡后（布娃娃摄像机模式）不恢复原摄像机，
 	# PlayerCameraController 的死亡模式会继续跟随头骨骼。
