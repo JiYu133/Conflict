@@ -74,7 +74,6 @@ animation = &"crouch_walk_bwd_left/mixamo_com"
 animation = &"crouch_walk_bwd_right/mixamo_com"
 
 [sub_resource type="AnimationNodeBlendSpace2D" id="ANBlend_crouch_walk"]
-blend_mode = 1
 blend_point_0/node = SubResource("ANAnim_cwfwd")
 blend_point_0/pos = Vector2(1, 0)
 blend_point_0/name = &"crouch_walk_fwd"
@@ -105,6 +104,14 @@ animation = &"jump_loop/mixamo_com"
 
 [sub_resource type="AnimationNodeAnimation" id="ANAnim_idle"]
 animation = &"idle/mixamo_com"
+
+[sub_resource type="AnimationNodeBlendSpace1D" id="ANBlend1D_idle_stance"]
+min_space = 0.0
+max_space = 1.0
+blend_point_0/node = SubResource("ANAnim_idle")
+blend_point_0/pos = 0.0
+blend_point_1/node = SubResource("ANAnim_crouch_idle")
+blend_point_1/pos = 1.0
 
 [sub_resource type="AnimationNodeAnimation" id="ANAnim_jump_up"]
 animation = &"jump_up/mixamo_com"
@@ -279,15 +286,17 @@ advance_mode = 2
 xfade_time = 0.15
 advance_mode = 2
 
+[sub_resource type="AnimationNodeStateMachineTransition" id="Trans_crouch_walk"]
+xfade_time = 0.3
+xfade_curve = null
+
 [sub_resource type="AnimationNodeStateMachine" id="ANStateMachine"]
-states/CrouchIdle/node = SubResource("ANAnim_crouch_idle")
-states/CrouchIdle/position = Vector2(200, 200)
 states/CrouchWalk/node = SubResource("ANBlend_crouch_walk")
-states/CrouchWalk/position = Vector2(400, 200)
+states/CrouchWalk/position = Vector2(400, 220)
 states/End/position = Vector2(723, 100)
 states/Fall/node = SubResource("ANAnim_jump_loop")
 states/Fall/position = Vector2(438.26886, 237.12134)
-states/Idle/node = SubResource("ANAnim_idle")
+states/Idle/node = SubResource("ANBlend1D_idle_stance")
 states/Idle/position = Vector2(200, 100)
 states/Jump/node = SubResource("ANAnim_jump_up")
 states/Jump/position = Vector2(303.26886, 237.12134)
@@ -299,7 +308,7 @@ states/Sprint/node = SubResource("ANBlend_sprint")
 states/Sprint/position = Vector2(0, 0)
 states/Walk/node = SubResource("ANBlend_walk")
 states/Walk/position = Vector2(400, 100)
-transitions = ["Start", "Idle", SubResource("Trans_start_idle"), "Idle", "Walk", SubResource("Trans_xfade"), "Walk", "Idle", SubResource("Trans_xfade"), "Idle", "Run", SubResource("Trans_xfade"), "Run", "Idle", SubResource("Trans_xfade"), "Walk", "Run", SubResource("Trans_xfade"), "Run", "Walk", SubResource("Trans_xfade"), "Idle", "Jump", SubResource("Trans_xfade"), "Walk", "Jump", SubResource("Trans_xfade"), "Run", "Jump", SubResource("Trans_xfade"), "Jump", "Fall", SubResource("Trans_auto_jump_fall"), "Idle", "Fall", SubResource("Trans_xfade"), "Walk", "Fall", SubResource("Trans_xfade"), "Run", "Fall", SubResource("Trans_xfade"), "Fall", "Land", SubResource("Trans_auto_fall_land"), "Land", "Idle", SubResource("Trans_auto_land_idle"), "Run", "Sprint", SubResource("Trans_xfade"), "Sprint", "Run", SubResource("Trans_xfade"), "Sprint", "Idle", SubResource("Trans_xfade"), "Sprint", "Walk", SubResource("Trans_xfade"), "Sprint", "Jump", SubResource("Trans_xfade"), "Sprint", "Fall", SubResource("Trans_xfade"), "Idle", "Sprint", SubResource("Trans_xfade"), "Walk", "Sprint", SubResource("Trans_xfade"), "Idle", "CrouchIdle", SubResource("Trans_xfade"), "Walk", "CrouchIdle", SubResource("Trans_xfade"), "Run", "CrouchIdle", SubResource("Trans_xfade"), "CrouchIdle", "Idle", SubResource("Trans_xfade"), "CrouchIdle", "Walk", SubResource("Trans_xfade"), "CrouchIdle", "CrouchWalk", SubResource("Trans_xfade"), "CrouchWalk", "CrouchIdle", SubResource("Trans_xfade"), "CrouchWalk", "Idle", SubResource("Trans_xfade"), "CrouchWalk", "Walk", SubResource("Trans_xfade"), "CrouchIdle", "Jump", SubResource("Trans_xfade"), "CrouchWalk", "Jump", SubResource("Trans_xfade"), "CrouchIdle", "Fall", SubResource("Trans_xfade"), "CrouchWalk", "Fall", SubResource("Trans_xfade")]
+transitions = ["Start", "Idle", SubResource("Trans_start_idle"), "Idle", "Walk", SubResource("Trans_xfade"), "Walk", "Idle", SubResource("Trans_xfade"), "Idle", "Run", SubResource("Trans_xfade"), "Run", "Idle", SubResource("Trans_xfade"), "Walk", "Run", SubResource("Trans_xfade"), "Run", "Walk", SubResource("Trans_xfade"), "Idle", "Jump", SubResource("Trans_xfade"), "Walk", "Jump", SubResource("Trans_xfade"), "Run", "Jump", SubResource("Trans_xfade"), "Jump", "Fall", SubResource("Trans_auto_jump_fall"), "Idle", "Fall", SubResource("Trans_xfade"), "Walk", "Fall", SubResource("Trans_xfade"), "Run", "Fall", SubResource("Trans_xfade"), "Fall", "Land", SubResource("Trans_auto_fall_land"), "Land", "Idle", SubResource("Trans_auto_land_idle"), "Run", "Sprint", SubResource("Trans_xfade"), "Sprint", "Run", SubResource("Trans_xfade"), "Sprint", "Idle", SubResource("Trans_xfade"), "Sprint", "Walk", SubResource("Trans_xfade"), "Sprint", "Jump", SubResource("Trans_xfade"), "Sprint", "Fall", SubResource("Trans_xfade"), "Idle", "Sprint", SubResource("Trans_xfade"), "Walk", "Sprint", SubResource("Trans_xfade"), "Walk", "CrouchWalk", SubResource("Trans_crouch_walk"), "CrouchWalk", "Walk", SubResource("Trans_crouch_walk"), "Idle", "CrouchWalk", SubResource("Trans_crouch_walk"), "CrouchWalk", "Idle", SubResource("Trans_crouch_walk"), "CrouchWalk", "Jump", SubResource("Trans_xfade"), "CrouchWalk", "Fall", SubResource("Trans_xfade")]
 graph_offset = Vector2(-27.73114, -174.33472)
 
 [node name="Swat" unique_id=727840838 instance=ExtResource("1_wbk7e")]
@@ -369,6 +378,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.49126345, 1.4615586, -0.138
 
 [node name="TwoBoneIK3D_L" type="TwoBoneIK3D" parent="Skeleton3D" index="5" unique_id=366020499]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.09819977, 0, -0.031240433)
+active = false
 setting_count = 1
 settings/0/target_node = NodePath("Target_L")
 settings/0/pole_node = NodePath("Pole_L")
@@ -399,6 +409,7 @@ collision_mask = 2
 
 [node name="TwoBoneIK3D_R" type="TwoBoneIK3D" parent="Skeleton3D" index="6" unique_id=364436275]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0969633, 0, -0.034765244)
+active = false
 setting_count = 1
 settings/0/target_node = NodePath("Target_R")
 settings/0/pole_node = NodePath("Pole_R")
@@ -430,6 +441,7 @@ collision_mask = 2
 [node name="AnimationTree" type="AnimationTree" parent="." index="3" unique_id=1816569920]
 tree_root = SubResource("ANStateMachine")
 anim_player = NodePath("../AnimationPlayer2")
+parameters/Idle/blend_position = 0.0
 parameters/CrouchWalk/blend_position = Vector2(0, 0)
 parameters/Run/blend_position = Vector2(0, 0)
 parameters/Sprint/blend_position = Vector2(0, 0)

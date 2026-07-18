@@ -12,35 +12,34 @@ extends Node
 # 状态机节点名称（必须与 AnimationTree 编辑器中的节点名一致）──────
 const SM_IDLE         := "Idle"
 const SM_WALK         := "Walk"
+const SM_CROUCH_WALK  := "CrouchWalk"
 const SM_RUN          := "Run"
 const SM_SPRINT       := "Sprint"
 const SM_JUMP         := "Jump"
 const SM_FALL         := "Fall"
 const SM_LAND         := "Land"
 const SM_DEATH        := "Death"
-const SM_CROUCH_IDLE  := "CrouchIdle"
-const SM_CROUCH_WALK  := "CrouchWalk"
 
 # AnimationTree 参数路径 ──────────────────────────────────────
-const PARAM_PLAYBACK       := "parameters/playback"
-const PARAM_WALK_BLEND     := "parameters/Walk/blend_position"
-const PARAM_RUN_BLEND      := "parameters/Run/blend_position"
-const PARAM_SPRINT_BLEND   := "parameters/Sprint/blend_position"
-const PARAM_CROUCH_BLEND   := "parameters/CrouchWalk/blend_position"
+const PARAM_PLAYBACK           := "parameters/playback"
+const PARAM_WALK_BLEND         := "parameters/Walk/blend_position"
+const PARAM_CROUCH_WALK_BLEND  := "parameters/CrouchWalk/blend_position"
+const PARAM_RUN_BLEND          := "parameters/Run/blend_position"
+const PARAM_SPRINT_BLEND       := "parameters/Sprint/blend_position"
+const PARAM_STANCE_BLEND       := "parameters/Idle/blend_position"
 
 
 # 状态枚举 ─────────────────────────────────────────────────
 enum State {
 	IDLE,
 	WALK,
+	CROUCH_WALK,
 	RUN,
 	SPRINT,
 	JUMP,
 	FALL,
 	LAND,
 	DEATH,
-	CROUCH_IDLE,
-	CROUCH_WALK,
 }
 
 # 私有变量 ─────────────────────────────────────────────────
@@ -77,14 +76,14 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		movement.started_sprinting.connect(_on_started_sprinting)
 	if not movement.stopped_sprinting.is_connected(_on_stopped_sprinting):
 		movement.stopped_sprinting.connect(_on_stopped_sprinting)
-	if not movement.started_crouching.is_connected(_on_started_crouching):
-		movement.started_crouching.connect(_on_started_crouching)
-	if not movement.stopped_crouching.is_connected(_on_stopped_crouching):
-		movement.stopped_crouching.connect(_on_stopped_crouching)
 	if not player.died.is_connected(_on_died):
 		player.died.connect(_on_died)
 	if not player.revived.is_connected(_on_revived):
 		player.revived.connect(_on_revived)
+
+	# 连接姿态控制器信号
+	if player.stance_controller and not player.stance_controller.stance_changed.is_connected(_on_stance_changed):
+		player.stance_controller.stance_changed.connect(_on_stance_changed)
 
 	_animation_tree = model_manager.animation_tree
 
@@ -99,6 +98,7 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 
 	GlobalLogger.info("AnimationController", "Initialized with AnimationTree.")
 	_setup_animations()
+	_apply_config_to_transitions()
 	_transition(State.IDLE)
 
 
@@ -143,6 +143,18 @@ func _setup_animations() -> void:
 					anim.remove_track(i)
 				i -= 1
 
+
+func _apply_config_to_transitions() -> void:
+	var sm := _animation_tree.tree_root as AnimationNodeStateMachine
+	if not sm or not _config or not _config.movement_config:
+		return
+	var xfade: float = _config.movement_config.crouch_walk_xfade_time
+	# get_transition() 只接受索引，遍历所有过渡找涉及 CrouchWalk 的条目
+	for i in sm.get_transition_count():
+		var from := sm.get_transition_from(i)
+		var to := sm.get_transition_to(i)
+		if from == SM_CROUCH_WALK or to == SM_CROUCH_WALK:
+			sm.get_transition(i).xfade_time = xfade
 
 # 每帧检测 ──────────────────────────────────────────────────
 
@@ -231,13 +243,23 @@ func _update_blend_positions() -> void:
 	var crouch_blend := Vector2(crouch_normalized.y, -crouch_normalized.x)
 
 	_animation_tree.set(PARAM_WALK_BLEND, walk_blend)
+	_animation_tree.set(PARAM_CROUCH_WALK_BLEND, crouch_blend)
 	_animation_tree.set(PARAM_RUN_BLEND, run_blend)
 	_animation_tree.set(PARAM_SPRINT_BLEND, sprint_blend)
-	_animation_tree.set(PARAM_CROUCH_BLEND, crouch_blend)
 
 
 # 信号回调 ──────────────────────────────────────────────────
 
+func _on_stance_changed(value: float) -> void:
+	"""响应姿态变化，更新 Idle 状态的姿态混合参数，并按阈值切换 Walk/CrouchWalk"""
+	if not _animation_tree:
+		return
+	_animation_tree.set(PARAM_STANCE_BLEND, value)
+	# 走路状态下实时切换：半蹲阈值 0.3，避免在临界值来回抖动用滞后
+	if _state == State.WALK and value >= 0.3:
+		_transition(State.CROUCH_WALK)
+	elif _state == State.CROUCH_WALK and value < 0.2:
+		_transition(State.WALK)
 func _on_jumped() -> void:
 	if _state == State.DEATH:
 		return
@@ -265,20 +287,16 @@ func _on_stopped_sprinting() -> void:
 	if _state == State.SPRINT:
 		_transition(_resolve_ground_state())
 
-func _on_started_crouching() -> void:
-	if _state not in [State.JUMP, State.FALL, State.LAND, State.DEATH]:
-		_transition(_resolve_ground_state())
-
-func _on_stopped_crouching() -> void:
-	if _state in [State.CROUCH_IDLE, State.CROUCH_WALK]:
-		_transition(_resolve_ground_state())
-
 func _on_died() -> void:
 	# 直接设置状态为 DEATH，不调用 _transition()。
 	# 原因：AnimationTree 状态机中不存在 Death 节点，
 	# travel("Death") 会静默失败。死亡动画由 RagdollSystem
 	# 直接通过 AnimationPlayer 播放，此处仅阻止 _process()
 	# 进行自动状态切换。
+	_state = State.DEATH
+
+func on_unconscious() -> void:
+	# 昏迷时同样停止动画状态机，防止 AnimationTree 覆盖物理骨骼姿势
 	_state = State.DEATH
 
 func _on_revived() -> void:
@@ -290,7 +308,7 @@ func _on_revived() -> void:
 
 # 内部工具 ──────────────────────────────────────────────────
 
-# 根据当前速度和奔跑状态决定地面应处于哪个状态
+# 根据当前速度、奔跑状态和姿态决定地面应处于哪个状态
 func _resolve_ground_state() -> State:
 	if not _player:
 		return State.IDLE
@@ -298,17 +316,23 @@ func _resolve_ground_state() -> State:
 		return State.SPRINT
 	if _movement and _movement.is_running():
 		return State.RUN
-	if _movement and _movement.is_crouching():
-		# 蹲下时根据速度决定 CROUCH_IDLE 或 CROUCH_WALK
-		var h_speed_sq := _player.velocity.x * _player.velocity.x + _player.velocity.z * _player.velocity.z
-		return State.CROUCH_WALK if h_speed_sq > _config.walk_enter_speed_sq else State.CROUCH_IDLE
-	# 显式标量计算，避免临时 Vector2 分配
+
 	var h_speed_sq := _player.velocity.x * _player.velocity.x + _player.velocity.z * _player.velocity.z
-	# 滞后阈值来自 PlayerConfig
-	if _state == State.WALK:
-		return State.IDLE if h_speed_sq < _config.walk_exit_speed_sq else State.WALK
+	var is_crouching := false
+	if _player.get("stance_controller") and _player.stance_controller:
+		is_crouching = _player.stance_controller.get_stance_value() >= 0.3
+
+	# 滞后：当前是行走类状态时用 exit 阈值，否则用 enter 阈值
+	var is_walk_state := _state in [State.WALK, State.CROUCH_WALK]
+	var moving: bool
+	if is_walk_state:
+		moving = h_speed_sq >= _config.walk_exit_speed_sq
 	else:
-		return State.WALK if h_speed_sq > _config.walk_enter_speed_sq else State.IDLE
+		moving = h_speed_sq > _config.walk_enter_speed_sq
+
+	if not moving:
+		return State.IDLE
+	return State.CROUCH_WALK if is_crouching else State.WALK
 
 
 
@@ -330,12 +354,11 @@ func _state_to_sm_name(state: State) -> String:
 	match state:
 		State.IDLE:        return SM_IDLE
 		State.WALK:        return SM_WALK
+		State.CROUCH_WALK: return SM_CROUCH_WALK
 		State.RUN:         return SM_RUN
 		State.SPRINT:      return SM_SPRINT
 		State.JUMP:        return SM_JUMP
 		State.FALL:        return SM_FALL
 		State.LAND:        return SM_LAND
 		State.DEATH:       return SM_DEATH
-		State.CROUCH_IDLE: return SM_CROUCH_IDLE
-		State.CROUCH_WALK: return SM_CROUCH_WALK
 	return SM_IDLE

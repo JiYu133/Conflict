@@ -134,15 +134,97 @@ func get_hitbox_rids() -> Array[RID]:
 			rids.append(hitbox.get_rid())
 	return rids
 
-# 状态乘数查询（P4 实现；P1 返回默认值）
+# 状态乘数查询（P4）
 func get_movement_speed_multiplier() -> float:
-	return 1.0
+	if not vitals:
+		return 1.0
+	var mult := 1.0
+	# 失血影响
+	if vitals.get_blood_pct() <= _config.critical_blood_threshold_pct:
+		mult *= 0.85
+	# 腿部骨折/出血
+	var leg_fracture := false
+	for part: int in [
+		MedicalEnums.BodyPartId.LEFT_THIGH,  MedicalEnums.BodyPartId.LEFT_CALF,
+		MedicalEnums.BodyPartId.RIGHT_THIGH, MedicalEnums.BodyPartId.RIGHT_CALF,
+	]:
+		var region := vitals.get_region(part)
+		if not region:
+			continue
+		if _region_has_fracture(region):
+			leg_fracture = true
+			break
+		mult *= _limb_bleed_multiplier(region, 0.55, 0.80)
+	if leg_fracture:
+		mult *= 0.35
+	return maxf(mult, 0.0)
+
 
 func get_aim_stability_multiplier() -> float:
-	return 1.0
+	if not vitals:
+		return 1.0
+	var mult := 1.0
+	# 失血影响
+	if vitals.get_blood_pct() <= _config.critical_blood_threshold_pct:
+		mult *= 0.80
+	# 呼吸受损
+	mult *= vitals.breathing_effectiveness
+	# 手臂骨折/出血
+	var arm_fracture := false
+	for part: int in [
+		MedicalEnums.BodyPartId.LEFT_UPPER_ARM,  MedicalEnums.BodyPartId.LEFT_FOREARM,
+		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM, MedicalEnums.BodyPartId.RIGHT_FOREARM,
+	]:
+		var region := vitals.get_region(part)
+		if not region:
+			continue
+		if _region_has_fracture(region):
+			arm_fracture = true
+			break
+		mult *= _limb_bleed_multiplier(region, 0.55, 0.75)
+	if arm_fracture:
+		mult *= 0.30
+	return maxf(mult, 0.0)
+
 
 func can_sprint() -> bool:
+	if not vitals:
+		return true
+	if vitals.get_blood_pct() <= _config.critical_blood_threshold_pct:
+		return false
+	for part: int in [
+		MedicalEnums.BodyPartId.LEFT_THIGH,  MedicalEnums.BodyPartId.LEFT_CALF,
+		MedicalEnums.BodyPartId.RIGHT_THIGH, MedicalEnums.BodyPartId.RIGHT_CALF,
+	]:
+		var region := vitals.get_region(part)
+		if not region:
+			continue
+		if _region_has_fracture(region):
+			return false
+		for w in region.wounds:
+			if (w as Wound).bleed_rate == MedicalEnums.BleedRate.ARTERIAL:
+				return false
 	return true
+
+
+func _region_has_fracture(region: BodyRegion) -> bool:
+	return region.fractured_bones.size() > 0
+
+
+## arterial_mult: 动脉出血乘数, venous_mult: 静脉/毛细乘数
+func _limb_bleed_multiplier(region: BodyRegion, arterial_mult: float, venous_mult: float) -> float:
+	var highest := MedicalEnums.BleedRate.NONE
+	for w in region.wounds:
+		var rate: int = (w as Wound).bleed_rate
+		if rate > highest:
+			highest = rate
+	match highest:
+		MedicalEnums.BleedRate.ARTERIAL:
+			return arterial_mult
+		MedicalEnums.BleedRate.VENOUS, MedicalEnums.BleedRate.CAPILLARY:
+			return venous_mult
+		_:
+			return 1.0
 
 # 私有 — 伤害处理 ──────────────────────────────────────────
 
@@ -317,6 +399,9 @@ func _evaluate_state(last_hit_direction: Vector3) -> void:
 			if _player.controllable:
 				_player.controllable = false
 				went_unconscious.emit()
+				_player.go_unconscious(_last_hit_direction)
+		# 注意：从 UNCONSCIOUS 恢复意识需要显式治疗（P3 肾上腺素/血袋），
+		# 不会因血量稳定而自动恢复——拟真设计中失血是单向的。
 
 func _compute_state() -> MedicalEnums.HealthState:
 	# P2：关键器官（心/脑）被摧毁 → 直接死亡
@@ -339,10 +424,16 @@ func _compute_state() -> MedicalEnums.HealthState:
 	if torso_region and torso_region.get_total_severity() >= _config.torso_cumulative_lethal:
 		return MedicalEnums.HealthState.DEAD
 
-	# 失血性休克/死亡
+	# 失血性休克/失去意识/死亡
 	var blood_pct: float = vitals.get_blood_pct()
 	if blood_pct <= _config.fatal_blood_threshold_pct:
 		return MedicalEnums.HealthState.DEAD
+	# UNCONSCIOUS 是粘性状态：一旦昏迷，不会因血量稳定而自动恢复，
+	# 只有显式治疗（P3 肾上腺素）才能唤醒。
+	if current_state == MedicalEnums.HealthState.UNCONSCIOUS:
+		return MedicalEnums.HealthState.UNCONSCIOUS
+	if blood_pct <= _config.unconscious_blood_threshold_pct:
+		return MedicalEnums.HealthState.UNCONSCIOUS
 	if blood_pct <= _config.critical_blood_threshold_pct:
 		return MedicalEnums.HealthState.CRITICAL
 
@@ -381,8 +472,9 @@ func _resolve_death_type(dir: Vector3) -> PlayerRagdollSystem.DeathType:
 		from_front = dir.dot(_player.global_basis.z) > 0.0
 
 	if head_lethal:
-		# 蹲姿爆头优先判定
-		if _player.movement_controller and _player.movement_controller.is_crouching():
+		# 蹲姿爆头优先判定（姿态值 > 0.5 视为蹲姿）
+		var is_crouching := _player.stance_controller and _player.stance_controller.get_stance_value() > 0.5
+		if is_crouching:
 			return PlayerRagdollSystem.DeathType.CROUCHING_HEADSHOT
 		return PlayerRagdollSystem.DeathType.FRONT_HEADSHOT if from_front else PlayerRagdollSystem.DeathType.BACK_HEADSHOT
 

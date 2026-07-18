@@ -25,12 +25,15 @@ extends CharacterBody3D
 			revived.emit()
 @export var controllable: bool = true
 @export var faction: Faction = Faction.None # 玩家阵营
+## 布娃娃激活期间为 true，movement controller 据此跳过物理更新
+var is_ragdolled: bool = false
 
 
 
 
 # 子系统引用
 
+var stance_controller: StanceController
 var model_manager: PlayerModelManager
 var camera_controller: PlayerCameraController
 var ragdoll_system: PlayerRagdollSystem
@@ -79,6 +82,7 @@ func _initialize_subsystems() -> void:
 	model_manager = _create_subsystem(PlayerModelManager.new(), "ModelManager")
 	camera_controller = _create_subsystem(PlayerCameraController.new(),"CameraController")
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
+	stance_controller = _create_subsystem(StanceController.new(), "StanceController")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
@@ -87,6 +91,8 @@ func _initialize_subsystems() -> void:
 	health_system = _create_subsystem(HealthSystem.new(), "HealthSystem")
 
 	# 初始化子系统
+
+	stance_controller.initialize(self, player_config)
 
 	camera_controller.initialize(
 		self,
@@ -134,6 +140,8 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 func _connect_signals() -> void:
 	model_manager.model_loaded.connect(_on_model_loaded)
 	weapon_manager.weapon_changed.connect(_on_weapon_changed)
+	# 连接姿态变化信号
+	stance_controller.stance_changed.connect(_on_stance_changed)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
 	# 运动状态 → 左手 IK 权重过渡
@@ -256,29 +264,73 @@ func _on_started_sprinting() -> void:
 	hand_ik_controller.set_movement_state(true, true)
 
 
+func _on_stance_changed(value: float) -> void:
+	"""协调所有受姿态影响的子系统"""
+	if movement_controller:
+		movement_controller._on_stance_changed(value)
+	if camera_controller:
+		camera_controller._on_stance_changed(value)
+
+
+func go_unconscious(impact_direction: Vector3 = Vector3.ZERO) -> void:
+	if not is_alive:
+		return
+	# 停止动画控制器的状态机，防止 AnimationTree 每帧覆盖物理骨骼姿势导致穿地
+	animation_controller.on_unconscious()
+	_activate_ragdoll(PlayerRagdollSystem.DeathType.GENERIC, impact_direction)
+	GlobalLogger.info("Player", get_parent().name + " fell unconscious")
+
+
+func regain_consciousness() -> void:
+	if not is_alive or controllable:
+		return
+	var pos := global_position
+	ragdoll_system.disable()
+	global_position = pos
+	is_ragdolled = false
+	controllable = true
+	camera_controller.enable_camera()
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_set_collision_enabled(true)
+	GlobalLogger.info("Player", get_parent().name + " regained consciousness")
+
+
 func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathType.GENERIC, impact_direction: Vector3 = Vector3.ZERO) -> void:
 	if not is_alive:
 		return
-
 	is_alive = false
+	_activate_ragdoll(death_type, impact_direction)
+	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
+
+
+## 启动布娃娃物理的公共逻辑，die() 和 go_unconscious() 共用
+func _activate_ragdoll(death_type: PlayerRagdollSystem.DeathType, impact_direction: Vector3) -> void:
+	is_ragdolled = true
 	velocity = Vector3.ZERO
-
-	# 禁用玩家碰撞体，防止物理骨骼与自身胶囊体碰撞导致弹飞
 	_set_collision_enabled(false)
-
+	# 轻微上移玩家原点，给物理骨骼初始位置留出与地面的间隙，
+	# 防止 Jolt 检测到初始穿插后将骨骼向下弹出
+	global_position.y += 0.05
 	camera_controller.disable_camera(model_manager.skeleton)
-	# 布娃娃物理启动后通知摄像机缓存 PhysicalBone3D
 	if not ragdoll_system.ragdoll_physics_started.is_connected(camera_controller.on_ragdoll_physics_started):
 		ragdoll_system.ragdoll_physics_started.connect(camera_controller.on_ragdoll_physics_started, CONNECT_ONE_SHOT)
-	ragdoll_system.enable(death_type, impact_direction)
-	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
+	ragdoll_system.enable.call_deferred(death_type, impact_direction)
 
 func revive() -> void:
 	if is_alive:
 		return
-	
+
+	# 记录当前位置，ragdoll_system.disable() 会重置骨骼位置
+	var revive_position := global_position
+
 	is_alive = true
+	is_ragdolled = false
+	velocity = Vector3.ZERO
 	ragdoll_system.disable()
+
+	# 恢复到死亡时的位置
+	global_position = revive_position
+
 	camera_controller.enable_camera()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
@@ -294,16 +346,12 @@ func set_controllable(enabled: bool) -> void:
 
 
 # Mod热重载
-
-
-
-
 func reload_model() -> void:
 	if player_config and player_config.model_scene:
 		model_manager.load_model(
 			player_config
 		)
-
+		
 
 # 切换所有 CollisionShape3D 子节点的启用状态
 # 布娃娃激活时需禁用，防止物理骨骼与自身碰撞体冲突
