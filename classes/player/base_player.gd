@@ -43,6 +43,7 @@ var hand_ik_controller: HandIKController
 var weapon_manager: WeaponManager
 var animation_controller: PlayerAnimationController
 var health_system: HealthSystem
+var settings_menu: SettingsMenu
 var free_camera_controller: FreeCameraController
 var medical_debug_menu: MedicalDebugMenu
 
@@ -123,6 +124,10 @@ func _initialize_subsystems() -> void:
 		self,
 		player_config.health_config if player_config else null
 		)
+
+	# 设置菜单（ESC 打开）：所有构建可用。启动时套用已保存键位并接管 ESC。
+	settings_menu = _create_subsystem(SettingsMenu.new(), "SettingsMenu") as SettingsMenu
+	settings_menu.initialize(self)
 
 	if OS.is_debug_build():
 		free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
@@ -217,12 +222,10 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	# ESC 切换鼠标捕捉
-	if event.is_action_pressed("ui_cancel"):
-		if Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
-			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-		else:
-			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	# 设置菜单打开时独占输入（含 ESC 关闭、键位监听），玩家让出全部操作
+	if settings_menu and settings_menu.is_open():
+		return
+	# ESC 由 SettingsMenu 接管：关闭时按 ESC 打开菜单（并释放鼠标）
 
 	if is_alive and controllable:
 		# 换弹
