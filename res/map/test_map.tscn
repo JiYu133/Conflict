@@ -1,10 +1,10 @@
-[gd_scene format=3 uid="uid://elghyasrwe37"]
+[gd_scene format=3 uid="uid://dt1legmj73oun"]
 
-[ext_resource type="Script" uid="uid://dk65k8mhkju4e" path="res://classes/player/base_player.gd" id="1_jqp7s"]
-[ext_resource type="Resource" path="res://res/config/player/player_config.tres" id="2_xb0gg"]
-[ext_resource type="Script" uid="uid://b2jycqcf2bwvw" path="res://classes/ui/top_right_notification_manager.gd" id="3_5krix"]
-[ext_resource type="Resource" uid="uid://ke76oc81381y" path="res://res/config/ui/tutorial.tres" id="4_8mu7p"]
-[ext_resource type="Script" uid="uid://b7jjn02lrhodx" path="res://classes/ui/medical_debug_hud.gd" id="5_63oyx"]
+[ext_resource type="Script" uid="uid://drp83k76y43jc" path="res://classes/player/base_player.gd" id="1_4om3i"]
+[ext_resource type="Resource" uid="uid://6j1op088306v" path="res://res/config/player/player_config.tres" id="2_kh0mb"]
+[ext_resource type="Script" uid="uid://dtgqrshx3beik" path="res://classes/ui/top_right_notification_manager.gd" id="3_l6oqr"]
+[ext_resource type="Resource" uid="uid://ke76oc81381y" path="res://res/config/ui/tutorial.tres" id="4_f5kyo"]
+[ext_resource type="Script" uid="uid://dqt48xyctgcbr" path="res://classes/ui/medical_debug_hud.gd" id="5_d5dx0"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_jq8tk"]
 size = Vector3(1.0458984, 50, 0)
@@ -78,8 +78,8 @@ shape = SubResource("ConcavePolygonShape3D_muw3u")
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1095234307]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.627635, 0.8835354, -2.4987323)
-script = ExtResource("1_jqp7s")
-player_config = ExtResource("2_xb0gg")
+script = ExtResource("1_4om3i")
+player_config = ExtResource("2_kh0mb")
 is_alive = null
 controllable = null
 faction = null
@@ -125,8 +125,8 @@ shape = SubResource("BoxShape3D_cgqpe")
 [node name="UI" type="CanvasLayer" parent="." unique_id=1913911604]
 
 [node name="NotificationManager" type="CanvasLayer" parent="UI" unique_id=368428163]
-script = ExtResource("3_5krix")
-config = ExtResource("4_8mu7p")
+script = ExtResource("3_l6oqr")
+config = ExtResource("4_f5kyo")
 
 [node name="MedicalDebugHUD" type="RichTextLabel" parent="UI" unique_id=1463244799]
 offset_left = 10.0
@@ -138,7 +138,7 @@ bbcode_enabled = true
 text = "[Medical HUD]"
 fit_content = true
 scroll_active = false
-script = ExtResource("5_63oyx")
+script = ExtResource("5_d5dx0")
 
 [node name="Background" type="ColorRect" parent="UI/MedicalDebugHUD" unique_id=688373987]
 show_behind_parent = true
