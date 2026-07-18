@@ -8,6 +8,7 @@
 
 - [Player 系统](#player-系统)
 - [医疗与伤害系统](#医疗与伤害系统)
+- [UI 系统](#ui-系统)
 - [Weapon 核心](#weapon-核心)
 - [Weapon 配件](#weapon-配件)
 - [工具类](#工具类)
@@ -124,6 +125,22 @@ BaseWeapon
 | 文档 | 核心文件 | 说明 |
 |------|----------|------|
 | [Medical & Anatomy System](player/MedicalSystem.md) | `classes/player/medical/health_system.gd` | P1/P2 伤害管线、27 结构解剖模型、伤道、器官损伤、骨折、内外出血与调试工具 |
+
+---
+
+## UI 系统
+
+| 文档 | 说明 |
+|------|------|
+| [UI System Overview](ui/UISystem.md) | UI 架构、配色规范、组件索引、主题使用、CanvasLayer 层级管理 |
+| [Settings UI Guide](../SETTINGS_UI_GUIDE.md) | 设置界面手动绘制指南（Godot 编辑器操作步骤） |
+
+**核心组件**:
+- **SettingsMenu** (`classes/ui/settings/settings_menu.gd`) - 键位绑定设置面板
+- **KeyPromptManager** (`classes/ui/key_prompt_manager.gd`) - 左下角键位提示卡片
+- **TopRightNotificationManager** (`classes/ui/top_right_notification_manager.gd`) - 右上角通知系统
+- **DeathScreen** (`classes/ui/death_screen.gd`) - 死亡屏幕遮罩
+- **MedicalDebugHUD** (`classes/ui/medical_debug_hud.gd`) - 医疗调试面板
 
 ---
 
