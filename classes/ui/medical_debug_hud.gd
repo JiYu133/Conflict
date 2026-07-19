@@ -10,7 +10,7 @@ extends RichTextLabel
 var _health_system: HealthSystem = null
 var _update_timer: float = 0.0
 const UPDATE_INTERVAL: float = 0.1  # 100ms 更新一次
-var _is_visible: bool = true
+var _is_visible: bool = false
 
 func _ready() -> void:
 	# 设置样式
@@ -28,6 +28,7 @@ func _ready() -> void:
 	# 查找玩家的 HealthSystem
 	await get_tree().process_frame
 	_find_health_system()
+	visible = false
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -137,6 +138,11 @@ func _update_display() -> void:
 	# P2：呼吸效率（肺部受损时显示）
 	if vitals.breathing_effectiveness < 1.0:
 		lines.append("[color=#88ccff]呼吸效率: %.0f%%[/color]" % (vitals.breathing_effectiveness * 100.0))
+
+	# 疼痛等级
+	if vitals.pain_level > 0.01:
+		var pain_color := "#ff4444" if vitals.pain_level >= 0.7 else ("#ff8800" if vitals.pain_level >= 0.4 else "#ffaa44")
+		lines.append("[color=%s]疼痛: %.0f%%[/color]" % [pain_color, vitals.pain_level * 100.0])
 
 	# === 各部位详情 ===
 	lines.append("")
