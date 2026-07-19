@@ -159,12 +159,16 @@ func _enter() -> void:
 	_free_cam.name = "FreeCam"
 	if current_cam:
 		_free_cam.global_transform = current_cam.global_transform
+		# pitch 直接从摄像机全局旋转 X 读（PlayerCameraController 保持 Z=0）
+		# yaw 从玩家自身 rotation.y 读，与 PlayerCameraController 写法一致，
+		# 避免挂载点偏移污染全局旋转 Y
 		_pitch = current_cam.global_rotation.x
-		_yaw   = current_cam.global_rotation.y
+		_yaw   = _player.rotation.y
 		_free_cam.fov = current_cam.fov
 		_free_cam.cull_mask = current_cam.cull_mask | 2
 	_player.add_child(_free_cam)
 	_free_cam.current = true
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 	_crosshair_canvas.visible = true
 	GlobalLogger.info("FreeCam", "自由视角已启用，WASD/QE 移动，Shift 加速，左键/T/Y/U 射击，F 退出")
@@ -184,7 +188,8 @@ func _exit() -> void:
 
 	# 死亡后（布娃娃摄像机模式）不恢复原摄像机，
 	# PlayerCameraController 的死亡模式会继续跟随头骨骼。
-	# 存活时才切回原摄像机。
+	# 存活时才切回原摄像机。先激活原相机，再销毁 free_cam，
+	# 避免两台相机都不激活导致渲染帧丢失。
 	if _player.is_alive:
 		var original_cam := _camera_controller.get_active_camera()
 		if original_cam:
@@ -356,14 +361,14 @@ func _process(delta: float) -> void:
 		_label_part.text = ""
 		_label_status.text = ""
 
-	# 移动
-	var speed := fast_speed if Input.is_key_pressed(KEY_SHIFT) else move_speed
+	# 移动：使用 InputMap action，尊重玩家的键位重绑定
+	var speed := fast_speed if Input.is_action_pressed("sprint") else move_speed
 	var dir := Vector3.ZERO
 
-	if Input.is_key_pressed(KEY_W): dir -= _free_cam.global_transform.basis.z
-	if Input.is_key_pressed(KEY_S): dir += _free_cam.global_transform.basis.z
-	if Input.is_key_pressed(KEY_A): dir -= _free_cam.global_transform.basis.x
-	if Input.is_key_pressed(KEY_D): dir += _free_cam.global_transform.basis.x
+	if Input.is_action_pressed("move_forward"):  dir -= _free_cam.global_transform.basis.z
+	if Input.is_action_pressed("move_backward"): dir += _free_cam.global_transform.basis.z
+	if Input.is_action_pressed("move_left"):     dir -= _free_cam.global_transform.basis.x
+	if Input.is_action_pressed("move_right"):    dir += _free_cam.global_transform.basis.x
 	if Input.is_key_pressed(KEY_Q): dir -= _free_cam.global_transform.basis.y
 	if Input.is_key_pressed(KEY_E): dir += _free_cam.global_transform.basis.y
 

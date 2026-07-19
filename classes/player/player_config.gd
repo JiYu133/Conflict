@@ -56,6 +56,11 @@ extends Resource
 ## 医疗系统配置
 @export var health_config: HealthConfig
 
+# 体力配置 ─────────────────────────────────────────────────
+@export_group("体力配置")
+## 体力系统配置（不挂载时使用默认值）
+@export var stamina_config: StaminaConfig
+
 # 转身动画 ──────────────────────────────────────────────────
 @export_group("转身动画")
 ## 是否启用转身动画

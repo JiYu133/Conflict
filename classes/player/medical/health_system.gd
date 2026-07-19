@@ -31,6 +31,7 @@ signal blood_changed(pct: float)
 signal state_changed(new_state: MedicalEnums.HealthState)
 signal went_unconscious
 signal medically_died(death_type: PlayerRagdollSystem.DeathType, direction: Vector3)
+signal pain_changed(level: float)
 ## P2：器官受损/被摧毁（structure_id 见 AnatomyConfig，如 &"heart"）
 signal organ_damaged(part: MedicalEnums.BodyPartId, structure_id: StringName, new_state: MedicalEnums.OrganState)
 ## P2：骨折
@@ -184,7 +185,38 @@ func get_aim_stability_multiplier() -> float:
 		mult *= _limb_bleed_multiplier(region, 0.55, 0.75)
 	if arm_fracture:
 		mult *= 0.30
+	# 体力耗尽
+	if _player.stamina_system:
+		mult *= _player.stamina_system.get_aim_stability_multiplier()
 	return maxf(mult, 0.0)
+
+
+## 换弹速度乘数（体力耗尽时降低，供武器系统调用）
+func get_reload_speed_multiplier() -> float:
+	if not _player or not _player.stamina_system:
+		return 1.0
+	return _player.stamina_system.get_reload_speed_multiplier()
+
+
+## 当前疼痛等级（0.0–1.0）
+func get_pain_level() -> float:
+	return vitals.pain_level if vitals else 0.0
+
+
+## 腿骨折或体力配置禁止时禁止跳跃
+func can_jump() -> bool:
+	if not vitals:
+		return true
+	for part: int in [
+		MedicalEnums.BodyPartId.LEFT_THIGH,  MedicalEnums.BodyPartId.LEFT_CALF,
+		MedicalEnums.BodyPartId.RIGHT_THIGH, MedicalEnums.BodyPartId.RIGHT_CALF,
+	]:
+		var region := vitals.get_region(part)
+		if region and _region_has_fracture(region):
+			return false
+	if _player.stamina_system and not _player.stamina_system.allows_jump():
+		return false
+	return true
 
 
 func can_sprint() -> bool:
@@ -204,6 +236,8 @@ func can_sprint() -> bool:
 		for w in region.wounds:
 			if (w as Wound).bleed_rate == MedicalEnums.BleedRate.ARTERIAL:
 				return false
+	if _player.stamina_system and not _player.stamina_system.allows_sprint():
+		return false
 	return true
 
 
@@ -377,6 +411,10 @@ func _run_physiology_tick(dt: float) -> void:
 		vitals.blood_volume_ml = maxf(0.0, vitals.blood_volume_ml - total * dt)
 		blood_changed.emit(vitals.get_blood_pct())
 
+	# 疼痛等级：每 tick 由伤口 pain_contribution 汇总
+	vitals.recompute_pain()
+	pain_changed.emit(vitals.pain_level)
+
 	# 使用缓存的最后受击方向：失血死亡也能选择方向正确的死亡动画
 	_evaluate_state(_last_hit_direction)
 
@@ -510,6 +548,7 @@ func _on_player_revived() -> void:
 	state_changed.emit(current_state)
 	blood_changed.emit(vitals.get_blood_pct())
 	bleeding_changed.emit(0.0)
+	pain_changed.emit(0.0)
 	_create_hitboxes()
 
 # 私有 — 模型加载与 Hitbox 创建 ────────────────────────────

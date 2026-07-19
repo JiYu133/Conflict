@@ -101,3 +101,13 @@ func total_internal_bleed_rate() -> float:
 	for part_id: int in regions:
 		total += (regions[part_id] as BodyRegion).total_internal_bleed_ml_per_sec()
 	return total
+
+
+## 从全身所有伤口汇总 pain_contribution，写入 pain_level（[0.0, 1.0]）
+## 由 HealthSystem 每生理 tick 调用
+func recompute_pain() -> void:
+	var total: float = 0.0
+	for part_id: int in regions:
+		for w in (regions[part_id] as BodyRegion).wounds:
+			total += (w as Wound).pain_contribution
+	pain_level = clampf(total, 0.0, 1.0)

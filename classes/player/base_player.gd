@@ -43,6 +43,8 @@ var hand_ik_controller: HandIKController
 var weapon_manager: WeaponManager
 var animation_controller: PlayerAnimationController
 var health_system: HealthSystem
+var stamina_system: StaminaSystem
+var screen_effects: PlayerScreenEffects
 var settings_menu: SettingsMenu
 var free_camera_controller: FreeCameraController
 var medical_debug_menu: MedicalDebugMenu
@@ -90,6 +92,7 @@ func _initialize_subsystems() -> void:
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
 	animation_controller = _create_subsystem(PlayerAnimationController.new(), "AnimationController")
 	health_system = _create_subsystem(HealthSystem.new(), "HealthSystem")
+	stamina_system = _create_subsystem(StaminaSystem.new(), "StaminaSystem")
 
 	# 初始化子系统
 
@@ -125,6 +128,15 @@ func _initialize_subsystems() -> void:
 		player_config.health_config if player_config else null
 		)
 
+	stamina_system.initialize(self, player_config.stamina_config if player_config else null)
+
+	screen_effects = _create_subsystem(PlayerScreenEffects.new(), "ScreenEffects")
+	screen_effects.initialize(self)
+
+	# 战斗通知桥接：连接 HealthSystem 信号到右上角通知栏
+	var _combat_notif := _create_subsystem(CombatNotificationBridge.new(), "CombatNotifBridge")
+	_combat_notif.initialize(self)
+
 	# 设置菜单（ESC 打开）：所有构建可用。启动时套用已保存键位并接管 ESC。
 	settings_menu = _create_subsystem(SettingsMenu.new(), "SettingsMenu") as SettingsMenu
 	settings_menu.initialize(self)
@@ -153,6 +165,23 @@ func _connect_signals() -> void:
 	movement_controller.started_running.connect(func(): hand_ik_controller.set_movement_state(true, false))
 	movement_controller.stopped_running.connect(func(): hand_ik_controller.set_movement_state(false, false))
 	movement_controller.stopped_sprinting.connect(func(): hand_ik_controller.set_movement_state(true, false))
+	# 运动状态 → 体力消耗
+	movement_controller.started_sprinting.connect(stamina_system.on_started_sprinting)
+	movement_controller.stopped_sprinting.connect(stamina_system.on_stopped_sprinting)
+	movement_controller.started_running.connect(stamina_system.on_started_running)
+	movement_controller.stopped_running.connect(stamina_system.on_stopped_running)
+	movement_controller.jumped.connect(stamina_system.on_jumped)
+	# 体力耗尽 → 根据配置强制退出冲刺和奔跑
+	stamina_system.became_exhausted.connect(func():
+		if movement_controller.is_sprinting():
+			movement_controller._exit_sprint()
+		if stamina_system._config.exhausted_disable_run and movement_controller.is_running():
+			movement_controller._exit_run()
+	)
+	# 生理/体力状态 → 视觉效果
+	health_system.damage_taken.connect(screen_effects._on_damage_taken)
+	health_system.pain_changed.connect(screen_effects._on_pain_changed)
+	stamina_system.stamina_changed.connect(screen_effects._on_stamina_changed)
 	GlobalLogger.debug("Player", "Signals have been connected. ")
 
 
@@ -283,6 +312,8 @@ func go_unconscious(impact_direction: Vector3 = Vector3.ZERO) -> void:
 	# 停止动画控制器的状态机，防止 AnimationTree 每帧覆盖物理骨骼姿势导致穿地
 	animation_controller.on_unconscious()
 	_activate_ragdoll(PlayerRagdollSystem.DeathType.GENERIC, impact_direction)
+	if screen_effects:
+		screen_effects.trigger_unconscious_blur()
 	GlobalLogger.info("Player", get_parent().name + " fell unconscious")
 
 
@@ -297,6 +328,8 @@ func regain_consciousness() -> void:
 	camera_controller.enable_camera()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_set_collision_enabled(true)
+	if screen_effects:
+		screen_effects.clear_death_blur()
 	GlobalLogger.info("Player", get_parent().name + " regained consciousness")
 
 
@@ -305,6 +338,8 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 		return
 	is_alive = false
 	_activate_ragdoll(death_type, impact_direction)
+	if screen_effects:
+		screen_effects.trigger_death_blur()
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
 
 
@@ -341,6 +376,9 @@ func revive() -> void:
 
 	# 恢复玩家碰撞体
 	_set_collision_enabled(true)
+
+	if screen_effects:
+		screen_effects.clear_death_blur()
 
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
 

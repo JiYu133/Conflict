@@ -81,13 +81,14 @@ func _physics_process(delta: float) -> void:
 			_velocity = Vector3.ZERO
 			_player.velocity = Vector3.ZERO
 			return
-		# 存活但不可控（如自由视角）：仍然应用重力防止悬空
+		# 存活但不可控（菜单/自由视角）：应用重力 + 制动滑停，不瞬间清零
 		if not _player.is_on_floor():
 			_velocity.y -= _config.gravity * delta
 		else:
 			_velocity.y = _config.floor_snap_velocity
-		_velocity.x = 0.0
-		_velocity.z = 0.0
+			# 水平方向用制动力减速至零，保留脚感
+			_velocity.x = move_toward(_velocity.x, 0.0, _config.stop_brake_strength * delta)
+			_velocity.z = move_toward(_velocity.z, 0.0, _config.stop_brake_strength * delta)
 		_player.velocity = _velocity
 		_player.move_and_slide()
 		_velocity = _player.velocity
@@ -244,8 +245,13 @@ func _physics_process(delta: float) -> void:
 	# 5. 跳跃（不变）
 	# ──────────────────────────────────────────────────────
 	if Input.is_action_just_pressed("jump") and _player.is_on_floor():
-		_velocity.y = _config.jump_force
-		jumped.emit()
+		# 腿骨折时禁止跳跃
+		var can_jump := true
+		if _player.health_system:
+			can_jump = _player.health_system.can_jump()
+		if can_jump:
+			_velocity.y = _config.jump_force
+			jumped.emit()
 
 	# ──────────────────────────────────────────────────────
 	# 6. 重力（不变）
@@ -288,6 +294,9 @@ func _toggle_run() -> void:
 	# 蹲伏状态下不允许切换跑步
 	if _player and _player.stance_controller and _player.stance_controller.get_stance_value() > 0.05:
 		return
+	# 体力不足时不允许进入奔跑
+	if not _is_running and _player.stamina_system and not _player.stamina_system.allows_run():
+		return
 	if _is_running:
 		_is_running = false
 		stopped_running.emit()
@@ -314,6 +323,11 @@ func _enter_sprint() -> void:
 func _exit_sprint() -> void:
 	_is_sprinting = false
 	stopped_sprinting.emit()
+
+func _exit_run() -> void:
+	if _is_running:
+		_is_running = false
+		stopped_running.emit()
 
 
 # ──────────────────────────────────────────────────────
