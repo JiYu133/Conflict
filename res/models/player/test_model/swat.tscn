@@ -410,7 +410,6 @@ collision_mask = 2
 
 [node name="TwoBoneIK3D_R" type="TwoBoneIK3D" parent="Skeleton3D" index="6" unique_id=364436275]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0969633, 0, -0.034765244)
-visible = false
 active = false
 setting_count = 1
 settings/0/target_node = NodePath("Target_R")

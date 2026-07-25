@@ -97,15 +97,32 @@ extends Resource
 ## 挂在武器哪个 Marker3D 节点下 / Marker3D node name on the weapon to attach to
 @export var mount_point_name: String = ""
 
+## true = 纯数值配件，不生成任何 3D 节点（扳机组、弹簧等纯参数配件适用）
+## mod 作者无美术资源时也可设为 true 先跑通数值，后期补 attachment_scene 再改回 false
+@export var no_visual: bool = false
+
+## 自动居中：挂载后自动在垂直枪管的平面内（XY）将配件居中于锚点
+## 用于原点未精确放在连接面几何中心的配件，无需调整 Marker3D 位置
+## 也可在 AttachmentSlot.auto_center 上设置，对整个槽位所有配件生效；两者任一为 true 即生效
+@export var auto_center: bool = false
+
 # ════════════════════════════════════════════════════════════════════════
 # 枚举类型定义
 # ════════════════════════════════════════════════════════════════════════
 
 ## 配件大类
 enum AttachmentType {
-	OPTIC,      # 瞄具
-	GRIP,       # 握把
-	MUZZLE,     # 枪口
-	MAGAZINE,   # 弹匣
-	SIDE        # 侧挂
+	OPTIC,           # 瞄具（机械/红点/全息/ACOG/高倍）
+	MUZZLE,          # 枪口装置（消焰/制退/消音）
+	GRIP,            # 前握把（垂直/斜角/手挡）
+	MAGAZINE,        # 弹匣
+	BARREL,          # 枪管总成
+	HANDGUARD,       # 护木
+	STOCK,           # 枪托
+	PISTOL_GRIP,     # 手枪握把
+	RECEIVER_COVER,  # 机匣盖
+	TRIGGER,         # 扳机组（纯数值为主）
+	CHARGING_HANDLE, # 拉机柄
+	TACTICAL_DEVICE, # 战术灯/激光
+	SIDE,            # 侧挂（泛用）
 }

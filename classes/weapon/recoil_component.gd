@@ -2,65 +2,84 @@ class_name RecoilComponent
 extends Node
 
 # ============================================================
-# 后座组件
-# 功能：模拟每发子弹射击后的枪口上跳以及准星自然回正。
-#       后座角度累加后由外部每帧读取，用于驱动摄像机或准星偏移。
-# 依赖：WeaponConfig（需要 recoil_vertical / recoil_horizontal / recoil_recovery_speed）
-#       AttachmentManager（用于读取配件的后座修正）
+# 后座组件 v2 — 摄像机真实 Kick 系统
+#
+# 每发施加一次性 pitch/yaw 冲量，通过 consume_* 函数读取后清零。
+# PlayerCameraController 每帧消费，直接写入 _vertical_angle 和 rotate_y。
+# 不自动回正，玩家需主动用鼠标压枪。
+#
+# 武器视觉抖动由动画系统负责，不在此处处理。
+#
+# 依赖：WeaponConfig（kick_* 字段）
+#       AttachmentManager（配件修正，向后兼容）
 # ============================================================
 
 var config: WeaponConfig
 var attachment_manager: AttachmentManager
-var _current_recoil_angle: float = 0.0
-## 当前累积的后座角度（正值 = 枪口上抬）
-var _current_recoil_horizontal: float = 0.0
-## 当前累积的水平后座角度（正值 = 向右偏移，负值 = 向左偏移）
+
+# 摄像机 kick 冲量（一次性，消费后清零）
+var _pending_kick_pitch: float = 0.0
+var _pending_kick_yaw: float = 0.0
 
 
 # ============================================================
-# 初始化
+# 初始化（接口不变）
 # ============================================================
 func initialize(cfg: WeaponConfig, am: AttachmentManager = null) -> void:
 	config = cfg
 	attachment_manager = am
-	GlobalLogger.debug("RecoilComponent", "Initialized for: " + cfg.weapon_name)
+	GlobalLogger.debug("RecoilComponent", "Initialized (v2) for: " + cfg.weapon_name)
 
 
 # ============================================================
-# 后座逻辑
+# 每发后座（主入口）
 # ============================================================
 
-## 应用一发子弹的后座
-## 在每次 fired() 信号中调用，叠加垂直与水平后座角度
-func apply_recoil() -> void:
-	var vertical_recoil = config.recoil_vertical
-	var horizontal_recoil = config.recoil_horizontal
+## 施加一发子弹的后座效果
+## stability_mult：稳定性修正系数（站立=1.0, 蹲下=0.7, 疲劳=1.3）
+func apply_recoil(stability_mult: float = 1.0) -> void:
+	if not config:
+		return
+
+	# 读取配件修正（向后兼容旧的 recoil_vertical/horizontal 修正通道）
+	var v_mod: float = 0.0
+	var h_mod: float = 0.0
 	if attachment_manager:
-		vertical_recoil += attachment_manager.get_total_recoil_vertical_modifier()
-		horizontal_recoil += attachment_manager.get_total_recoil_horizontal_modifier()
+		v_mod = attachment_manager.get_total_recoil_vertical_modifier()
+		h_mod = attachment_manager.get_total_recoil_horizontal_modifier()
 
-	_current_recoil_angle += max(vertical_recoil, 0.0)
-	horizontal_recoil = max(horizontal_recoil, 0.0)
-	if horizontal_recoil > 0.0:
-		_current_recoil_horizontal += randf_range(-horizontal_recoil, horizontal_recoil)
+	# pitch kick：永久上抬摄像机（连发线性累积）
+	_pending_kick_pitch += deg_to_rad(config.kick_pitch_deg + v_mod) * stability_mult
 
-## 每帧回正（控枪）
-## 后座角度逐渐减小直到归零，模拟玩家控枪复位动作
-func _process(delta: float) -> void:
-	var recovery_speed = config.recoil_recovery_speed
-	if attachment_manager:
-		recovery_speed += attachment_manager.get_total_recoil_recovery_modifier()
-	recovery_speed = max(recovery_speed, 0.0)
+	# yaw kick：基础偏转 + 随机分量（模拟左右摆动）
+	var base_yaw := config.kick_yaw_deg + h_mod
+	var rand_yaw := randf_range(-config.kick_yaw_random_deg, config.kick_yaw_random_deg)
+	_pending_kick_yaw += deg_to_rad(base_yaw + rand_yaw) * stability_mult
 
-	_current_recoil_angle = move_toward(_current_recoil_angle, 0.0, recovery_speed * delta)
-	_current_recoil_horizontal = move_toward(_current_recoil_horizontal, 0.0, recovery_speed * delta)
 
-## 获取当前后座偏移量
-## 外部（如摄像机控制器）每帧调用此函数获得当前枪口上跳角度
+# ============================================================
+# 消费接口（PlayerCameraController 每帧调用，读完即清零）
+# ============================================================
+
+## 消费 pitch kick 冲量，返回本帧应加到 _vertical_angle 的值
+func consume_camera_kick_pitch() -> float:
+	var v := _pending_kick_pitch
+	_pending_kick_pitch = 0.0
+	return v
+
+
+## 消费 yaw kick 冲量，返回本帧应传入 rotate_y 的值
+func consume_camera_kick_yaw() -> float:
+	var v := _pending_kick_yaw
+	_pending_kick_yaw = 0.0
+	return v
+
+
+# ============================================================
+# 向后兼容接口（空实现，防止旧代码报错）
+# ============================================================
 func get_recoil_offset() -> float:
-	return _current_recoil_angle
+	return 0.0
 
-## 获取当前水平后座偏移量
-## 外部如需要左右晃动，可读取此值叠加到准星或相机 yaw
 func get_recoil_horizontal_offset() -> float:
-	return _current_recoil_horizontal
+	return 0.0

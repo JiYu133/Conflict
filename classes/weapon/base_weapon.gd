@@ -47,6 +47,10 @@ signal ejection(case_position: Vector3, case_velocity: Vector3)
 ## 抛壳，参数：弹壳弹出位置、弹壳初速度
 signal fire_mode_changed(mode: String)
 ## 射击模式切换
+signal malfunction_occurred(type: BoltComponent.JamType)
+## 发生故障（哑火/烟囱卡弹/双上膛），供 UI/音效/动画订阅
+signal malfunction_cleared()
+## 故障排除完成
 
 
 # ============================================================
@@ -84,6 +88,8 @@ var recoil_component: RecoilComponent
 ## 后座组件：枪口上跳角度和回正
 var ejection_component: EjectionComponent
 ## 抛壳组件：弹壳抛出位置和速度
+var malfunction_component: MalfunctionComponent
+## 故障/排障组件：聚合物理故障状态，协调排障流程
 var attachment_manager: AttachmentManager
 ## 配件管理器：负责挂载瞄具/握把/枪口等
 
@@ -121,6 +127,10 @@ func _initialize_components() -> void:
 	ejection_component.name = "EjectionComponent"
 	add_child(ejection_component)
 
+	malfunction_component = MalfunctionComponent.new()
+	malfunction_component.name = "MalfunctionComponent"
+	add_child(malfunction_component)
+
 	# 配件管理器：会在 _setup_from_config 之后初始化（需要先有 config）
 	attachment_manager = AttachmentManager.new()
 	attachment_manager.name = "AttachmentManager"
@@ -135,6 +145,7 @@ func _setup_from_config() -> void:
 	gas_component.initialize(config)
 	recoil_component.initialize(config, attachment_manager)
 	ejection_component.initialize(config)
+	malfunction_component.initialize(config, bolt_component, ejection_component, ammo_component)
 
 ## 连接子组件的信号到本类的回调
 ## 这样 BaseWeapon 成为信号总线的中心控制器
@@ -145,6 +156,9 @@ func _connect_internal_signals() -> void:
 	bolt_component.bolt_reached_rear.connect(_on_bolt_reached_rear)
 	ammo_component.last_round_fired.connect(_on_last_round_fired)
 	ammo_component.bolt_hold_open_requested.connect(_on_bolt_hold_open_requested)
+	bolt_component.jammed.connect(_on_bolt_jammed)
+	malfunction_component.malfunction_occurred.connect(func(t): malfunction_occurred.emit(t))
+	malfunction_component.malfunction_cleared.connect(func(): malfunction_cleared.emit())
 
 
 # ============================================================
@@ -160,21 +174,22 @@ func initialize(cfg: WeaponConfig) -> void:
 	# 让配件管理器扫描本节点下的所有 AttachmentSlot
 	# 这样玩家后续调用 equip_to_slot() 才能找到槽位
 	attachment_manager.initialize(self, self)
-	# 弹匣容量 = 武器基础容量 + 扩容弹匣附件的额外容量
-	# 【预期不可达】此处运行时尚无配件被装上（attachment_manager 只扫描了槽位），
-	# 故当前 bonus 恒为 0；装/卸扩容弹匣后并未重新结算容量。补全该功能需在
-	# equip_to_slot()/detach_from_slot() 后回调此函数，本轮不实现。
+	# 初始时无配件，capacity bonus 为 0；attachments_changed 会在装/卸配件后重算
 	ammo_component.apply_magazine_attachments(attachment_manager)
+	attachment_manager.attachments_changed.connect(_on_attachments_changed)
 
 ## 按下扳机
-## 设置 trigger_held 后，连发模式会利用这个标志自动续火
 func press_trigger() -> void:
+	if not config or not config.logic_enabled:
+		return
 	trigger_held = true
 	fire_control.press_trigger(current_fire_mode)
 
 ## 松开扳机
 func release_trigger() -> void:
 	trigger_held = false
+	if not config or not config.logic_enabled:
+		return
 	fire_control.release_trigger()
 
 ## 执行换弹
@@ -184,6 +199,8 @@ func release_trigger() -> void:
 ## 2. 空仓换弹（弹匣打空，枪机被挂起）→ 换弹匣 + 释放枪机 + 复进推弹
 ## 3. 非空仓换弹（弹匣空了但枪机没被挂起，边缘情况）→ 换弹匣 + 手动上膛
 func reload() -> void:
+	if not config or not config.logic_enabled:
+		return
 	if is_reloading or is_cycling:
 		return
 
@@ -225,6 +242,8 @@ func reload() -> void:
 ## 切换射击模式
 ## 按 config.fire_modes 列表的顺序循环
 func cycle_fire_mode() -> void:
+	if not config or not config.logic_enabled:
+		return
 	var modes = config.fire_modes
 	if modes.size() == 0:
 		return
@@ -241,6 +260,41 @@ func get_current_spread(is_ads: bool) -> float:
 	if attachment_manager:
 		base += attachment_manager.get_total_spread_modifier(is_ads)
 	return base
+
+
+## 获取实际生效的 ADS FOV（配件瞄具优先，回退 config 字段，再回退 -1）
+func get_effective_fov_override() -> float:
+	if attachment_manager:
+		var fov := attachment_manager.get_fov_override()
+		if fov > 0.0:
+			return fov
+	return config.ads_fov_override if config else -1.0
+
+
+## 获取实际生效的 ADS 时间（含配件瞄准速度修正，修正值为负 = 更快）
+func get_effective_ads_time() -> float:
+	if not config:
+		return 0.25
+	var t := config.ads_time
+	if attachment_manager:
+		t += attachment_manager.get_total_ads_speed_modifier()
+	return max(t, 0.05)
+
+
+## 返回当前武器数值快照，供改装 UI 装前/装后对比
+func get_stats_snapshot() -> Dictionary:
+	if not config:
+		return {}
+	return {
+		"spread_ads": get_current_spread(true),
+		"spread_hip": get_current_spread(false),
+		"recoil_v": config.kick_pitch_deg + (attachment_manager.get_total_recoil_vertical_modifier() if attachment_manager else 0.0),
+		"recoil_h": config.kick_yaw_deg + (attachment_manager.get_total_recoil_horizontal_modifier() if attachment_manager else 0.0),
+		"ads_time": get_effective_ads_time(),
+		"weight": config.weight + (attachment_manager.get_total_attachment_weight() if attachment_manager else 0.0),
+		"suppressed": attachment_manager.suppresses_sound() if attachment_manager else false,
+		"fov_override": get_effective_fov_override(),
+	}
 
 
 # ============================================================
@@ -281,6 +335,15 @@ func _update_cycle(delta: float) -> void:
 			# 枪机复进阶段：复进簧推着枪机向前回位
 			bolt_position -= bolt_component.bolt_speed_close * delta
 			bolt_moving.emit(bolt_position)
+
+			# 烟囱卡弹检测：弹壳卡在抛壳口时枪机被阻停在中途（约 30% 行程处）
+			if ejection_component.is_case_stuck() and bolt_position <= 0.3:
+				bolt_position = 0.3
+				is_cycling = false
+				cycle_phase = "idle"
+				malfunction_component.trigger_stovepipe()
+				return
+
 			if bolt_position <= 0.0:
 				bolt_position = 0.0
 
@@ -288,6 +351,18 @@ func _update_cycle(delta: float) -> void:
 				if ammo_component.is_next_round_ready():
 					ammo_component.chamber_round()
 					round_chambered.emit()
+
+				# 双上膛检测：抛壳失败（弹壳卡住）且枪机仍完成了复进 → 两发卡死
+				# 条件：ejection 标记弹壳卡住，但 bolt 没在 0.3 处被拦住（极端情况）
+				if ejection_component.is_case_stuck():
+					is_cycling = false
+					cycle_phase = "idle"
+					# 检查 double_feed_chance 决定是否升级为双上膛
+					if config and config.double_feed_chance > 0.0 and randf() < config.double_feed_chance:
+						malfunction_component.trigger_double_feed()
+					else:
+						malfunction_component.trigger_stovepipe()
+					return
 
 				cycle_phase = "idle"
 				is_cycling = false
@@ -342,6 +417,11 @@ func _fire_one_round() -> void:
 
 	ammo_component.consume_round()
 
+	# 哑火判定：底火有概率不响，弹留在膛内，枪机不启动循环
+	if config and config.misfire_chance > 0.0 and randf() < config.misfire_chance:
+		malfunction_component.trigger_misfire()
+		return
+
 	# 启动自动循环
 	is_cycling = true
 	cycle_phase = "delay"
@@ -352,7 +432,31 @@ func _fire_one_round() -> void:
 	_spawn_projectile()
 
 	fired.emit()
-	recoil_component.apply_recoil()
+	recoil_component.apply_recoil(_get_stability_multiplier())
+
+
+## 计算本次开火的稳定性修正系数
+## < 1.0 = 更稳（ADS、蹲下）；> 1.0 = 更不稳（疲劳、负伤）
+func _get_stability_multiplier() -> float:
+	var mult := 1.0
+	# 向上找到所属 BasePlayer
+	var node: Node = self
+	while node and not (node is BasePlayer):
+		node = node.get_parent()
+	if not node:
+		return mult
+	var player := node as BasePlayer
+	# ADS 减少后座
+	if player.weapon_manager and player.weapon_manager.is_aiming:
+		mult *= 0.6
+	# 蹲姿减少后座（蹲到底时约 0.7）
+	if player.stance_controller:
+		mult *= lerp(1.0, 0.7, player.stance_controller.get_stance_value())
+	# 体力/伤情影响稳定性（aim_stability_multiplier 越低 = 越不稳，需要除以它使 mult 越大）
+	if player.health_system:
+		var stability := player.health_system.get_aim_stability_multiplier()
+		mult /= max(stability, 0.1)
+	return mult
 
 
 ## 发射弹丸
@@ -432,6 +536,9 @@ func _collect_shooter_exclusions() -> Array[RID]:
 func _on_trigger_pulled() -> void:
 	if is_reloading:
 		return
+	# 有未排除的故障时拒绝击发（哑火后膛内仍有弹，必须先排障）
+	if malfunction_component and malfunction_component.has_malfunction():
+		return
 	if not ammo_component.has_ammo():
 		ammo_depleted.emit()
 		return
@@ -449,20 +556,21 @@ func _on_trigger_released() -> void:
 func _on_cycle_completed() -> void:
 	bolt_locked.emit()
 
-## 枪机到达后方 → 抛壳 + 准备下一发
+## 枪机到达后方 → 尝试抛壳 + 准备下一发
 func _on_bolt_reached_rear() -> void:
-	# 抛壳
 	var eject_pos = ejection_component.get_ejection_position()
 	var eject_vel = ejection_component.get_ejection_velocity()
-	ejection.emit(eject_pos, eject_vel)
 
-	# 从弹匣推送下一发到进弹位置（弹底窝前端）
+	# 物理抛壳：有概率失败（烟囱/双上膛的前兆）
+	var ejected := ejection_component.attempt_eject()
+	if ejected:
+		ejection.emit(eject_pos, eject_vel)
+
+	# 准备下一发（无论抛壳是否成功都推弹，双上膛就在这里产生）
 	if ammo_component.has_ammo():
 		ammo_component.prepare_next_round()
 
-	# 短暂停顿后开始复进（模拟托弹板上升/弹壳脱离的时间）
 	await get_tree().create_timer(0.005).timeout
-	# 武器可能在这 5ms 内被释放，await 恢复后必须确认自身仍有效
 	if not is_instance_valid(self):
 		return
 	_start_bolt_forward()
@@ -481,3 +589,46 @@ func _on_bolt_hold_open_requested() -> void:
 	if config.has_last_round_hold_open:
 		bolt_component.hold_open()
 		bolt_hold_open.emit()
+
+## 枪机卡弹（BoltComponent.jammed 信号转发）
+func _on_bolt_jammed(_type: BoltComponent.JamType) -> void:
+	# 故障已由 malfunction_component 广播，此处可额外记录日志
+	pass
+
+
+# ============================================================
+# 排障公开接口
+# ============================================================
+
+## 玩家每次按排障键调用一次。
+## 每次调用推进一步排障流程（多步故障需要多次调用）。
+func attempt_malfunction_clearance() -> void:
+	if not config or not config.logic_enabled:
+		return
+	if not malfunction_component or not malfunction_component.has_malfunction():
+		return
+	var cleared := malfunction_component.attempt_clearance()
+	if cleared:
+		_restore_after_clearance()
+
+## 排障完成后恢复枪机到可击发状态
+func _restore_after_clearance() -> void:
+	is_cycling = false
+	cycle_phase = "idle"
+	bolt_position = 0.0
+	# 若膛内无弹且弹匣有弹，重新推弹入膛（双上膛排障后 MalfunctionComponent 已处理此逻辑）
+	if not ammo_component.has_chambered_round() and ammo_component.has_ammo():
+		ammo_component.prepare_next_round()
+		ammo_component.chamber_round()
+
+
+# ============================================================
+# 配件变更回调
+# ============================================================
+
+## attachment_manager.attachments_changed 触发后重算弹匣容量并通知外部
+func _on_attachments_changed() -> void:
+	if not config or not ammo_component or not attachment_manager:
+		return
+	var bonus := attachment_manager.get_total_magazine_capacity_bonus()
+	ammo_component.recalculate_capacity(config.magazine_capacity, bonus)

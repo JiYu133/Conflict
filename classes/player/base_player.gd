@@ -260,6 +260,22 @@ func _input(event: InputEvent) -> void:
 		# 换弹
 		if event.is_action_pressed("reload"):
 			weapon_manager.reload()
+		# 开火
+		if event.is_action_pressed("fire"):
+			weapon_manager.press_trigger()
+		if event.is_action_released("fire"):
+			weapon_manager.release_trigger()
+		# 瞄准（ADS）
+		if event.is_action_pressed("aim"):
+			weapon_manager.set_aiming(true)
+		if event.is_action_released("aim"):
+			weapon_manager.set_aiming(false)
+		# 切换射击模式
+		if event.is_action_pressed("cycle_fire_mode"):
+			weapon_manager.cycle_fire_mode()
+		# 排障
+		if event.is_action_pressed("clear_malfunction"):
+			weapon_manager.attempt_malfunction_clearance()
 
 	if not OS.is_debug_build():
 		return
@@ -296,6 +312,8 @@ func _input(event: InputEvent) -> void:
 
 func _on_started_sprinting() -> void:
 	hand_ik_controller.set_movement_state(true, true)
+	weapon_manager.release_trigger()
+	weapon_manager.set_aiming(false)
 
 
 func _on_stance_changed(value: float) -> void:

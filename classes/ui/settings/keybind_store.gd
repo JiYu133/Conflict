@@ -32,6 +32,8 @@ const ACTIONS: Array[Dictionary] = [
 	{ "action": "fire",          "display": "开火 Fire",        "category": "战斗 COMBAT" },
 	{ "action": "aim",           "display": "瞄准 Aim",         "category": "战斗 COMBAT" },
 	{ "action": "reload",        "display": "换弹 Reload",      "category": "战斗 COMBAT" },
+	{ "action": "cycle_fire_mode",    "display": "切换射击模式 Cycle Fire Mode", "category": "战斗 COMBAT" },
+	{ "action": "clear_malfunction",  "display": "排障 Clear Malfunction",      "category": "战斗 COMBAT" },
 	{ "action": "toggle_free_cam", "display": "DEBUG: 进入自由视角 Enter Free Cam", "category": "调试 DEBUG", "debug_only": true },
 ]
 
@@ -50,9 +52,9 @@ static func apply_saved() -> void:
 		var action: String = entry["action"]
 		if not InputMap.has_action(action):
 			continue
-		var encoded = cfg.get_value(CONFIG_SECTION, action, null)
-		if encoded == null:
+		if not cfg.has_section_key(CONFIG_SECTION, action):
 			continue
+		var encoded = cfg.get_value(CONFIG_SECTION, action)
 		var events := _decode_events(encoded)
 		if events.is_empty():
 			continue

@@ -20,6 +20,13 @@ extends RefCounted
 ## 入参：cfg = 配件配置；weapon = 所属武器（用于回传）
 ## 返回：BaseAttachment 子类实例，失败返回 null
 static func create(cfg: AttachmentConfig, weapon: BaseWeapon) -> BaseAttachment:
+	# 纯数值配件：不生成任何模型节点，直接返回空 BaseAttachment
+	if cfg.no_visual:
+		var att := BaseAttachment.new()
+		att.name = cfg.attachment_name
+		att.initialize(cfg, weapon)
+		return att
+
 	# 先尝试加载模型场景（如果有）
 	var attachment_root: BaseAttachment = null
 

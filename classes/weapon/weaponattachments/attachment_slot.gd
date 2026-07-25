@@ -25,11 +25,32 @@ extends Node3D
 
 # ──────────────────────────── 槽位类型枚举 ────────────────────────────
 enum SlotType {
-	OPTIC_RAIL,    # 顶部瞄具导轨（皮卡汀尼/燕尾）
-	MUZZLE,        # 枪口螺纹
-	UNDERBARREL,   # 下挂导轨（前握把/榴弹发射器）
-	MAGAZINE_WELL, # 弹匣井
-	SIDE_RAIL      # 侧导轨
+	# ─── 光学 / 瞄具 ───────────────────────────────────────────
+	OPTIC_RAIL,        # 顶部瞄具导轨（皮卡汀尼/燕尾）— 瞄具/机械照门
+	SIDE_RAIL_LEFT,    # 左侧导轨 — 战术灯/激光
+	SIDE_RAIL_RIGHT,   # 右侧导轨
+
+	# ─── 枪口 ─────────────────────────────────────────────────
+	MUZZLE,            # 枪口螺纹 — 消焰器/制退器/消音器
+
+	# ─── 下挂 ─────────────────────────────────────────────────
+	UNDERBARREL,       # 护木下挂导轨 — 前握把/战术灯
+
+	# ─── 枪管区 ───────────────────────────────────────────────
+	BARREL,            # 枪管接口 — 整根枪管总成（含导气管/准星）
+	HANDGUARD,         # 护木安装槽 — 护木总成
+
+	# ─── 机匣区 ───────────────────────────────────────────────
+	RECEIVER_COVER,    # 机匣盖卡槽 — 防尘盖（含/不含导轨）
+	PISTOL_GRIP,       # 握把安装螺孔 — 手枪式握把
+	TRIGGER_GROUP,     # 扳机销孔 — 扳机组（纯数值改装为主）
+	CHARGING_HANDLE,   # 拉机柄槽 — AR 类/可更换平台
+
+	# ─── 弹药供给 ─────────────────────────────────────────────
+	MAGAZINE_WELL,     # 弹匣井 — 弹匣（标准/加长/弹鼓）
+
+	# ─── 枪托 ─────────────────────────────────────────────────
+	STOCK_ADAPTER,     # 枪托接口 — 固定/折叠/伸缩枪托
 }
 
 # ──────────────────────────── 导出属性 ────────────────────────────
@@ -42,6 +63,11 @@ enum SlotType {
 @export var can_be_empty: bool = true
 ## 是否可以为空（机械瞄具槽不能为空，要保留后照门）
 
+@export var auto_center: bool = false
+## 自动居中：装入此槽的所有配件，自动在垂直枪管的平面内居中（XY 轴偏移）
+## 用于补偿配件原点不在连接面几何中心的情况
+## 也可在 AttachmentConfig.auto_center 上单独开启；两者任一为 true 即生效
+
 # ──────────────────────────── 运行时状态 ────────────────────────────
 var current_attachment: BaseAttachment = null
 ## 当前装在此槽位的配件实例（null = 空槽）
@@ -52,7 +78,7 @@ var is_occupied: bool:
 		return current_attachment != null
 
 # ──────────────────────────── 挂载逻辑 ────────────────────────────
-## 尝试挂载一个配件实例
+## 尝试挂载一个配件实例（只做状态记录，节点 add_child 由 AttachmentManager 负责）
 ## 返回 true = 挂载成功；false = 失败（槽位被占或类型不匹配）
 func attach(attachment: BaseAttachment) -> bool:
 	# 检查槽位是否已被占用
@@ -65,21 +91,17 @@ func attach(attachment: BaseAttachment) -> bool:
 		push_warning("配件 %s 不能装在 %s 槽位" % [attachment.config.attachment_name, slot_name])
 		return false
 
-	# 挂载
 	current_attachment = attachment
-	add_child(attachment)
-	attachment.global_transform = global_transform
-	print("[Slot] %s 已挂载 %s" % [slot_name, attachment.config.attachment_name])
+	print("[Slot] %s 已记录配件 %s" % [slot_name, attachment.config.attachment_name])
 	return true
 
-## 卸载当前配件
+## 卸载当前配件（只清状态，节点 remove_child 由 AttachmentManager 负责）
 ## 返回被卸下的配件实例（调用方负责释放或放回库存）
 func detach() -> BaseAttachment:
 	if not is_occupied:
 		return null
 
-	var att = current_attachment
-	att.get_parent().remove_child(att)
+	var att := current_attachment
 	current_attachment = null
-	print("[Slot] %s 已卸载" % slot_name)
+	print("[Slot] %s 已清除配件记录" % slot_name)
 	return att
