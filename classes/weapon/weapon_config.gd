@@ -15,6 +15,8 @@ extends Resource
 @export var weapon_name: String = "Unnamed Weapon"
 ## 武器种类标识（rifle / smg / shotgun / pistol 等） / Weapon category tag
 @export var weapon_type: String = "rifle"
+## 武器逻辑总开关：关闭时禁用击发/换弹/后座/故障，仅保留模型显示 / Master enable for all weapon logic
+@export var logic_enabled: bool = false
 
 # 自动原理 ─────────────────────────────────────────────────
 @export_group("自动原理")
@@ -67,8 +69,16 @@ extends Resource
 @export var recoil_vertical: float = 2.0
 ## 每发水平后座幅度（度）/ Horizontal recoil per shot in degrees
 @export var recoil_horizontal: float = 0.5
-## 后座回正速度（度/秒）/ Recoil recovery speed in degrees per second
+## 后座回正速度（度/秒），新系统中不再驱动自动回正，仅供配件修正读取 / Legacy recovery speed for attachment modifiers
 @export var recoil_recovery_speed: float = 5.0
+
+# 层1：摄像机真实 kick（永久偏移，不回正）─────────────────
+## 每发 pitch kick（度），永久改变摄像机仰角，建议 0.3~1.5
+@export var kick_pitch_deg: float = 0.8
+## 每发 yaw kick 基础值（度），向右偏转，建议 0.05~0.2
+@export var kick_yaw_deg: float = 0.12
+## yaw kick 随机幅度（度），在 ±该值内随机，模拟左右摆动
+@export var kick_yaw_random_deg: float = 0.35
 
 # 散布 ────────────────────────────────────────────────────
 @export_group("散布")
@@ -90,6 +100,8 @@ extends Resource
 @export var weapon_scene: PackedScene
 ## 武器全长（m），用于顶墙收枪射线检测 / Full weapon length in m, used for obstruction raycast
 @export var weapon_length: float = 0.75
+## 枪机/活塞后退行程（m），BoltCarrier 节点沿 -Z 位移的最大距离
+@export var bolt_travel_m: float = 0.08
 ## 瞄准时间（秒），从腰射到瞄准的过渡时长 / ADS transition time in seconds
 @export var ads_time: float = 0.25
 ## 瞄准时武器居中偏移（m），相对摄像机中心的偏移量 / Weapon center offset when ADS
@@ -104,17 +116,9 @@ extends Resource
 
 # 配件槽位声明 ────────────────────────────────────────────
 @export_group("配件槽位")
-## 是否支持瞄具槽 / Whether optic rail is supported
-@export var supports_optic: bool = true
-
-## 是否支持枪口装置 / Whether muzzle device is supported
-@export var supports_muzzle: bool = true
-
-## 是否支持下挂导轨 / Whether underbarrel rail is supported
-@export var supports_underbarrel: bool = true
-
-## 是否支持扩容弹匣 / Whether extended magazine is supported
-@export var supports_extended_mag: bool = true
+## 此武器支持的改装槽位列表，留空表示不支持任何配件改装
+## 对应 AttachmentSlot.SlotType 枚举值（在编辑器下拉选择）
+@export var supported_slots: Array[AttachmentSlot.SlotType] = []
 
 # 武器特征标签 ────────────────────────────────────────────
 @export_group("武器特征")
@@ -126,6 +130,18 @@ extends Resource
 
 ## 时代 / Era
 @export var era: String = "Modern"
+
+# 可靠性 ──────────────────────────────────────────────────
+@export_group("可靠性")
+## 每次击发时底火哑火的概率（0.0 = 从不）
+## 哑火后弹留在膛内，需拉机柄强制退弹
+@export_range(0.0, 1.0, 0.001) var misfire_chance: float = 0.0
+## 每次抛壳时弹壳卡在抛壳口的概率（烟囱卡弹，0.0 = 从不）
+## 弹壳阻挡复进，枪机停在中途，需拉机柄清除
+@export_range(0.0, 1.0, 0.001) var stovepipe_chance: float = 0.0
+## 抛壳失败后枪机仍强行复进时触发双上膛的概率（0.0 = 从不）
+## 两发子弹卡死在进弹口，需退弹匣+多次拉机柄+重新装填
+@export_range(0.0, 1.0, 0.001) var double_feed_chance: float = 0.0
 
 
 # ============================================================
@@ -145,3 +161,12 @@ extends Resource
 ## 启用弹道模拟（飞行时间 + 重力下坠 + 空气阻力 + 远距离伤害衰减）。
 ## 关闭时回退为瞬时 hitscan（无下坠、满动能命中），便于 A/B 对比调参。
 @export var use_ballistic_simulation: bool = true
+
+
+# ============================================================
+# 改装系统辅助
+# ============================================================
+
+## 返回此武器配置允许的槽位类型列表，供改装 UI 过滤可装配件
+func get_allowed_slot_types() -> Array[AttachmentSlot.SlotType]:
+	return supported_slots

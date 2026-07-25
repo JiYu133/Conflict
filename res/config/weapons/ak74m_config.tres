@@ -6,6 +6,7 @@
 [resource]
 script = ExtResource("1_cfg")
 weapon_name = "AK-74M"
+logic_enabled = false
 cycle_rate = 650.0
 bolt_mass = 0.27
 recoil_spring_strength = 65.0
@@ -19,7 +20,9 @@ ads_spread = 0.12
 weight = 3.6
 weapon_scene = ExtResource("2_ixgqf")
 weapon_length = 0.943
+bolt_travel_m = 0.075
 muzzle_velocity = 880.0
 bullet_mass_g = 3.45
 ballistic_coefficient = 0.22
 caliber = "5.45x39mm"
+supported_slots = [0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 12]

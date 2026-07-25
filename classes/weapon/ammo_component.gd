@@ -176,6 +176,22 @@ func apply_magazine_attachments(am: AttachmentManager) -> void:
 			magazines[i].append(null)
 	print("[Ammo] 弹匣附件扩容 +%d（当前容量 %d）" % [bonus, config.magazine_capacity + bonus])
 
+## 动态重算弹匣容量（配件装卸后调用）
+## base_cap：武器基础容量；bonus：扩容弹匣额外容量
+## 扩容时追加 null（标准弹）；缩容时直接截断尾部，不区分实弹/空位
+## 注意：缩容会删除弹匣尾部子弹，这是换装容量变小的预期行为
+func recalculate_capacity(base_cap: int, bonus: int) -> void:
+	var target := base_cap + bonus
+	for i in magazines.size():
+		var mag: Array = magazines[i]
+		var diff := target - mag.size()
+		if diff > 0:
+			for _j in range(diff):
+				mag.append(null)
+		elif diff < 0:
+			mag.resize(target)
+	ammo_count_changed.emit(get_current_magazine_count(), get_reserve_count())
+
 ## 获取指定索引的弹匣余弹
 func get_magazine_count(idx: int) -> int:
 	if idx >= 0 and idx < magazines.size():

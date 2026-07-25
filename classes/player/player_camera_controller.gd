@@ -366,18 +366,21 @@ func _process(delta: float) -> void:
 	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧
 	_active_camera.global_position = _player.global_transform * filtered_local
 
-	# 4. 旋转由鼠标控制
+	# 4. 旋转由鼠标控制；每帧消费 kick 冲量直接写入 _vertical_angle（永久偏移，不回正）
+	if _recoil_component:
+		var kick_p := _recoil_component.consume_camera_kick_pitch()
+		var kick_y := _recoil_component.consume_camera_kick_yaw()
+		_vertical_angle += kick_p
+		_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
+		if kick_y != 0.0 and _player:
+			_player.rotate_y(kick_y)
+
 	var player_yaw: float = _player.rotation.y if _player else 0.0
-	var recoil_pitch: float = _get_recoil_pitch()
 	_active_camera.global_rotation = Vector3(
-		_vertical_angle + recoil_pitch,
+		_vertical_angle,
 		player_yaw,
 		0.0
 	)
-
-	var recoil_yaw: float = _get_recoil_yaw()
-	if recoil_yaw != 0.0 and _player:
-		_player.rotate_y(recoil_yaw * delta)
 
 	_update_ads(delta)
 	_update_weapon_spring(delta)
@@ -439,18 +442,6 @@ func _update_weapon_spring(_delta: float) -> void:
 # ============================================================
 func set_recoil_component(rc: RecoilComponent) -> void:
 	_recoil_component = rc
-
-
-func _get_recoil_pitch() -> float:
-	if not _recoil_component:
-		return 0.0
-	return _recoil_component.get_recoil_offset()
-
-
-func _get_recoil_yaw() -> float:
-	if not _recoil_component:
-		return 0.0
-	return _recoil_component.get_recoil_horizontal_offset()
 
 
 # ============================================================
