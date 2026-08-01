@@ -33,18 +33,26 @@ BasePlayer (CharacterBody3D)
 │   ├── VitalsModel            血量、呼吸与身体部位状态
 │   └── AnatomyConfig          器官/骨骼/大血管及伤道参数
 │
-├── WeaponManager              武器装备/切换
-│   └── WeaponObstructionDetector  顶墙收枪射线检测
-│
-└── BaseWeapon (Node3D)
-    ├── AmmoComponent          弹药管理
-    ├── BoltComponent          枪机自动循环
-    ├── FireControlComponent   扳机/保险/射击模式
-    ├── GasComponent           导气延时
-    ├── RecoilComponent        后座累积与回正
-    ├── EjectionComponent      抛壳位置/速度
-    └── AttachmentManager      配件管理
-        └── AttachmentSlot × N 挂载点
+└── WeaponManager              武器装备/切换/改装接口
+    ├── WeaponObstructionDetector  顶墙收枪射线检测
+    │
+    └── BaseWeapon (Node3D)        ← 机匣场景根节点
+        ├── AmmoComponent          弹药管理
+        ├── BoltComponent          枪机自动循环
+        ├── FireControlComponent   扳机/保险/射击模式
+        ├── GasComponent           导气延时
+        ├── RecoilComponent        后座（摄像机 kick）
+        ├── EjectionComponent      抛壳位置/速度
+        ├── MalfunctionComponent   故障与排障
+        ├── WeaponAnimationController  信号驱动动画
+        ├── WeaponMovingPartsController  枪机/拉机柄位移
+        │
+        └── AttachmentManager      配件管理（层级槽位）
+            ├── AttachmentSlot     直连机匣的槽位（Barrel/Stock/...）
+            │   └── BaseAttachment（配件实例）
+            │       └── AttachmentSlot（配件自带的子槽，如机匣盖→导轨）
+            │           └── BaseAttachment（子配件实例）
+            └── ...
 ```
 
 ---
@@ -148,35 +156,33 @@ BaseWeapon
 
 | 类 | 文件 | 说明 |
 |---|---|---|
-| [BaseWeapon](weapon/BaseWeapon.md) | `Classes/Weapon/Weapon/base_weapon.gd` | 枪械根节点，管理组件与自动循环状态机 |
-| [WeaponConfig](weapon/WeaponConfig.md) | `Classes/Weapon/Weapon/weapon_config.gd` | 武器参数数据档案 |
-| [WeaponManager](weapon/WeaponManager.md) | `Classes/Weapon/Weapon/weapon_manager.gd` | 当前武器装备/切换管理 |
-| [AmmoComponent](weapon/AmmoComponent.md) | `Classes/Weapon/Weapon/ammo_component.gd` | 弹匣/膛内弹药状态 |
-| [BoltComponent](weapon/BoltComponent.md) | `Classes/Weapon/Weapon/bolt_component.gd` | 枪机自动循环仿真 |
-| [FireControlComponent](weapon/FireControlComponent.md) | `Classes/Weapon/Weapon/fire_control_component.gd` | 扳机/保险/射击模式控制 |
-| [GasComponent](weapon/GasComponent.md) | `Classes/Weapon/Weapon/gas_component.gd` | 导气延时计算 |
-| [RecoilComponent](weapon/RecoilComponent.md) | `Classes/Weapon/Weapon/recoil_component.gd` | 后座累积与回正 |
-| [EjectionComponent](weapon/EjectionComponent.md) | `Classes/Weapon/Weapon/ejection_component.gd` | 抛壳位置与速度 |
+| [BaseWeapon](weapon/BaseWeapon.md) | `classes/weapon/base_weapon.gd` | 枪械根节点，管理组件与自动循环状态机 |
+| [WeaponConfig](weapon/WeaponConfig.md) | `classes/weapon/weapon_config.gd` | 武器基础参数（待重构，部分属性将移至配件） |
+| [WeaponManager](weapon/WeaponManager.md) | `classes/weapon/weapon_manager.gd` | 武器装备/切换/改装接口 |
+| [WeaponMovingPartsController](weapon/WeaponMovingPartsController.md) | `classes/weapon/weapon_moving_parts_controller.gd` | 枪机框/拉机柄位移驱动 |
+| [AmmoComponent](weapon/AmmoComponent.md) | `classes/weapon/ammo_component.gd` | 弹匣/膛内弹药状态 |
+| [BoltComponent](weapon/BoltComponent.md) | `classes/weapon/bolt_component.gd` | 枪机自动循环仿真 |
+| [FireControlComponent](weapon/FireControlComponent.md) | `classes/weapon/fire_control_component.gd` | 扳机/保险/射击模式控制 |
+| [GasComponent](weapon/GasComponent.md) | `classes/weapon/gas_component.gd` | 导气延时计算 |
+| [RecoilComponent](weapon/RecoilComponent.md) | `classes/weapon/recoil_component.gd` | 摄像机 kick 冲量（pitch/yaw） |
+| [EjectionComponent](weapon/EjectionComponent.md) | `classes/weapon/ejection_component.gd` | 抛壳位置与速度 |
 
 ---
 
-## Weapon 配件
+## 改装系统
+
+| 文档 | 说明 |
+|------|------|
+| [改装系统概览](attachments/AttachmentSystemOverview.md) | 设计理念、层级槽位、文件结构、Mod 指南 |
 
 | 类 | 文件 | 说明 |
 |---|---|---|
-| [AttachmentConfig](attachments/AttachmentConfig.md) | `Classes/Weapon/WeaponAttachments/attachment_config.gd` | 配件参数数据档案 |
-| [BaseAttachment](attachments/BaseAttachment.md) | `Classes/Weapon/WeaponAttachments/base_attachment.gd` | 配件抽象基类 |
-| [AttachmentSlot](attachments/AttachmentSlot.md) | `Classes/Weapon/WeaponAttachments/attachment_slot.gd` | 武器挂载点节点 |
-| [AttachmentManager](attachments/AttachmentManager.md) | `Classes/Weapon/WeaponAttachments/attachment_manager.gd` | 配件扫描/装备/数值汇总 |
-| [AttachmentFactory](attachments/AttachmentFactory.md) | `Classes/Weapon/WeaponAttachments/attachment_factory.gd` | 配件实例化工厂 |
-| [OpticAttachment](attachments/OpticAttachment.md) | `scopes/optic_attachment.gd` | 瞄具基类 |
-| [IronSightAttachment](attachments/IronSightAttachment.md) | `scopes/iron_sight.gd` | 机械瞄具（默认，不可卸） |
-| [RedDotAttachment](attachments/RedDotAttachment.md) | `scopes/red_dot.gd` | 1× 红点瞄具 |
-| [HolographicAttachment](attachments/HolographicAttachment.md) | `scopes/holographic.gd` | 1× 全息瞄具 |
-| [ACOGAttachment](attachments/ACOGAttachment.md) | `scopes/acog.gd` | 4× 棱镜瞄具 |
-| [VerticalGripAttachment](attachments/VerticalGripAttachment.md) | `grips/vertical_grip.gd` | 垂直前握把 |
-| [SuppressorAttachment](attachments/SuppressorAttachment.md) | `muzzles/suppressor.gd` | 螺纹消音器 |
-| [ExtendedMagAttachment](attachments/ExtendedMagAttachment.md) | `magazines/extended_mag.gd` | 加长弹匣 (+10) |
+| [AttachmentConfig](attachments/AttachmentConfig.md) | `classes/weapon/weaponattachments/attachment_config.gd` | 配件参数数据档案 |
+| [BaseAttachment](attachments/BaseAttachment.md) | `classes/weapon/weaponattachments/base_attachment.gd` | 配件抽象基类 |
+| [AttachmentSlot](attachments/AttachmentSlot.md) | `classes/weapon/weaponattachments/attachment_slot.gd` | 挂载点节点（即对齐锚点） |
+| [AttachmentManager](attachments/AttachmentManager.md) | `classes/weapon/weaponattachments/attachment_manager.gd` | 层级槽位扫描/装卸/数值缓存 |
+| [AttachmentFactory](attachments/AttachmentFactory.md) | `classes/weapon/weaponattachments/attachment_factory.gd` | 配件实例化工厂 |
+| [OpticAttachment](attachments/OpticAttachment.md) | `classes/weapon/weaponattachments/scopes/optic_attachment.gd` | 瞄具基类 |
 
 ---
 

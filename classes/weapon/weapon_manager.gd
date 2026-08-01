@@ -20,7 +20,7 @@ var _moving_parts_controller: WeaponMovingPartsController
 var _stats_changed_callable: Callable  # 存储 lambda 以便 disconnect
 
 
-func equip_weapon(weapon: BaseWeapon) -> void:
+func equip_weapon(weapon: BaseWeapon, emit_changed: bool = true) -> void:
 	if current_weapon:
 		if _weapon_anim_controller:
 			_weapon_anim_controller.play_holster()
@@ -56,21 +56,34 @@ func equip_weapon(weapon: BaseWeapon) -> void:
 	_moving_parts_controller.initialize(weapon)
 
 	# 订阅配件变更信号，透传给外部系统
-	_stats_changed_callable = func(): weapon_stats_changed.emit()
+	_stats_changed_callable = func():
+		_align_to_grip(current_weapon)
+		weapon_stats_changed.emit()
 	weapon.attachment_manager.attachment_equipped.connect(_on_weapon_attachment_equipped)
 	weapon.attachment_manager.attachment_detached.connect(_on_weapon_attachment_detached)
 	weapon.attachment_manager.attachments_changed.connect(_stats_changed_callable)
 
-	weapon_changed.emit(current_weapon)
+	if emit_changed:
+		weapon_changed.emit(current_weapon)
 
 
 func _align_to_grip(weapon: BaseWeapon) -> void:
-	var grip := weapon.find_child("RightHandGrip", true, false) as Node3D
+	var grip := weapon.find_grip_node("RightHandGrip")
 	if not grip:
 		weapon.position = Vector3.ZERO
 		weapon.rotation = Vector3.ZERO
 		return
-	weapon.transform = grip.transform.inverse()
+	var grip_relative := _relative_grip_transform(weapon, grip)
+	weapon.transform = Transform3D(Basis.IDENTITY, -grip_relative.origin)
+
+
+func _relative_grip_transform(root: Node3D, descendant: Node3D) -> Transform3D:
+	var result := Transform3D.IDENTITY
+	var node: Node3D = descendant
+	while node and node != root:
+		result = node.transform * result
+		node = node.get_parent() as Node3D
+	return result
 
 ## 设置武器挂载点(从调用处获取)
 func set_mount(mount: Node3D) -> void:
@@ -108,23 +121,45 @@ func set_aiming(aiming: bool) -> void:
 			_weapon_anim_controller.play_ads_out()
 	_apply_ads_state()
 
-## 根据配置和模型路径创建武器实例并装备
+## 根据配置创建武器实例，装备并自动装上预设配件
 func load_and_equip(config: WeaponConfig) -> void:
 	if not config:
-		push_error("WeaponConfig 为空，无法装备武器")
+		GlobalLogger.error("WeaponManager", "WeaponConfig 为空，无法装备武器")
 		return
-	print("装备武器 " + config.weapon_name)
+	GlobalLogger.info("WeaponManager", "装备武器: " + config.weapon_name)
 	var weapon_scene = config.weapon_scene
 	if not weapon_scene:
-		push_error("武器 %s 缺少 weapon_scene" % config.weapon_name)
+		GlobalLogger.error("WeaponManager", "武器 %s 缺少 weapon_scene" % config.weapon_name)
 		return
 	var weapon = weapon_scene.instantiate() as BaseWeapon
 	if not weapon:
-		push_error("武器场景的根节点应为BaseWeapon: " + config.weapon_name)
+		GlobalLogger.error("WeaponManager", "武器场景根节点应为 BaseWeapon: " + config.weapon_name)
 		return
 	weapon.initialize(config)
-	equip_weapon(weapon)
+	equip_weapon(weapon, false)
+	_equip_default_attachments(config)
+	weapon_changed.emit(current_weapon)
 	_apply_ads_state()
+
+
+## 装上 WeaponConfig.default_attachment_slots/configs 里定义的预设配件
+func _equip_default_attachments(config: WeaponConfig) -> void:
+	var slots   := config.default_attachment_slots
+	var configs := config.default_attachment_configs
+	if slots.size() != configs.size():
+		GlobalLogger.warn("WeaponManager", "预设配件槽位数量与配置数量不一致，跳过自动装配")
+		return
+	for i in slots.size():
+		var slot_name: String        = slots[i]
+		var att_cfg: AttachmentConfig = configs[i]
+		if not att_cfg:
+			GlobalLogger.warn("WeaponManager", "预设配件 [%d] 配置为空，跳过" % i)
+			continue
+		var ok := equip_attachment(slot_name, att_cfg)
+		if ok:
+			GlobalLogger.debug("WeaponManager", "预设配件已装: %s → %s" % [slot_name, att_cfg.attachment_name])
+		else:
+			GlobalLogger.warn("WeaponManager", "预设配件装配失败: %s → %s" % [slot_name, att_cfg.attachment_name])
 
 
 func _apply_ads_state() -> void:
@@ -188,6 +223,19 @@ func get_supported_slot_types() -> Array[AttachmentSlot.SlotType]:
 	return current_weapon.config.get_allowed_slot_types()
 
 
+## 调整指定槽位配件的导轨位置（供改装 UI 滑动条调用）
+func set_rail_offset(slot_name: String, offset: float) -> void:
+	if current_weapon and current_weapon.attachment_manager:
+		current_weapon.attachment_manager.set_rail_offset(slot_name, offset)
+
+
+## 获取指定槽位配件的当前导轨偏移值
+func get_rail_offset(slot_name: String) -> float:
+	if current_weapon and current_weapon.attachment_manager:
+		return current_weapon.attachment_manager.get_rail_offset(slot_name)
+	return 0.0
+
+
 # ============================================================
 # 内部信号回调
 # ============================================================
@@ -202,4 +250,3 @@ func _on_weapon_attachment_detached(slot: AttachmentSlot, attachment: BaseAttach
 	var slot_name: String = slot.slot_name if slot.slot_name != "" else String(slot.name)
 	attachment_detached.emit(slot_name)
 	_apply_ads_state()
-

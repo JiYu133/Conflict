@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://cfacll7jl8asb"]
+
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_base"]
+[ext_resource type="Script" uid="uid://01io7x43ey6y" path="res://classes/weapon/weaponattachments/attachment_slot.gd" id="2_slot"]
+[ext_resource type="PackedScene" uid="uid://4go5hdab5cs" path="res://res/models/attachments/receiver_covers/dust_cover_standard/dust_cover_standard.glb" id="3_mesh"]
+
+[node name="DustCoverStandard" type="Node3D" unique_id=417802737]
+script = ExtResource("1_base")
+
+[node name="Mesh" parent="." unique_id=431256435 instance=ExtResource("3_mesh")]
+
+[node name="OpticRail" type="Marker3D" parent="." unique_id=2100386774]
+script = ExtResource("2_slot")
+slot_name = "OpticRail"
+
+[node name="SnapPoint" type="Marker3D" parent="." unique_id=213489451]

@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://ak12_bolt_carrier_tscn"]
+
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_base"]
+[ext_resource type="PackedScene" path="res://res/models/attachments/bolt_carriers/ak12_bolt_carrier/ak12_bolt_carrier.glb" id="2_mesh"]
+
+[node name="BoltCarrier" type="Node3D"]
+script = ExtResource("1_base")
+
+[node name="Mesh" parent="." instance=ExtResource("2_mesh")]

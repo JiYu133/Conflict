@@ -12,3 +12,7 @@ weight_kg = 0.15
 ads_speed_modifier = 0.1
 reticle_color = Color(1, 0.1, 0.1, 1)
 mount_point_name = "OpticRail"
+rail_adjustable = true
+rail_offset = 0.0
+rail_offset_min = -0.03
+rail_offset_max = 0.03

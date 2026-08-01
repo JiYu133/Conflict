@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="AttachmentConfig" format=3 uid="uid://dq02diw0seir5"]
+
+[ext_resource type="Script" uid="uid://wwvoc4u8v141" path="res://classes/weapon/weaponattachments/attachment_config.gd" id="1_a"]
+[ext_resource type="PackedScene" uid="uid://cfacll7jl8asb" path="res://res/models/attachments/receiver_covers/dust_cover_standard/dust_cover_standard.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_a")
+attachment_name = "整体式机匣盖"
+attachment_type = 8
+allowed_slot = 7
+weight_kg = 0.12
+attachment_scene = ExtResource("2_scene")

@@ -29,10 +29,9 @@ var _ejection: EjectionComponent
 var _ammo: AmmoComponent
 var config: WeaponConfig
 
-# 哑火独立标志（BoltComponent 不感知哑火，由 BaseWeapon._fire_one_round 写入）
 var _is_misfired: bool = false
-# 双上膛排障步骤计数
 var _double_feed_step: int = 0
+var _double_feed_chance: float = 0.0
 
 
 func initialize(cfg: WeaponConfig, bolt: BoltComponent, ejection: EjectionComponent, ammo: AmmoComponent) -> void:
@@ -40,6 +39,11 @@ func initialize(cfg: WeaponConfig, bolt: BoltComponent, ejection: EjectionCompon
 	_bolt = bolt
 	_ejection = ejection
 	_ammo = ammo
+
+
+## 枪机框配件装卸后调用，更新双上膛概率
+func reconfigure_bolt(bolt_cfg: BoltCarrierConfig) -> void:
+	_double_feed_chance = bolt_cfg.double_feed_chance
 
 
 # ============================================================

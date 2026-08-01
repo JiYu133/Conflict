@@ -11,25 +11,29 @@ extends Node
 
 var config: WeaponConfig
 
-# 抛壳参数（世界空间坐标偏移，相对武器节点原点）
 var _ejection_port_position: Vector3 = Vector3(0.05, 0.0, 0.2)
-## 抛壳窗位置偏移：向右 5cm，向前 20cm（右手枪、AR 布局的常见位置）
-
 var _ejection_velocity: Vector3 = Vector3(1.0, 2.0, -0.5)
-## 弹壳抛出速度：向右 1m/s + 向上 2m/s + 向后 0.5m/s
-
-# 故障状态
 var _case_stuck: bool = false
-## 弹壳是否卡在抛壳口（true = 烟囱卡弹已发生，枪机无法完成复进）
+
+# 可靠性参数（由枪管配件/枪机框配件提供）
+var _stovepipe_chance: float = 0.0
+var _misfire_chance: float = 0.0
 
 
-# ============================================================
-# 初始化
-# ============================================================
 func initialize(cfg: WeaponConfig) -> void:
 	config = cfg
 	_case_stuck = false
-	print("EjectionComponent 初始化完成")
+	GlobalLogger.debug("EjectionComponent", "初始化完成")
+
+
+## 枪管配件装卸后调用，更新底火可靠性参数
+func reconfigure(barrel_cfg: BarrelConfig) -> void:
+	_misfire_chance = barrel_cfg.misfire_chance
+
+
+## 枪机框配件装卸后调用，更新抛壳可靠性参数
+func reconfigure_bolt(bolt_cfg: BoltCarrierConfig) -> void:
+	_stovepipe_chance = bolt_cfg.stovepipe_chance
 
 
 # ============================================================
@@ -40,7 +44,7 @@ func initialize(cfg: WeaponConfig) -> void:
 ## 调用方（BaseWeapon._on_bolt_reached_rear）应根据返回值决定是否允许复进继续。
 func attempt_eject() -> bool:
 	_case_stuck = false
-	if config and config.stovepipe_chance > 0.0 and randf() < config.stovepipe_chance:
+	if _stovepipe_chance > 0.0 and randf() < _stovepipe_chance:
 		_case_stuck = true
 		return false
 	return true

@@ -1,85 +1,108 @@
 class_name RecoilComponent
 extends Node
 
-# ============================================================
-# 后座组件 v2 — 摄像机真实 Kick 系统
-#
-# 每发施加一次性 pitch/yaw 冲量，通过 consume_* 函数读取后清零。
-# PlayerCameraController 每帧消费，直接写入 _vertical_angle 和 rotate_y。
-# 不自动回正，玩家需主动用鼠标压枪。
-#
-# 武器视觉抖动由动画系统负责，不在此处处理。
-#
-# 依赖：WeaponConfig（kick_* 字段）
-#       AttachmentManager（配件修正，向后兼容）
-# ============================================================
+# Physics-driven recoil component.
+# Each shot adds angular velocity from RecoilPhysicsModel; a damped spring
+# then returns the camera offset to zero.
+
+const MAX_CAMERA_OFFSET_RAD := 0.6
 
 var config: WeaponConfig
 var attachment_manager: AttachmentManager
+var physics_model: RecoilPhysicsModel
 
-# 摄像机 kick 冲量（一次性，消费后清零）
-var _pending_kick_pitch: float = 0.0
-var _pending_kick_yaw: float = 0.0
+var _pitch: float = 0.0
+var _pitch_velocity: float = 0.0
+var _yaw: float = 0.0
+var _yaw_velocity: float = 0.0
+var _control_multiplier: float = 1.0
 
 
-# ============================================================
-# 初始化（接口不变）
-# ============================================================
 func initialize(cfg: WeaponConfig, am: AttachmentManager = null) -> void:
 	config = cfg
 	attachment_manager = am
-	GlobalLogger.debug("RecoilComponent", "Initialized (v2) for: " + cfg.weapon_name)
+	physics_model = RecoilPhysicsModel.new()
+	rebuild_physics()
+	GlobalLogger.debug("RecoilComponent", "Initialized physics recoil for: " + cfg.weapon_name)
 
 
-# ============================================================
-# 每发后座（主入口）
-# ============================================================
+func rebuild_physics() -> void:
+	if not physics_model:
+		physics_model = RecoilPhysicsModel.new()
+	physics_model.rebuild(config, attachment_manager)
+	reset()
 
-## 施加一发子弹的后座效果
-## stability_mult：稳定性修正系数（站立=1.0, 蹲下=0.7, 疲劳=1.3）
-func apply_recoil(stability_mult: float = 1.0) -> void:
-	if not config:
+
+func apply_recoil(control_multiplier: float = 1.0) -> void:
+	if not physics_model:
+		return
+	_control_multiplier = control_multiplier
+	var angular_impulse := physics_model.get_shot_angular_impulse()
+	_pitch_velocity += angular_impulse.x
+	_yaw_velocity += angular_impulse.y
+
+
+func set_control_multiplier(value: float) -> void:
+	_control_multiplier = value
+
+
+func reset() -> void:
+	_pitch = 0.0
+	_pitch_velocity = 0.0
+	_yaw = 0.0
+	_yaw_velocity = 0.0
+
+
+func _process(delta: float) -> void:
+	if not physics_model:
 		return
 
-	# 读取配件修正（向后兼容旧的 recoil_vertical/horizontal 修正通道）
-	var v_mod: float = 0.0
-	var h_mod: float = 0.0
-	if attachment_manager:
-		v_mod = attachment_manager.get_total_recoil_vertical_modifier()
-		h_mod = attachment_manager.get_total_recoil_horizontal_modifier()
+	var control := physics_model.get_control()
+	var stiffness := control.x * maxf(_control_multiplier, 0.05)
+	var damping := control.y * maxf(_control_multiplier, 0.05)
+	var inv_inertia_pitch := 1.0 / maxf(physics_model.inertia_pitch, 0.05)
+	var inv_inertia_yaw := 1.0 / maxf(physics_model.inertia_yaw, 0.05)
 
-	# pitch kick：永久上抬摄像机（连发线性累积）
-	_pending_kick_pitch += deg_to_rad(config.kick_pitch_deg + v_mod) * stability_mult
+	var pitch_accel := -stiffness * inv_inertia_pitch * _pitch
+	pitch_accel -= damping * inv_inertia_pitch * _pitch_velocity
+	var yaw_accel := -stiffness * inv_inertia_yaw * _yaw
+	yaw_accel -= damping * inv_inertia_yaw * _yaw_velocity
 
-	# yaw kick：基础偏转 + 随机分量（模拟左右摆动）
-	var base_yaw := config.kick_yaw_deg + h_mod
-	var rand_yaw := randf_range(-config.kick_yaw_random_deg, config.kick_yaw_random_deg)
-	_pending_kick_yaw += deg_to_rad(base_yaw + rand_yaw) * stability_mult
+	_pitch_velocity += pitch_accel * delta
+	_yaw_velocity += yaw_accel * delta
+	_pitch += _pitch_velocity * delta
+	_yaw += _yaw_velocity * delta
+
+	_pitch = clampf(_pitch, -MAX_CAMERA_OFFSET_RAD, MAX_CAMERA_OFFSET_RAD)
+	_yaw = clampf(_yaw, -MAX_CAMERA_OFFSET_RAD, MAX_CAMERA_OFFSET_RAD)
 
 
-# ============================================================
-# 消费接口（PlayerCameraController 每帧调用，读完即清零）
-# ============================================================
+func get_camera_pitch_offset() -> float:
+	return _pitch
 
-## 消费 pitch kick 冲量，返回本帧应加到 _vertical_angle 的值
+
+func get_camera_yaw_offset() -> float:
+	return _yaw
+
+
+func get_physics_snapshot() -> Dictionary:
+	if not physics_model:
+		return {}
+	return physics_model.get_snapshot()
+
+
+# Deprecated compatibility helpers. The camera no longer consumes these values.
 func consume_camera_kick_pitch() -> float:
-	var v := _pending_kick_pitch
-	_pending_kick_pitch = 0.0
-	return v
+	return _pitch
 
 
-## 消费 yaw kick 冲量，返回本帧应传入 rotate_y 的值
 func consume_camera_kick_yaw() -> float:
-	var v := _pending_kick_yaw
-	_pending_kick_yaw = 0.0
-	return v
+	return _yaw
 
 
-# ============================================================
-# 向后兼容接口（空实现，防止旧代码报错）
-# ============================================================
 func get_recoil_offset() -> float:
-	return 0.0
+	return rad_to_deg(_pitch)
+
 
 func get_recoil_horizontal_offset() -> float:
-	return 0.0
+	return rad_to_deg(_yaw)

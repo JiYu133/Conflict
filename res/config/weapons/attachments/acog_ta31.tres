@@ -13,3 +13,7 @@ magnification = 4.0
 fov_override = 25.0
 reticle_color = Color(0, 0.6, 0, 1)
 mount_point_name = "OpticRail"
+rail_adjustable = true
+rail_offset = 0.0
+rail_offset_min = -0.03
+rail_offset_max = 0.03

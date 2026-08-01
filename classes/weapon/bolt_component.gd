@@ -43,15 +43,33 @@ var _jam_type: JamType = JamType.NONE  # 当前故障类型
 # ============================================================
 func initialize(cfg: WeaponConfig) -> void:
 	config = cfg
+	_apply_defaults()
+	cycle_completed.connect(_on_cycle_completed)
+	GlobalLogger.debug("BoltComponent", "初始化完成")
 
-	bolt_speed_open = cfg.muzzle_velocity * 0.15
-	var mass = cfg.bolt_mass if cfg.bolt_mass > 0.001 else 0.3
-	var spring = cfg.recoil_spring_strength if cfg.recoil_spring_strength > 0.001 else 50.0
+
+## 配件装卸后由 BaseWeapon._reconfigure_from_attachments() 调用
+## 用已装枪机框配件的参数更新枪机速度
+func reconfigure(bolt_cfg: BoltCarrierConfig) -> void:
+	var mass   := bolt_cfg.bolt_mass           if bolt_cfg.bolt_mass > 0.001           else 0.3
+	var spring := bolt_cfg.recoil_spring_strength if bolt_cfg.recoil_spring_strength > 0.001 else 50.0
+	# 初速来自已装枪管，此处通过 parent_weapon 的 BarrelConfig 获取
+	# 如无枪管则保持上次值或使用默认值
+	bolt_speed_open  = _cached_muzzle_velocity * 0.15
 	bolt_speed_close = spring / mass * 0.02
 
-	cycle_completed.connect(_on_cycle_completed)
 
-	print("BoltComponent 初始化完成")
+## 缓存枪管初速，由 BaseWeapon._reconfigure_from_attachments() 在枪管配置时设置
+var _cached_muzzle_velocity: float = 900.0
+
+func set_muzzle_velocity(v: float) -> void:
+	_cached_muzzle_velocity = v
+	bolt_speed_open = v * 0.15
+
+
+func _apply_defaults() -> void:
+	bolt_speed_open  = 900.0 * 0.15
+	bolt_speed_close = 50.0 / 0.3 * 0.02
 
 
 # ============================================================

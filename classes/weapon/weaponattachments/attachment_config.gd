@@ -31,8 +31,10 @@ extends Resource
 ## 允许装入的挂载点类型 / Allowed slot type for this attachment
 @export var allowed_slot: AttachmentSlot.SlotType = AttachmentSlot.SlotType.OPTIC_RAIL
 
-## 是否需要先有某个配件 / Whether a prerequisite attachment is required
-@export var requires_existing_attachment: bool = false
+## 安装此配件前必须已装的槽位类型列表（空 = 无前置依赖）
+## 例：瞄具需要机匣盖上的导轨，填 [SlotType.RECEIVER_COVER] 表示必须先装机匣盖
+## AttachmentSlot.attach() 会检查此约束，不满足时拒绝安装
+@export var required_slots: Array[AttachmentSlot.SlotType] = []
 
 # ──────────────────────────── 数值修正 ────────────────────────────
 @export_group("散布修正")
@@ -57,6 +59,8 @@ extends Resource
 @export_group("重量与机动")
 ## 配件重量（kg），叠加到武器总重量 / Attachment weight in kg, added to weapon total
 @export var weight_kg: float = 0.1
+## 配件局部质心偏移，默认在挂载点中心
+@export var center_of_mass_local: Vector3 = Vector3.ZERO
 
 ## 瞄准速度修正：正值 = 更快瞄准 / ADS speed modifier; positive = faster aim
 @export var ads_speed_modifier: float = 0.0
@@ -98,13 +102,17 @@ extends Resource
 @export var mount_point_name: String = ""
 
 ## true = 纯数值配件，不生成任何 3D 节点（扳机组、弹簧等纯参数配件适用）
-## mod 作者无美术资源时也可设为 true 先跑通数值，后期补 attachment_scene 再改回 false
 @export var no_visual: bool = false
 
-## 自动居中：挂载后自动在垂直枪管的平面内（XY）将配件居中于锚点
-## 用于原点未精确放在连接面几何中心的配件，无需调整 Marker3D 位置
-## 也可在 AttachmentSlot.auto_center 上设置，对整个槽位所有配件生效；两者任一为 true 即生效
-@export var auto_center: bool = false
+# ── 导轨位置调整 ────────────────────────────────────────────────
+## 配件可否沿导轨（Z轴）滑动调整位置（瞄具/战术灯等导轨安装配件设为 true）
+@export var rail_adjustable: bool = false
+## 当前沿导轨方向的偏移（m），正值朝后（靠近射手），负值朝前（靠近枪口）
+@export var rail_offset: float = 0.0
+## 允许的最小偏移（m），防止滑出导轨前端
+@export var rail_offset_min: float = -0.05
+## 允许的最大偏移（m），防止滑出导轨后端
+@export var rail_offset_max: float = 0.05
 
 # ════════════════════════════════════════════════════════════════════════
 # 枚举类型定义
@@ -116,7 +124,7 @@ enum AttachmentType {
 	MUZZLE,          # 枪口装置（消焰/制退/消音）
 	GRIP,            # 前握把（垂直/斜角/手挡）
 	MAGAZINE,        # 弹匣
-	BARREL,          # 枪管总成
+	BARREL_ASSEMBLY, # 枪管总成（含导气管、准星、枪口螺纹段）
 	HANDGUARD,       # 护木
 	STOCK,           # 枪托
 	PISTOL_GRIP,     # 手枪握把
@@ -125,4 +133,7 @@ enum AttachmentType {
 	CHARGING_HANDLE, # 拉机柄
 	TACTICAL_DEVICE, # 战术灯/激光
 	SIDE,            # 侧挂（泛用）
+	RECEIVER,        # 机匣（组装基础，根节点是 BaseWeapon）
+	BOLT_CARRIER,    # 枪机框（可动部件，由 WeaponMovingPartsController 驱动）
+	SELECTOR_SWITCH, # 快慢机拨片（有动画，驱动方式同枪机框）
 }

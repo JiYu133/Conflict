@@ -5,32 +5,32 @@ extends Node
 # 配件管理器 (AttachmentManager)
 # ════════════════════════════════════════════════════════════════════════
 # 作用：一把武器上挂一个 AttachmentManager，它负责：
-#   1. 扫描武器场景里所有的 AttachmentSlot 和 Marker3D 锚点
+#   1. 扫描武器场景里所有的 AttachmentSlot
 #   2. 接受玩家的装备/卸载请求，管理配件节点的场景树归属
 #   3. 汇总所有配件的数值修正，缓存结果以避免重复遍历
 #
-# 数值汇总方式：
-#   武器实际值 = 武器基础值 + Σ 所有当前配件的修正
-#   每次 attachments_changed 时重建缓存；各 get_total_* 直接读缓存。
+# 对齐方式：
+#   AttachmentSlot 本身就是 Node3D，在武器/配件场景里放置到接口位置。
+#   配件作为 AttachmentSlot 的子节点挂载，transform = IDENTITY 即贴合接口。
 #
-# 装备流程（外部调用）：
-#   var att = AttachmentFactory.create(red_dot_config, weapon)
-#   weapon.attachment_manager.equip_to_slot(att, "OpticRail")
+# 层级槽位：
+#   配件自身可以在其 .tscn 场景里包含子 AttachmentSlot（如机匣盖带导轨槽）。
+#   装上配件时自动扫描并注册这些新槽；卸下时自动清理。
 # ════════════════════════════════════════════════════════════════════════
 
-# ──────────────────────────── 信号 ────────────────────────────
 signal attachment_equipped(slot: AttachmentSlot, attachment: BaseAttachment)
 signal attachment_detached(slot: AttachmentSlot, attachment: BaseAttachment)
 signal attachments_changed()
 
-# ──────────────────────────── 内部状态 ────────────────────────────
-var parent_weapon: BaseWeapon
+## 配件场景里标记装配面的 Marker3D 节点名，存在时用它对准槽位
+const SNAP_POINT_NAME := "SnapPoint"
+## 记录导轨配件对齐后、未叠加 rail_offset 时的基准 Z，供滑动条重复调整
+const META_RAIL_BASE_Z := "_rail_base_z"
 
-var _slots: Dictionary = {}    # {String: AttachmentSlot}
-var _anchors: Dictionary = {}  # {String: Node3D} — 只收带 meta "attachment_anchor" 的 Marker3D
+var parent_weapon: BaseWeapon
+var _slots: Dictionary = {}  # {String: AttachmentSlot}
 
 # 数值缓存（attachments_changed 时重建）
-var _cache_dirty: bool = true
 var _cache_spread_ads: float = 0.0
 var _cache_spread_hip: float = 0.0
 var _cache_recoil_v: float = 0.0
@@ -47,14 +47,14 @@ var _cache_fov: float = -1.0
 
 
 # ──────────────────────────── 初始化 ────────────────────────────
+
 func initialize(weapon: BaseWeapon, weapon_root: Node) -> void:
 	parent_weapon = weapon
 	_scan_slots(weapon_root)
 	attachments_changed.connect(_rebuild_cache)
-	print("[AttachmentMgr] 找到 %d 个挂载点，%d 个锚点" % [_slots.size(), _anchors.size()])
+	GlobalLogger.debug("AttachmentMgr", "找到 %d 个挂载点" % _slots.size())
 
 
-## 递归扫描 AttachmentSlot 和带 meta "attachment_anchor" 的 Marker3D
 func _scan_slots(root: Node) -> void:
 	for child in root.get_children():
 		if child is AttachmentSlot:
@@ -63,59 +63,69 @@ func _scan_slots(root: Node) -> void:
 				push_warning("[AttachmentMgr] 挂载点名称重复，已忽略后者: %s" % key)
 			else:
 				_slots[key] = child
-		elif child is Marker3D and child.has_meta("attachment_anchor"):
-			var key: String = String(child.name)
-			if not _anchors.has(key):
-				_anchors[key] = child
 		if child.get_child_count() > 0:
 			_scan_slots(child)
 
 
 # ──────────────────────────── 公开接口 ────────────────────────────
 
-## 返回所有已注册的槽位名称列表（替代直接访问 _slots）
 func get_slot_names() -> Array[String]:
 	var names: Array[String] = []
 	for k in _slots:
 		names.append(k as String)
 	return names
 
-## 把一个配件装到指定名字的槽位
-## 返回 true = 成功；false = 失败（槽位不存在/被占/类型不符）
+## 把配件装到指定槽位
 func equip_to_slot(attachment: BaseAttachment, slot_name: String) -> bool:
 	if not _slots.has(slot_name):
 		push_error("[AttachmentMgr] 找不到挂载点: %s" % slot_name)
 		return false
 
 	var slot: AttachmentSlot = _slots[slot_name]
-	var ok := slot.attach(attachment)   # 只做状态记录
+	var ok := slot.attach(attachment)
 	if ok:
 		attachment.parent_weapon = parent_weapon
-		_place_attachment(attachment, slot_name)   # 负责节点 add_child
+		_place_attachment(attachment, slot)
+		# 配件自身可能带有子槽位（如机匣盖带导轨槽），装上后扫描新增槽位
+		_scan_slots(attachment)
 		attachment_equipped.emit(slot, attachment)
 		attachments_changed.emit()
 	return ok
 
-## 从指定名字的槽位卸下配件，并从场景树移除其节点
-## 返回被卸下的配件（调用方决定删除/放回库存）
+
+## 从指定槽位卸下配件
 func detach_from_slot(slot_name: String) -> BaseAttachment:
 	if not _slots.has(slot_name):
 		return null
 
 	var slot: AttachmentSlot = _slots[slot_name]
-	var att := slot.detach()   # 只清状态，不移除节点
+	var att := slot.detach()
 	if att:
+		# 先清理这个配件带来的所有子槽位
+		_remove_child_slots(att)
 		if att.get_parent():
 			att.get_parent().remove_child(att)
 		attachment_detached.emit(slot, att)
 		attachments_changed.emit()
 	return att
 
-## 获取指定名字的挂载点
+
+## 递归移除某节点下所有已注册的子槽位（卸载配件时清理它带来的槽）
+func _remove_child_slots(root: Node) -> void:
+	for child in root.get_children():
+		if child is AttachmentSlot:
+			var key: String = child.slot_name if child.slot_name != "" else String(child.name)
+			if _slots.get(key) == child:
+				if child.is_occupied:
+					detach_from_slot(key)
+				_slots.erase(key)
+		if child.get_child_count() > 0:
+			_remove_child_slots(child)
+
+
 func get_slot(slot_name: String) -> AttachmentSlot:
 	return _slots.get(slot_name, null)
 
-## 获取所有已装备的配件列表
 func get_all_attachments() -> Array[BaseAttachment]:
 	var result: Array[BaseAttachment] = []
 	for slot in _slots.values():
@@ -123,7 +133,6 @@ func get_all_attachments() -> Array[BaseAttachment]:
 			result.append(slot.current_attachment)
 	return result
 
-## 获取指定槽位的当前配件
 func get_attachment_in_slot(slot_name: String) -> BaseAttachment:
 	var slot := get_slot(slot_name)
 	if slot and slot.is_occupied:
@@ -131,63 +140,58 @@ func get_attachment_in_slot(slot_name: String) -> BaseAttachment:
 	return null
 
 
-# ──────────────────────────── 节点挂载（内部） ────────────────────────────
+# ──────────────────────────── 节点挂载 ────────────────────────────
 
-## 将配件节点 add_child 到对应锚点（或 fallback 到武器根节点），并按需自动居中
-func _place_attachment(att: BaseAttachment, slot_name: String) -> void:
+## 将配件作为 AttachmentSlot 的子节点挂载
+## 对齐规则：
+##   1. 配件场景里若有名为 SnapPoint 的 Marker3D，把它对准 AttachmentSlot
+##      （美术手动标记装配面，不依赖运行时 AABB 计算）
+##   2. 没有 SnapPoint 则回退到原点对齐（transform = IDENTITY）
+## 若配件支持导轨滑动（rail_adjustable），在对齐结果上叠加 rail_offset Z 轴偏移
+func _place_attachment(att: BaseAttachment, slot: AttachmentSlot) -> void:
 	if att.config.no_visual:
-		return  # 纯数值配件不需要节点挂载
-	var anchor_name: String = att.config.mount_point_name
-	if anchor_name == "":
-		anchor_name = slot_name
-	var anchor: Node3D = _anchors.get(anchor_name, null)
-	if anchor:
-		anchor.add_child(att)
-		att.transform = Transform3D.IDENTITY
+		return
+	slot.add_child(att)
+	var snap := att.find_child(SNAP_POINT_NAME, true, false) as Marker3D
+	if snap:
+		att.transform = _relative_transform(att, snap).inverse()
 	else:
-		parent_weapon.add_child(att)  # fallback：挂到武器根节点
-
-	# 自动居中：槽位或配件任一开启即生效
-	var slot: AttachmentSlot = _slots.get(slot_name, null)
-	var needs_center := att.config.auto_center or (slot != null and slot.auto_center)
-	if needs_center:
-		_apply_auto_center(att)
+		att.transform = Transform3D.IDENTITY
+	if att.config.rail_adjustable:
+		att.set_meta(META_RAIL_BASE_Z, att.position.z)
+		att.position.z += att.config.rail_offset
 
 
-## 自动居中实现
-##
-## 目标：配件原点可能偏离连接面几何中心，但只要在同一平面上即可。
-## 此函数读取配件所有 MeshInstance3D 的合并 AABB，
-## 计算 AABB 在局部 XY 平面内的中心偏移，将其反向施加到配件 position，
-## 使配件几何中心线（对称轴）对准锚点 —— 只修正 X/Y，Z 保持 0（连接面不移位）。
-##
-## 约定：Z 轴 = 枪管方向（-Z 朝枪口），XY 平面 = 截面平面
-func _apply_auto_center(att: BaseAttachment) -> void:
-	# 收集所有子 MeshInstance3D 的 AABB（局部空间）
-	var combined := AABB()
-	var found := false
-	for mesh in att.find_children("*", "MeshInstance3D", true, false):
-		var mi := mesh as MeshInstance3D
-		if not mi or not mi.mesh:
-			continue
-		# 将 mesh 的 AABB 变换到 att 的局部空间
-		var local_aabb := mi.transform * mi.mesh.get_aabb()
-		if not found:
-			combined = local_aabb
-			found = true
-		else:
-			combined = combined.merge(local_aabb)
-
-	if not found:
-		return  # 无 mesh，跳过
-
-	# AABB 在 XY 平面内的中心（Z 不参与）
-	var center := combined.get_center()
-	# 反向偏移 X/Y，让几何中心落在锚点原点上
-	att.position = Vector3(-center.x, -center.y, 0.0)
+## 计算 descendant 相对 ancestor 的变换（沿父链累乘，不依赖场景树全局状态）
+func _relative_transform(ancestor: Node3D, descendant: Node3D) -> Transform3D:
+	var result := Transform3D.IDENTITY
+	var node: Node3D = descendant
+	while node and node != ancestor:
+		result = node.transform * result
+		node = node.get_parent() as Node3D
+	return result
 
 
-# ──────────────────────────── 缓存重建 ────────────────────────────
+## 调整指定槽位配件的导轨偏移（供改装 UI 的滑动条调用）
+## offset 会被 clamp 到配件自身的 rail_offset_min/max 范围内
+func set_rail_offset(slot_name: String, offset: float) -> void:
+	var att := get_attachment_in_slot(slot_name)
+	if not att or not att.config.rail_adjustable:
+		return
+	var clamped := clampf(offset, att.config.rail_offset_min, att.config.rail_offset_max)
+	att.config.rail_offset = clamped
+	att.position.z = att.get_meta(META_RAIL_BASE_Z, 0.0) + clamped
+
+
+## 获取指定槽位配件当前的导轨偏移值
+func get_rail_offset(slot_name: String) -> float:
+	var att := get_attachment_in_slot(slot_name)
+	if not att or not att.config.rail_adjustable:
+		return 0.0
+	return att.config.rail_offset
+
+
+# ──────────────────────────── 数值缓存重建 ────────────────────────────
 
 func _rebuild_cache() -> void:
 	var atts := get_all_attachments()
@@ -224,7 +228,6 @@ func _rebuild_cache() -> void:
 			var fov := att.get_fov_override()
 			if fov > 0.0:
 				_cache_fov = fov
-	_cache_dirty = false
 
 
 # ──────────────────────────── 数值查询（读缓存） ────────────────────────────

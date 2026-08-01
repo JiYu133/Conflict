@@ -33,11 +33,12 @@ signal ammo_count_changed(current: int, reserve: int)
 ## 弹药数量变化通知，参数：弹匣余弹、备用弹匣总弹（含膛内）
 
 # 公开属性 ────────────────────────────────────────────────
-var config: WeaponConfig                    # 武器配置引用
-var magazines: Array[Array] = []            # 所有弹匣的数组，magazines[i] = 第 i 个弹匣的子弹列表
-var current_magazine: int = 0               # 当前在用的弹匣索引
-var chambered_round: bool = false           # 枪膛内是否有子弹
-var _next_round_ready: bool = false         # 托弹板是否已将下一发顶到进弹位置（等待枪机复进抓取）
+var config: WeaponConfig
+var magazines: Array[Array] = []
+var current_magazine: int = 0
+var chambered_round: bool = false
+var _next_round_ready: bool = false
+var _has_last_round_hold_open: bool = true  # 由 MagazineConfig 写入，默认允许
 
 
 # ============================================================
@@ -46,18 +47,13 @@ var _next_round_ready: bool = false         # 托弹板是否已将下一发顶�
 func initialize(cfg: WeaponConfig) -> void:
 	config = cfg
 
-	# 创建弹匣池
-	# 总弹匣数 = 枪上在用的 1 个 + 备用弹匣 reserve_magazines 个
-	for i in range(cfg.reserve_magazines + 1):
-		var mag = []
-		for j in range(cfg.magazine_capacity):
-			mag.append(null)  # null 表示标准弹（后续可扩展为 BulletData 实例）
-		magazines.append(mag)
-
+	# 弹匣参数来自 MagazineConfig 配件，初始化时配件尚未装入
+	# 先建一个空弹匣池（1个空弹匣），等 reconfigure() 由配件装入后重建
+	magazines = [[]]
 	current_magazine = 0
 	chambered_round = false
 
-	print("AmmoComponent 初始化完成")
+	GlobalLogger.debug("AmmoComponent", "初始化完成")
 
 
 # ============================================================
@@ -144,7 +140,7 @@ func chamber_round() -> void:
 ## 判断是否需要空仓挂机
 ## 条件：弹匣无弹 + 膛内无弹 + 武器配置支持空仓挂机
 func should_hold_open() -> bool:
-	return not has_ammo() and config.has_last_round_hold_open
+	return not has_ammo() and _has_last_round_hold_open
 
 ## 切换弹匣
 ## 优先级：找第一个有子弹的弹匣；若都为空则保持当前索引（由空仓挂机流程接管）
@@ -174,9 +170,27 @@ func apply_magazine_attachments(am: AttachmentManager) -> void:
 	for i in magazines.size():
 		for j in range(bonus):
 			magazines[i].append(null)
-	print("[Ammo] 弹匣附件扩容 +%d（当前容量 %d）" % [bonus, config.magazine_capacity + bonus])
+	GlobalLogger.debug("AmmoComponent", "[Ammo] 弹匣附件扩容 +%d" % bonus)
 
-## 动态重算弹匣容量（配件装卸后调用）
+## 弹匣配件装卸后调用，用新弹匣参数重建弹匣池
+## 保留当前膛内弹状态，重建备弹数量和容量
+func reconfigure(mag_cfg: MagazineConfig) -> void:
+	_has_last_round_hold_open = mag_cfg.has_last_round_hold_open
+	var new_cap    := mag_cfg.magazine_capacity
+	var new_reserve := mag_cfg.reserve_magazines
+	var total_mags  := new_reserve + 1
+
+	# 重建弹匣池
+	magazines.clear()
+	for _i in range(total_mags):
+		var mag := []
+		for _j in range(new_cap):
+			mag.append(null)
+		magazines.append(mag)
+	current_magazine = 0
+	_next_round_ready = false
+	# 膛内弹状态保留（玩家换弹匣不清空膛内）
+	ammo_count_changed.emit(get_current_magazine_count(), get_reserve_count())
 ## base_cap：武器基础容量；bonus：扩容弹匣额外容量
 ## 扩容时追加 null（标准弹）；缩容时直接截断尾部，不区分实弹/空位
 ## 注意：缩容会删除弹匣尾部子弹，这是换装容量变小的预期行为
