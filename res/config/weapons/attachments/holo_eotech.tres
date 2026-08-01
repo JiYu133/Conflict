@@ -22,3 +22,7 @@ suppresses_flash = false
 suppresses_sound = false
 damage_modifier = 0.0
 mount_point_name = "OpticRail"
+rail_adjustable = true
+rail_offset = 0.0
+rail_offset_min = -0.03
+rail_offset_max = 0.03

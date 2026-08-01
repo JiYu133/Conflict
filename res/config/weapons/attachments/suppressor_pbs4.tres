@@ -1,6 +1,6 @@
-[gd_resource type="Resource" script_class="AttachmentConfig" format=3 uid="uid://pbs4_suppressor_01"]
+[gd_resource type="Resource" script_class="MuzzleDeviceConfig" format=3 uid="uid://pbs4_suppressor_01"]
 
-[ext_resource type="Script" uid="uid://b1c11irknkvty" path="res://classes/weapon/weaponattachments/attachment_config.gd" id="1_attcfg"]
+[ext_resource type="Script" path="res://classes/weapon/weaponattachments/muzzle_device_config.gd" id="1_attcfg"]
 
 [resource]
 script = ExtResource("1_attcfg")
@@ -8,7 +8,7 @@ script = ExtResource("1_attcfg")
 ; ──────────────────────────── 基础信息 ────────────────────────────
 attachment_name = "PBS-4 消音器"
 ; 枪口类型，装在 MUZZLE 槽
-attachment_type = 2
+attachment_type = 1
 
 ; ──────────────────────────── 槽位约束 ────────────────────────────
 allowed_slot = 1
@@ -18,15 +18,14 @@ allowed_slot = 1
 hipfire_spread_modifier = -0.1
 ads_spread_modifier = -0.05
 
-; ──────────────────────────── 后座修正 ────────────────────────────
-; 消音器增加枪口质量，对垂直上跳有一定抑制
-recoil_vertical_modifier = -0.2
-recoil_horizontal_modifier = -0.05
-recoil_recovery_modifier = 0.0
+; ──────────────────────────── 枪口物理 ────────────────────────────
+gas_impulse_vector = Vector3(0, 0.05, 0.92)
+gas_impulse_fraction = 0.9
 
 ; ──────────────────────────── 重量与机动 ────────────────────────────
 ; PBS-4 约 610 g
 weight_kg = 0.61
+center_of_mass_local = Vector3(0, 0, 0.12)
 ads_speed_modifier = -0.1
 
 ; ──────────────────────────── 视野与光学 ────────────────────────────

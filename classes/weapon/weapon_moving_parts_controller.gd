@@ -73,7 +73,12 @@ func _on_bolt_moving(position: float) -> void:
 		return
 
 	# 默认：直接驱动节点 Z 轴位移（枪机后退方向 = +Z，对应 bolt_moving 升高）
-	var travel: float = _weapon.config.bolt_travel_m if _weapon.config else 0.08
+	# bolt_travel_m 从已装 BoltCarrierConfig 读取，未装时使用安全默认值
+	var travel: float = 0.08
+	if _weapon:
+		var bolt_cfg := _weapon._get_attachment_config_of_type(BoltCarrierConfig) as BoltCarrierConfig
+		if bolt_cfg:
+			travel = bolt_cfg.bolt_travel_m
 	if _bolt_carrier:
 		_bolt_carrier.position = _bolt_rest_pos + Vector3(0.0, 0.0, position * travel)
 	if _charging_handle:

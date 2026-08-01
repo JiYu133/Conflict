@@ -58,7 +58,6 @@ static func create(cfg: AttachmentConfig, weapon: BaseWeapon) -> BaseAttachment:
 ## 当没有 .tscn 场景时，用基础几何体动态拼一个占位模型
 ## 这样即使没有美术资源也能用，且能根据配置调整大小/颜色
 static func _create_default_placeholder(cfg: AttachmentConfig) -> BaseAttachment:
-	# 按类型选择子类脚本
 	var script_class: Script = null
 	match cfg.attachment_type:
 		AttachmentConfig.AttachmentType.OPTIC:
@@ -67,6 +66,12 @@ static func _create_default_placeholder(cfg: AttachmentConfig) -> BaseAttachment
 			script_class = load("res://classes/weapon/weaponattachments/grips/vertical_grip.gd")
 		AttachmentConfig.AttachmentType.MUZZLE:
 			script_class = load("res://classes/weapon/weaponattachments/muzzles/suppressor.gd")
+		AttachmentConfig.AttachmentType.BARREL_ASSEMBLY:
+			script_class = load("res://classes/weapon/weaponattachments/barrel_config.gd")
+		AttachmentConfig.AttachmentType.BOLT_CARRIER:
+			script_class = load("res://classes/weapon/weaponattachments/bolt_carrier_config.gd")
+		AttachmentConfig.AttachmentType.MAGAZINE:
+			script_class = load("res://classes/weapon/weaponattachments/magazine_config.gd")
 		_:
 			script_class = load("res://classes/weapon/weaponattachments/base_attachment.gd")
 
@@ -74,7 +79,6 @@ static func _create_default_placeholder(cfg: AttachmentConfig) -> BaseAttachment
 	att.set_script(script_class)
 	att.name = cfg.attachment_name
 
-	# 加一个基础 mesh 节点占位（用 BoxMesh 凑）
 	var mesh_inst = MeshInstance3D.new()
 	var box = BoxMesh.new()
 	box.size = Vector3(0.05, 0.05, 0.1)

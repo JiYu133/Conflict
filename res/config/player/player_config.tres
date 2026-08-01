@@ -3,7 +3,7 @@
 [ext_resource type="Resource" uid="uid://v1h5icka80bd" path="res://res/config/player/player_model_lookup_default.tres" id="1_6gouf"]
 [ext_resource type="Script" uid="uid://6u3qnxvobvio" path="res://classes/player/player_config.gd" id="1_vyh63"]
 [ext_resource type="PackedScene" uid="uid://b56qxlux3spui" path="res://res/models/player/test_model/swat.tscn" id="3_f37k6"]
-[ext_resource type="Resource" uid="uid://bak74m001" path="res://res/config/weapons/ak74m_config.tres" id="4_f37k6"]
+[ext_resource type="Resource" uid="uid://bak12001" path="res://res/config/weapons/ak12_config.tres" id="4_f37k6"]
 [ext_resource type="Resource" uid="uid://juhdg5d5h5ju" path="res://res/config/player/camera_config_default.tres" id="5_camcfg"]
 [ext_resource type="Resource" uid="uid://dw84v6n2k5p1x" path="res://res/config/player/ragdoll_config_default.tres" id="6_ragdoll"]
 [ext_resource type="Resource" uid="uid://jcso1f73fqqi" path="res://res/config/medic/health_config_default.tres" id="7_healthcfg"]

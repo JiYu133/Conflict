@@ -30,7 +30,7 @@ var _trigger_reset: bool = true
 # ============================================================
 func initialize(cfg: WeaponConfig) -> void:
 	config = cfg
-	print("FireControl 初始化完成")
+	GlobalLogger.debug("FireControl", "初始化完成")
 
 
 # ============================================================

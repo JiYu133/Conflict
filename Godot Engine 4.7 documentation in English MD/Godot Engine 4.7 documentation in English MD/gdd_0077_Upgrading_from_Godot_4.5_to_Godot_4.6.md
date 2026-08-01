@@ -1,0 +1,256 @@
+# Upgrading from Godot 4.5 to Godot 4.6
+
+For most games and apps made with 4.5 it should be relatively safe to migrate to 4.6.
+This page intends to cover everything you need to pay attention to when migrating
+your project.
+
+## Breaking changes
+
+If you are migrating from 4.5 to 4.6, the breaking changes listed here might
+affect you. Changes are grouped by areas/systems.
+
+This article indicates whether each breaking change affects GDScript and whether
+the C# breaking change is binary compatible or source compatible:
+
+- Binary compatible - Existing binaries will load and execute successfully without
+recompilation, and the run-time behavior won't change.
+- Source compatible - Source code will compile successfully without changes when
+upgrading Godot.
+
+### Core
+
+Change | GDScript Compatible | C# Binary Compatible | C# Source Compatible | Introduced
+FileAccess |  |  |  |
+Method create_temp changes mode_flags parameter type from int to FileAccess.ModeFlags | ✔️ | ✔️ | ✔️ | GH-114053 [https://github.com/godotengine/godot/pull/114053]
+Method get_as_text removes skip_cr parameter | ✔️ | ✔️ | ✔️ | GH-110867 [https://github.com/godotengine/godot/pull/110867]
+Performance |  |  |  |
+Method add_custom_monitor adds a new type optional parameter | ✔️ | ✔️ | ✔️ | GH-110433 [https://github.com/godotengine/godot/pull/110433]
+
+### Animation
+
+Change | GDScript Compatible | C# Binary Compatible | C# Source Compatible | Introduced
+AnimationPlayer |  |  |  |
+Property assigned_animation changes type from String to StringName | ✔️ | ❌ | ❌ | GH-110767 [https://github.com/godotengine/godot/pull/110767]
+Property autoplay changes type from String to StringName | ✔️ | ❌ | ❌ | GH-110767 [https://github.com/godotengine/godot/pull/110767]
+Property current_animation changes type from String to StringName | ✔️ | ❌ | ❌ | GH-110767 [https://github.com/godotengine/godot/pull/110767]
+Method get_queue changes return type from PackedStringArray to StringName[] | ✔️ | ❌ | ❌ | GH-110767 [https://github.com/godotengine/godot/pull/110767]
+Signal current_animation_changed changes name parameter type from String to StringName | ✔️ | ❌ | ❌ | GH-110767 [https://github.com/godotengine/godot/pull/110767]
+
+### 3D
+
+Change | GDScript Compatible | C# Binary Compatible | C# Source Compatible | Introduced
+SpringBoneSimulator3D |  |  |  |
+Method get_end_bone_direction changes return type from SpringBoneSimulator3D.BoneDirection to SkeletonModifier3D.BoneDirection | ✔️ | ❌ | ✔️ | GH-110120 [https://github.com/godotengine/godot/pull/110120]
+Method get_joint_rotation_axis changes return type from SpringBoneSimulator3D.RotationAxis to SkeletonModifier3D.RotationAxis | ✔️ | ❌ | ✔️ | GH-110120 [https://github.com/godotengine/godot/pull/110120]
+Method get_rotation_axis changes return type from SpringBoneSimulator3D.RotationAxis to SkeletonModifier3D.RotationAxis | ✔️ | ❌ | ✔️ | GH-110120 [https://github.com/godotengine/godot/pull/110120]
+Method set_end_bone_direction changes bone_direction parameter type from SpringBoneSimulator3D.BoneDirection to SkeletonModifier3D.BoneDirection | ✔️ | ❌ | ✔️ | GH-110120 [https://github.com/godotengine/godot/pull/110120]
+Method set_joint_rotation_axis changes axis parameter type from SpringBoneSimulator3D.RotationAxis to SkeletonModifier3D.RotationAxis | ✔️ | ❌ | ✔️ | GH-110120 [https://github.com/godotengine/godot/pull/110120]
+Method set_rotation_axis changes axis parameter type from SpringBoneSimulator3D.RotationAxis to SkeletonModifier3D.RotationAxis | ✔️ | ❌ | ✔️ | GH-110120 [https://github.com/godotengine/godot/pull/110120]
+
+### Rendering
+
+Change | GDScript Compatible | C# Binary Compatible | C# Source Compatible | Introduced
+DisplayServer |  |  |  |
+Method accessibility_create_sub_text_edit_elements adds a new is_last_line optional parameter | ✔️ | ✔️ | ✔️ | GH-113459 [https://github.com/godotengine/godot/pull/113459]
+Method tts_speak changes utterance_id parameter type metadata from int32 to int64 | ✔️ | ✔️ | ✔️ | GH-112379 [https://github.com/godotengine/godot/pull/112379]
+
+### GUI nodes
+
+Change | GDScript Compatible | C# Binary Compatible | C# Source Compatible | Introduced
+Control |  |  |  |
+Method grab_focus adds a new hide_focus optional parameter | ✔️ | ✔️ | ✔️ | GH-110250 [https://github.com/godotengine/godot/pull/110250]
+Method has_focus adds a new ignore_hidden_focus optional parameter | ✔️ | ✔️ | ✔️ | GH-110250 [https://github.com/godotengine/godot/pull/110250]
+FileDialog |  |  |  |
+Method add_filter adds a new mime_type optional parameter | ✔️ | ✔️ | ✔️ | GH-111439 [https://github.com/godotengine/godot/pull/111439]
+LineEdit |  |  |  |
+Method edit adds a new hide_focus optional parameter | ✔️ | ✔️ | ✔️ | GH-111117 [https://github.com/godotengine/godot/pull/111117]
+SplitContainer |  |  |  |
+Method clamp_split_offset adds a new priority_index optional parameter | ✔️ | ✔️ | ✔️ | GH-90411 [https://github.com/godotengine/godot/pull/90411]
+
+### Networking
+
+Change | GDScript Compatible | C# Binary Compatible | C# Source Compatible | Introduced
+StreamPeerTCP |  |  |  |
+Method disconnect_from_host moved to base class StreamPeerSocket | ✔️ | ✔️ | ✔️ | GH-107954 [https://github.com/godotengine/godot/pull/107954]
+Method get_status moved to base class StreamPeerSocket | ✔️ | ❌ | ✔️ | GH-107954 [https://github.com/godotengine/godot/pull/107954]
+Method poll moved to base class StreamPeerSocket | ✔️ | ✔️ | ✔️ | GH-107954 [https://github.com/godotengine/godot/pull/107954]
+TCPServer |  |  |  |
+Method is_connection_available moved to base class SocketServer | ✔️ | ✔️ | ✔️ | GH-107954 [https://github.com/godotengine/godot/pull/107954]
+Method is_listening moved to base class SocketServer | ✔️ | ✔️ | ✔️ | GH-107954 [https://github.com/godotengine/godot/pull/107954]
+Method stop moved to base class SocketServer | ✔️ | ✔️ | ✔️ | GH-107954 [https://github.com/godotengine/godot/pull/107954]
+
+### OpenXR
+
+Change | GDScript Compatible | C# Binary Compatible | C# Source Compatible | Introduced
+OpenXRExtensionWrapper |  |  |  |
+Method _get_requested_extensions adds a new xr_version parameter | ❌ | ❌ | ❌ | GH-109302 [https://github.com/godotengine/godot/pull/109302]
+Method _set_instance_create_info_and_get_next_pointer adds  a new xr_version parameter | N/A | N/A | N/A | GH-109302 [https://github.com/godotengine/godot/pull/109302]
+
+Note
+
+The OpenXRExtensionWrapper type is intended to be subclassed from GDExtensions. The method _set_instance_create_info_and_get_next_pointer
+has a void* parameter so it's not exposed to scripting.
+
+### Editor
+
+Change | GDScript Compatible | C# Binary Compatible | C# Source Compatible | Introduced
+EditorExportPreset |  |  |  |
+Method get_script_export_mode changes return type from int to EditorExportPreset.ScriptExportMode | ✔️ | ❌ | ❌ | GH-107167 [https://github.com/godotengine/godot/pull/107167]
+EditorFileDialog |  |  |  |
+Method add_filter moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method add_option moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method add_side_menu removed | ❌ | ❌ | ❌ | GH-111162 [https://github.com/godotengine/godot/pull/111162]
+Method clear_filename_filter moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method clear_filters moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method get_filename_filter moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method get_line_edit moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method get_option_default moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method get_option_name moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method get_option_values moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method get_selected_options moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method get_vbox moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method invalidate moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method popup_file_dialog moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method set_filename_filter moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method set_option_default moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method set_option_name moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Method set_option_values moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property access moved to base class FileDialog | ✔️ | ❌ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property current_dir moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property current_file moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property current_path moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property display_mode moved to base class FileDialog | ✔️ | ❌ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property file_mode moved to base class FileDialog | ✔️ | ❌ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property filters moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property option_count moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Property show_hidden_files moved to base class FileDialog | ✔️ | ✔️ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Signal dir_selected moved to base class FileDialog | ✔️ | ❌ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Signal filename_filter_changed moved to base class FileDialog | ✔️ | ❌ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Signal file_selected moved to base class FileDialog | ✔️ | ❌ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+Signal files_selected moved to base class FileDialog | ✔️ | ❌ | ✔️ | GH-111212 [https://github.com/godotengine/godot/pull/111212]
+
+## Behavior changes
+
+### Android
+
+Note
+
+The source sets configuration for Android export templates has been updated to match
+the default Android Studio project structure (GH-110829 [https://github.com/godotengine/godot/pull/110829]). This affects the directory
+layout of the Android project:
+
+- Files previously in [Project root]/android/build/src/ are now in [Project root]/android/build/src/main/java/.
+- Android manifest file and assets directory have been moved to src/main/ subdirectories.
+
+For example, GodotApp.java moved from src/com/godot/game/GodotApp.java to
+src/main/java/com/godot/game/GodotApp.java.
+
+### Core
+
+Note
+
+The TSCN file format has changed in two ways in Godot 4.6:
+
+- load_steps is no longer written in scene files (GH-103352 [https://github.com/godotengine/godot/pull/103352]).
+This attribute wasn't used by the editor.
+- Unique node IDs are now saved to scene files to help track nodes when
+they are moved or renamed (GH-106837 [https://github.com/godotengine/godot/pull/106837]). This makes scene refactoring significantly more robust.
+
+The changes are backwards-compatible and forwards-compatible, which means
+scenes saved in Godot 4.5 can still be loaded in Godot 4.6 and vice-versa
+(notwithstanding other incompatible changes performed in the scene itself).
+
+As a result, when saving a scene that was last edited in Godot 4.5 in Godot
+4.6, significant diffs will occur in version control programs. These diffs are
+expected.
+
+As a reminder, you can upgrade all files in a project to the latest format
+using Project > Tools > Upgrade Project Files... in the editor,
+then committing the changes to version control.
+This allows you to avoid large diffs later on when editing scenes.
+
+### Rendering
+
+Note
+
+The default blend mode for Glow is now Screen, which looks more correct
+but is significantly brighter than the previous Soft Light mode (GH-110671 [https://github.com/godotengine/godot/pull/110671]).
+
+Several other glow defaults were changed to ensure the glow didn't
+become too strong, but you will likely need to tweak glow properties
+in Environment after upgrading.
+
+In addition, glow's Soft Light blend mode now always behaves as it did
+previously with use_hdr_2d, regardless of the Viewport's use_hdr_2d
+setting (GH-109971 [https://github.com/godotengine/godot/pull/109971]).
+
+When using the Mobile renderer, the rewritten glow effect will look
+significantly different to the previous one for performance reasons
+(GH-110077 [https://github.com/godotengine/godot/pull/110077]). You may need to further adjust glow settings in Environment
+to achieve a similar look to before.
+
+Note
+
+Volumetric fog blending has been changed to be more physically accurate
+(GH-112494 [https://github.com/godotengine/godot/pull/112494]). This will cause volumetric fog to appear brighter in most
+scenes.
+
+To compensate for this, you will need to decrease volumetric fog density or
+brightness in Environment, or decrease the Volumetric Fog Energy
+property on specific lights.
+
+### Navigation
+
+Note
+
+AStar2D.get_point_path, AStar3D.get_point_path, AStarGrid2D.get_id_path and AStarGrid2D.get_point_path will now return an
+empty path when from_id is a disabled/solid point (GH-113988 [https://github.com/godotengine/godot/pull/113988]).
+
+## Changed defaults
+
+The following default values have been changed. If your project relies on the previous defaults,
+you may need to explicitly set them to the old values.
+
+Note
+
+The default rendering driver on Windows for newly created projects is now D3D12 (GH-113213 [https://github.com/godotengine/godot/pull/113213]).
+This can be changed in Project Settings under rendering/rendering_device/driver.windows.
+
+Note
+
+The default 3D physics engine for newly created projects is now Jolt Physics (GH-105737 [https://github.com/godotengine/godot/pull/105737]).
+This can be changed in Project Settings under physics/3d/physics_engine.
+
+### 3D
+
+Member | Old Value | New Value | Introduced
+MeshInstance3D |  |  |
+Property skeleton | NodePath("..") | NodePath("") | GH-112267 [https://github.com/godotengine/godot/pull/112267]
+
+Note
+
+The default value of skeleton has changed. Enable animation/compatibility/default_parent_skeleton_in_mesh_instance_3d in Project Settings
+if the old behavior is needed for compatibility.
+
+### Rendering
+
+Member | Old Value | New Value | Introduced
+ProjectSettings |  |  |
+Property rendering/reflections/sky_reflections/roughness_layers | 8 | 7 | GH-107902 [https://github.com/godotengine/godot/pull/107902]
+Property rendering/rendering_device/d3d12/agility_sdk_version | 613 | 618 | GH-114043 [https://github.com/godotengine/godot/pull/114043]
+Environment |  |  |
+Property glow_blend_mode | 2 | 1 | GH-110671 [https://github.com/godotengine/godot/pull/110671]
+Property glow_intensity | 0.8 | 0.3 | GH-110671 [https://github.com/godotengine/godot/pull/110671]
+Property glow_levels/2 | 0.0 | 0.8 | GH-110671 [https://github.com/godotengine/godot/pull/110671]
+Property glow_levels/3 | 1.0 | 0.4 | GH-110671 [https://github.com/godotengine/godot/pull/110671]
+Property glow_levels/4 | 0.0 | 0.1 | GH-110671 [https://github.com/godotengine/godot/pull/110671]
+Property glow_levels/5 | 1.0 | 0.0 | GH-110671 [https://github.com/godotengine/godot/pull/110671]
+Property ssr_depth_tolerance | 0.2 | 0.5 | GH-111210 [https://github.com/godotengine/godot/pull/111210]
+
+### GUI nodes
+
+Property/Parameter | Old Value | New Value | Introduced
+PopupMenu |  |  |
+Property submenu_popup_delay | 0.3 | 0.2 | GH-110256 [https://github.com/godotengine/godot/pull/110256]
+ResourceImporterCSVTranslation |  |  |
+Property compress | true | 1 | GH-112073 [https://github.com/godotengine/godot/pull/112073]

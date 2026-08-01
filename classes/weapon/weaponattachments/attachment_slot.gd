@@ -1,5 +1,5 @@
 class_name AttachmentSlot
-extends Node3D
+extends Marker3D
 
 # ════════════════════════════════════════════════════════════════════════
 # 配件挂载点 (AttachmentSlot)
@@ -51,6 +51,12 @@ enum SlotType {
 
 	# ─── 枪托 ─────────────────────────────────────────────────
 	STOCK_ADAPTER,     # 枪托接口 — 固定/折叠/伸缩枪托
+
+	# ─── 内部可动部件 ──────────────────────────────────────────
+	BOLT_CARRIER,      # 枪机框槽 — 枪机框/活塞组（可动，由 WeaponMovingPartsController 驱动）
+
+	# ─── 机匣控制件 ────────────────────────────────────────────
+	SELECTOR_SWITCH,   # 快慢机拨片 — 射击模式选择器（有动画，不可卸但可更换样式）
 }
 
 # ──────────────────────────── 导出属性 ────────────────────────────
@@ -62,11 +68,6 @@ enum SlotType {
 
 @export var can_be_empty: bool = true
 ## 是否可以为空（机械瞄具槽不能为空，要保留后照门）
-
-@export var auto_center: bool = false
-## 自动居中：装入此槽的所有配件，自动在垂直枪管的平面内居中（XY 轴偏移）
-## 用于补偿配件原点不在连接面几何中心的情况
-## 也可在 AttachmentConfig.auto_center 上单独开启；两者任一为 true 即生效
 
 # ──────────────────────────── 运行时状态 ────────────────────────────
 var current_attachment: BaseAttachment = null
@@ -81,18 +82,30 @@ var is_occupied: bool:
 ## 尝试挂载一个配件实例（只做状态记录，节点 add_child 由 AttachmentManager 负责）
 ## 返回 true = 挂载成功；false = 失败（槽位被占或类型不匹配）
 func attach(attachment: BaseAttachment) -> bool:
-	# 检查槽位是否已被占用
 	if is_occupied:
 		push_warning("槽位 %s 已被占用" % slot_name)
 		return false
 
-	# 检查配件类型是否匹配
 	if attachment.config.allowed_slot != slot_type:
 		push_warning("配件 %s 不能装在 %s 槽位" % [attachment.config.attachment_name, slot_name])
 		return false
 
+	# 前置槽位依赖检查
+	if attachment.config.required_slots.size() > 0 and attachment.parent_weapon:
+		var am: AttachmentManager = attachment.parent_weapon.attachment_manager
+		for req_type in attachment.config.required_slots:
+			var satisfied := false
+			for sname in am.get_slot_names():
+				var slot := am.get_slot(sname)
+				if slot and slot.slot_type == req_type and slot.is_occupied:
+					satisfied = true
+					break
+			if not satisfied:
+				push_warning("配件 %s 安装失败：缺少前置槽位 %s" % [attachment.config.attachment_name, AttachmentSlot.SlotType.keys()[req_type]])
+				return false
+
 	current_attachment = attachment
-	print("[Slot] %s 已记录配件 %s" % [slot_name, attachment.config.attachment_name])
+	GlobalLogger.debug("AttachmentSlot", "%s 已记录配件 %s" % [slot_name, attachment.config.attachment_name])
 	return true
 
 ## 卸载当前配件（只清状态，节点 remove_child 由 AttachmentManager 负责）
@@ -103,5 +116,5 @@ func detach() -> BaseAttachment:
 
 	var att := current_attachment
 	current_attachment = null
-	print("[Slot] %s 已清除配件记录" % slot_name)
+	GlobalLogger.debug("AttachmentSlot", "%s 已清除配件记录" % slot_name)
 	return att

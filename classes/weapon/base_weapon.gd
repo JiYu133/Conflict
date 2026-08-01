@@ -101,7 +101,7 @@ var attachment_manager: AttachmentManager
 ## 创建所有子组件的节点实例
 ## 顺序：枪机→弹药→击发→导气→后座→抛壳→配件
 func _initialize_components() -> void:
-	print("开始初始化武器部件")
+	GlobalLogger.debug("BaseWeapon", "开始初始化武器部件")
 
 	bolt_component = BoltComponent.new()
 	bolt_component.name = "BoltComponent"
@@ -138,7 +138,7 @@ func _initialize_components() -> void:
 
 ## 将 WeaponConfig 注入到每个子组件
 func _setup_from_config() -> void:
-	print("=== " + config.weapon_name + "组件初始化 ===")
+	GlobalLogger.debug("BaseWeapon", "=== " + config.weapon_name + " 组件初始化 ===")
 	bolt_component.initialize(config)
 	ammo_component.initialize(config)
 	fire_control.initialize(config)
@@ -182,6 +182,8 @@ func initialize(cfg: WeaponConfig) -> void:
 func press_trigger() -> void:
 	if not config or not config.logic_enabled:
 		return
+	if not _check_required_attachments():
+		return
 	trigger_held = true
 	fire_control.press_trigger(current_fire_mode)
 
@@ -207,8 +209,11 @@ func reload() -> void:
 	is_reloading = true
 	reload_started.emit()
 
-	# 根据膛内是否有弹选择换弹时长
-	var duration = config.reload_time if ammo_component.has_chambered_round() else config.reload_empty_time
+	# 换弹时间从已装弹匣配件读取，未装弹匣时使用安全默认值
+	var mag_cfg := _get_attachment_config_of_type(MagazineConfig) as MagazineConfig
+	var reload_t  := mag_cfg.reload_time       if mag_cfg else 4.0
+	var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
+	var duration := reload_t if ammo_component.has_chambered_round() else reload_et
 	await get_tree().create_timer(duration).timeout
 	# 武器可能在换弹计时期间被卸下/释放，await 恢复后必须确认自身仍有效
 	if not is_instance_valid(self):
@@ -285,11 +290,16 @@ func get_effective_ads_time() -> float:
 func get_stats_snapshot() -> Dictionary:
 	if not config:
 		return {}
+	var physics := recoil_component.get_physics_snapshot() if recoil_component else {}
 	return {
 		"spread_ads": get_current_spread(true),
 		"spread_hip": get_current_spread(false),
-		"recoil_v": config.kick_pitch_deg + (attachment_manager.get_total_recoil_vertical_modifier() if attachment_manager else 0.0),
-		"recoil_h": config.kick_yaw_deg + (attachment_manager.get_total_recoil_horizontal_modifier() if attachment_manager else 0.0),
+		"recoil_v": rad_to_deg(physics.get("pitch_impulse_rad_s", 0.0)),
+		"recoil_h": rad_to_deg(physics.get("yaw_impulse_rad_s", 0.0)),
+		"recoil_impulse_ns": physics.get("impulse_magnitude_ns", 0.0),
+		"recoil_mass_kg": physics.get("total_mass_kg", 0.0),
+		"recoil_recovery_stiffness": physics.get("control_stiffness", 0.0),
+		"recoil_recovery_damping": physics.get("control_damping", 0.0),
 		"ads_time": get_effective_ads_time(),
 		"weight": config.weight + (attachment_manager.get_total_attachment_weight() if attachment_manager else 0.0),
 		"suppressed": attachment_manager.suppresses_sound() if attachment_manager else false,
@@ -302,6 +312,8 @@ func get_stats_snapshot() -> Dictionary:
 # ============================================================
 
 func _process(delta: float) -> void:
+	if recoil_component:
+		recoil_component.set_control_multiplier(_get_control_multiplier())
 	_update_cycle(delta)
 
 ## 枪机自动循环状态机
@@ -358,7 +370,9 @@ func _update_cycle(delta: float) -> void:
 					is_cycling = false
 					cycle_phase = "idle"
 					# 检查 double_feed_chance 决定是否升级为双上膛
-					if config and config.double_feed_chance > 0.0 and randf() < config.double_feed_chance:
+					var bolt_cfg := _get_attachment_config_of_type(BoltCarrierConfig) as BoltCarrierConfig
+					var dfc := bolt_cfg.double_feed_chance if bolt_cfg else 0.0
+					if dfc > 0.0 and randf() < dfc:
 						malfunction_component.trigger_double_feed()
 					else:
 						malfunction_component.trigger_stovepipe()
@@ -418,7 +432,9 @@ func _fire_one_round() -> void:
 	ammo_component.consume_round()
 
 	# 哑火判定：底火有概率不响，弹留在膛内，枪机不启动循环
-	if config and config.misfire_chance > 0.0 and randf() < config.misfire_chance:
+	var barrel_cfg := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
+	var misfire := barrel_cfg.misfire_chance if barrel_cfg else 0.0
+	if misfire > 0.0 and randf() < misfire:
 		malfunction_component.trigger_misfire()
 		return
 
@@ -432,12 +448,11 @@ func _fire_one_round() -> void:
 	_spawn_projectile()
 
 	fired.emit()
-	recoil_component.apply_recoil(_get_stability_multiplier())
+	recoil_component.apply_recoil(_get_control_multiplier())
 
 
-## 计算本次开火的稳定性修正系数
-## < 1.0 = 更稳（ADS、蹲下）；> 1.0 = 更不稳（疲劳、负伤）
-func _get_stability_multiplier() -> float:
+## 计算射手控枪系数；只改变弹簧刚度/阻尼，不改变单发冲量
+func _get_control_multiplier() -> float:
 	var mult := 1.0
 	# 向上找到所属 BasePlayer
 	var node: Node = self
@@ -446,16 +461,16 @@ func _get_stability_multiplier() -> float:
 	if not node:
 		return mult
 	var player := node as BasePlayer
-	# ADS 减少后座
+	# ADS 提高控枪刚度
 	if player.weapon_manager and player.weapon_manager.is_aiming:
-		mult *= 0.6
-	# 蹲姿减少后座（蹲到底时约 0.7）
+		mult *= 1.35
+	# 蹲姿提高控枪稳定性
 	if player.stance_controller:
-		mult *= lerp(1.0, 0.7, player.stance_controller.get_stance_value())
-	# 体力/伤情影响稳定性（aim_stability_multiplier 越低 = 越不稳，需要除以它使 mult 越大）
+		mult *= lerp(1.0, 1.2, player.stance_controller.get_stance_value())
+	# 体力/伤情降低控枪能力
 	if player.health_system:
 		var stability := player.health_system.get_aim_stability_multiplier()
-		mult /= max(stability, 0.1)
+		mult *= max(stability, 0.1)
 	return mult
 
 
@@ -630,5 +645,97 @@ func _restore_after_clearance() -> void:
 func _on_attachments_changed() -> void:
 	if not config or not ammo_component or not attachment_manager:
 		return
-	var bonus := attachment_manager.get_total_magazine_capacity_bonus()
-	ammo_component.recalculate_capacity(config.magazine_capacity, bonus)
+	_reconfigure_from_attachments()
+
+
+## 从已装配件中提取专属配置，更新各物理组件参数
+func _reconfigure_from_attachments() -> void:
+	var barrel := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
+	var bolt   := _get_attachment_config_of_type(BoltCarrierConfig) as BoltCarrierConfig
+	var mag    := _get_attachment_config_of_type(MagazineConfig) as MagazineConfig
+
+	if barrel:
+		gas_component.reconfigure(barrel)
+		ejection_component.reconfigure(barrel)
+		bolt_component.set_muzzle_velocity(barrel.muzzle_velocity)
+	if bolt:
+		bolt_component.reconfigure(bolt)
+		ejection_component.reconfigure_bolt(bolt)
+		malfunction_component.reconfigure_bolt(bolt)
+	if mag:
+		ammo_component.reconfigure(mag)
+
+	if recoil_component:
+		recoil_component.rebuild_physics()
+
+
+## 遍历所有已装配件，返回第一个 config 类型匹配的实例
+## 用于从配件中提取 BarrelConfig / BoltCarrierConfig / MagazineConfig 等子类
+func _get_attachment_config_of_type(type: Script) -> AttachmentConfig:
+	for att in attachment_manager.get_all_attachments():
+		if att.config and att.config.get_script() == type:
+			return att.config
+	return null
+
+
+## 检查关键配件（枪管 + 弹匣）是否已装，缺失时拒绝击发
+func _check_required_attachments() -> bool:
+	if _get_attachment_config_of_type(BarrelConfig) == null:
+		GlobalLogger.warn("BaseWeapon", "[%s] 缺少枪管配件，无法击发" % config.weapon_name)
+		return false
+	if _get_attachment_config_of_type(MagazineConfig) == null:
+		GlobalLogger.warn("BaseWeapon", "[%s] 缺少弹匣配件，无法击发" % config.weapon_name)
+		return false
+	return true
+
+
+## 从机匣及所有已装配件中递归查找 grip 节点。
+## 多个同名 grip 时优先选择握把/护木挂载点，其次选择更靠前的节点。
+func find_grip_node(grip_name: String) -> Node3D:
+	var candidates: Array[Node3D] = []
+	_collect_grip_nodes(self, grip_name, candidates)
+	if candidates.is_empty():
+		return null
+
+	var best := candidates[0]
+	var best_score := _grip_node_score(best)
+	for i in range(1, candidates.size()):
+		var score := _grip_node_score(candidates[i])
+		if score > best_score:
+			best = candidates[i]
+			best_score = score
+	return best
+
+
+func _collect_grip_nodes(root: Node, grip_name: String, result: Array[Node3D]) -> void:
+	for child in root.get_children():
+		if String(child.name) == grip_name and child is Node3D:
+			result.append(child as Node3D)
+		if child.get_child_count() > 0:
+			_collect_grip_nodes(child, grip_name, result)
+
+
+func _grip_node_score(node: Node3D) -> float:
+	var priority := 0.0
+	var parent: Node = node
+	while parent:
+		if parent is AttachmentSlot:
+			var slot := parent as AttachmentSlot
+			if slot.slot_name == "PistolGrip":
+				priority = 100.0
+			elif slot.slot_type == AttachmentSlot.SlotType.PISTOL_GRIP:
+				priority = 100.0
+			elif slot.slot_name == "Underbarrel":
+				priority = 90.0
+			elif slot.slot_type == AttachmentSlot.SlotType.UNDERBARREL:
+				priority = 90.0
+			elif slot.slot_name == "Handguard":
+				priority = 80.0
+			elif slot.slot_type == AttachmentSlot.SlotType.HANDGUARD:
+				priority = 80.0
+		parent = parent.get_parent()
+
+	var local_z := node.position.z
+	if is_inside_tree():
+		local_z = to_local(node.global_position).z
+	return priority - local_z * 0.001

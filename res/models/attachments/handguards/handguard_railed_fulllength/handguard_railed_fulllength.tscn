@@ -1,0 +1,33 @@
+[gd_scene format=3 uid="uid://p77seo2rk6kp"]
+
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_base"]
+[ext_resource type="Script" uid="uid://01io7x43ey6y" path="res://classes/weapon/weaponattachments/attachment_slot.gd" id="2_slot"]
+[ext_resource type="PackedScene" uid="uid://ca5vcskpix8ei" path="res://res/models/attachments/handguards/handguard_railed_fulllength/handguard_railed_fulllength.glb" id="3_mesh"]
+
+[node name="HandguardQuadRail" type="Node3D" unique_id=300095028]
+script = ExtResource("1_base")
+
+[node name="Mesh" parent="." unique_id=398433626 instance=ExtResource("3_mesh")]
+
+[node name="LeftHandGrip" type="Marker3D" parent="." unique_id=141084524]
+transform = Transform3D(4.371139e-08, -1, 3.821371e-15, -1, -4.371139e-08, -8.742278e-08, 8.742278e-08, 0, -1, 0, -0.049000278, 0.056884155)
+
+[node name="Underbarrel" type="Marker3D" parent="." unique_id=547466798]
+script = ExtResource("2_slot")
+slot_type = 4
+slot_name = "Underbarrel"
+
+[node name="SideRailLeft" type="Marker3D" parent="." unique_id=2139095242]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.025127284, 0.0052949637, 0.027814839)
+script = ExtResource("2_slot")
+slot_type = 1
+slot_name = "SideRailLeft"
+
+[node name="SideRailRight" type="Marker3D" parent="." unique_id=453077571]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.007, 0.005, 0.028)
+script = ExtResource("2_slot")
+slot_type = 2
+slot_name = "SideRailRight"
+
+[node name="SnapPoint" type="Marker3D" parent="." unique_id=1582978548]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -0.008815058, -0.0079205185, 0.1548552)

@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://db0gue6c3fq7k"]
+
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_base"]
+[ext_resource type="PackedScene" uid="uid://n8nlqwrtxaj" path="res://res/models/attachments/magazines/magazine_30rnd_box/magazine_30rnd_box.glb" id="2_mesh"]
+
+[node name="Magazine30rndBox" type="Node3D" unique_id=1903745348]
+script = ExtResource("1_base")
+
+[node name="Mesh" parent="." unique_id=2027662459 instance=ExtResource("2_mesh")]
+
+[node name="SnapPoint" type="Marker3D" parent="." unique_id=939866948]
+transform = Transform3D(1, 0, 1.7484555e-07, 0, 1, 0, -1.7484555e-07, 0, 1, 0.009882063, -0.028951392, -0.010898177)

@@ -1,0 +1,15 @@
+[gd_scene format=3 uid="uid://chln4eywkrsf4"]
+
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_base"]
+[ext_resource type="PackedScene" uid="uid://5h3pihkap8sk" path="res://res/models/attachments/grips/grip_pistol_ergonomic/grip_pistol_ergonomic.glb" id="2_mesh"]
+
+[node name="grip_pistol_ergonomic" type="Node3D" unique_id=918053919]
+script = ExtResource("1_base")
+
+[node name="Mesh" parent="." unique_id=1924163973 instance=ExtResource("2_mesh")]
+
+[node name="RightHandGrip" type="Marker3D" parent="." unique_id=1934027506]
+transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, 0.012911864, -0.08706989, 0)
+
+[node name="SnapPoint" type="Marker3D" parent="." unique_id=738933634]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.017191358, -0.010047287, 0.013451405)

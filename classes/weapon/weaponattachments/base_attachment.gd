@@ -30,7 +30,7 @@ func initialize(cfg: AttachmentConfig, weapon: BaseWeapon) -> void:
 	config = cfg
 	parent_weapon = weapon
 	_on_initialized()
-	print("[Attachment] 配件 %s 初始化完成" % cfg.attachment_name)
+	GlobalLogger.debug("BaseAttachment", "配件 %s 初始化完成" % cfg.attachment_name)
 
 ## 子类可重写：自定义初始化逻辑（例如实例化模型）
 func _on_initialized() -> void:

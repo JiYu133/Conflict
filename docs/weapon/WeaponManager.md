@@ -1,59 +1,75 @@
 # WeaponManager
 
-**文件路径：** `Classes/Weapon/Weapon/weapon_manager.gd`
+**文件路径：** `classes/weapon/weapon_manager.gd`
 **继承自：** `Node`
 
 ## 功能概述
 
-武器持有者（玩家/AI）的门面控制器。负责管理当前装备的武器实例，将玩家输入（扳机、换弹、切模式）转发给当前武器，并对外暴露武器切换和加载接口。一个角色挂一个 WeaponManager 即可，不需要直接操作 BaseWeapon。
+武器持有者的门面控制器。管理当前装备的武器实例，转发玩家输入，暴露改装接口。一个角色挂一个即可，不需要直接操作 BaseWeapon 或 AttachmentManager。
 
-## 信号（Signals）
+## 信号
 
-| 信号 | 参数 | 触发时机 |
-|------|------|---------|
-| `weapon_changed` | `new_weapon: BaseWeapon` | 装备新武器时 |
-| `weapon_fired` | `weapon: BaseWeapon` | （预留，当前无 emit） |
-
-## 公开属性（Properties）
-
-| 属性 | 类型 | 说明 |
+| 信号 | 参数 | 说明 |
 |------|------|------|
-| `current_weapon` | `BaseWeapon` | 当前装备的武器实例 |
-| `weapon_mount` | `Node3D` | 武器在场景中的挂载节点，需在使用前通过 `set_mount()` 设置 |
-| `is_aiming` | `bool` | 当前是否处于瞄准状态（供外部查询，WeaponManager 本身不消费此值） |
+| `weapon_changed` | `new_weapon: BaseWeapon` | 装备新武器时 |
+| `weapon_fired` | `weapon: BaseWeapon` | 预留 |
+| `attachment_equipped` | `slot_name, attachment_name` | 配件装备后 |
+| `attachment_detached` | `slot_name` | 配件卸下后 |
+| `weapon_stats_changed` | — | 配件变更导致数值重算后 |
 
-## 公开方法（Methods）
+## 武器操作
 
-### `set_mount(mount: Node3D) -> void`
-设置武器挂载节点。必须在调用 `equip_weapon()` 或 `load_and_equip()` 之前调用，否则武器会创建但不显示在场景中。
+```gdscript
+weapon_manager.press_trigger()          # 按下扳机
+weapon_manager.release_trigger()        # 松开扳机
+weapon_manager.reload()                 # 换弹
+weapon_manager.cycle_fire_mode()        # 切换射击模式
+weapon_manager.set_aiming(true/false)   # 切换 ADS 状态
+weapon_manager.attempt_malfunction_clearance()  # 排障
+```
 
-### `load_and_equip(config: WeaponConfig) -> void`
-从 `WeaponConfig.weapon_scene` 实例化武器场景，调用 `weapon.initialize(config)`，然后调用 `equip_weapon()`。`config` 为空、`weapon_scene` 缺失或根节点不是 `BaseWeapon` 时会打印错误并 return。
+## 动态改装接口
 
-### `equip_weapon(weapon: BaseWeapon) -> void`
-替换当前武器。会先 `queue_free()` 旧武器，再将新武器添加为 `weapon_mount` 的子节点并归零位置/旋转，最后发出 `weapon_changed` 信号。
+```gdscript
+# 装上配件
+weapon_manager.equip_attachment("Barrel", barrel_config) -> bool
 
-### `press_trigger() -> void`
-转发扳机按下事件给 `current_weapon`。
+# 卸下配件，返回被卸下的实例
+weapon_manager.detach_attachment("Barrel") -> BaseAttachment
 
-### `release_trigger() -> void`
-转发扳机松开事件给 `current_weapon`。
+# 查询所有槽位状态（供改装 UI 渲染）
+# 每项: { slot_name, slot_type, is_occupied, attachment_name, attachment_config }
+weapon_manager.get_attachment_slots() -> Array[Dictionary]
 
-### `reload() -> void`
-转发换弹请求给 `current_weapon`。
+# 查询此武器支持的槽位类型列表
+weapon_manager.get_supported_slot_types() -> Array[AttachmentSlot.SlotType]
 
-### `cycle_fire_mode() -> void`
-转发射击模式切换请求给 `current_weapon`。
+# 调整导轨配件前后位置（供改装 UI 滑动条）
+weapon_manager.set_rail_offset("OpticRail", 0.02)
+weapon_manager.get_rail_offset("OpticRail") -> float
+```
 
-### `set_aiming(aiming: bool) -> void`
-设置 `is_aiming` 状态标志。
+## 武器数值快照（供改装 UI 装前/装后对比）
 
-## 依赖关系
-- **依赖：** `BaseWeapon`、`WeaponConfig`
-- **被依赖：** 玩家控制器或 AI 控制器（持有并调用 WeaponManager）
+```gdscript
+var snapshot := weapon_manager.current_weapon.get_stats_snapshot()
+# 返回: { spread_ads, spread_hip, recoil_v, recoil_h, ads_time, weight, suppressed, fov_override }
+```
 
-## 注意事项
+## 预设配件
 
-- `weapon_mount` 为 null 时 `equip_weapon()` 会打印错误，武器节点已创建但不会出现在场景树的正确位置，注意在初始化时先调用 `set_mount()`。
-- `equip_weapon()` 会立刻 `queue_free()` 旧武器，若旧武器正在换弹（有 `await` 挂起），`is_instance_valid` 检查会捕获此情况，不会崩溃。
-- `weapon_fired` 信号目前无任何 emit，是预留接口。
+`load_and_equip()` 装备武器后自动调用 `_equip_default_attachments()`，
+按 `WeaponConfig.default_attachment_slots` / `default_attachment_configs` 装上出生配件。
+
+在 `WeaponConfig.tres` 里配置：
+```
+default_attachment_slots  = ["Barrel", "MagazineWell", "Handguard", ...]
+default_attachment_configs = [barrel_cfg, mag_cfg, handguard_cfg, ...]
+```
+两个数组必须等长，索引一一对应。
+
+## ADS 相关
+
+`set_aiming()` 会触发 `_apply_ads_state()`，自动读取：
+- 配件瞄具的 `fov_override`（优先于 `config.ads_fov_override`）
+- 配件的 `ads_speed_modifier`（叠加到 `config.ads_time`）

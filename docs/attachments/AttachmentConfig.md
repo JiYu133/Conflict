@@ -1,56 +1,56 @@
 # AttachmentConfig
 
-**文件路径：** `Classes/Weapon/WeaponAttachments/attachment_config.gd`
-**继承自：** `Resource`
+**脚本路径：** `classes/weapon/weaponattachments/attachment_config.gd`
+**资源路径：** `res/config/weapons/attachments/*.tres`
 
 ## 功能概述
 
-配件配置资源。作为配件的"数据档案"，保存一种配件的全部参数。在 Godot 编辑器中创建 `.tres` 资源并填写数值，被 `AttachmentManager` 加载后自动影响武器数值。一个 `.tres` 文件对应一种配件（红点/全息/ACOG/前握把等）。
+配件的数据档案，一个 `.tres` = 一种配件。由 `AttachmentFactory.create()` 读取后实例化配件节点。
 
-## 配置参数（@export var）
+## 关键字段速查
 
+### 槽位约束
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `allowed_slot` | `AttachmentSlot.SlotType` | 允许装入的槽位类型 |
+| `required_slots` | `Array[SlotType]` | 安装前必须已装的槽位类型列表（空 = 无依赖）|
+
+`required_slots` 示例：瞄具依赖机匣盖上的导轨，填 `[SlotType.RECEIVER_COVER]`，没有机匣盖时安装会被拒绝并打印警告。
+
+### 行为标志
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `attachment_name` | `String` | `"Unnamed Attachment"` | 配件显示名 |
-| `attachment_type` | `AttachmentType` | `OPTIC` | 配件大类（OPTIC / GRIP / MUZZLE / MAGAZINE / SIDE） |
-| `allowed_slot` | `AttachmentSlot.SlotType` | `OPTIC_RAIL` | 允许装入的挂载点类型 |
-| `requires_existing_attachment` | `bool` | `false` | 是否需要先装有某个配件才能安装 |
-| `hipfire_spread_modifier` | `float` | `0.0` | 腰射散布修正（度，负值 = 更准） |
-| `ads_spread_modifier` | `float` | `0.0` | 机瞄散布修正（度，负值 = 更准） |
-| `recoil_vertical_modifier` | `float` | `0.0` | 垂直后座修正（度，负值 = 减少上跳） |
-| `recoil_horizontal_modifier` | `float` | `0.0` | 水平后座修正（度，负值 = 减少偏移） |
-| `recoil_recovery_modifier` | `float` | `0.0` | 后座回正速度修正（正值 = 更快回正） |
-| `weight_kg` | `float` | `0.1` | 配件重量（kg），叠加到武器总重量 |
-| `ads_speed_modifier` | `float` | `0.0` | 瞄准速度修正（正值 = 更快瞄准） |
-| `magnification` | `float` | `1.0` | 放大倍率（1.0 = 无放大，4.0 = ACOG 4x） |
-| `fov_override` | `float` | `-1.0` | 强制 FOV（-1 表示沿用摄像机 FOV） |
-| `has_reticle` | `bool` | `true` | 是否有准星图案 |
-| `reticle_color` | `Color` | `Color(1,0,0)` | 准星颜色（红点用红/橙，全息用红） |
-| `suppresses_flash` | `bool` | `false` | 是否抑制枪口火光（消音器特有） |
-| `suppresses_sound` | `bool` | `false` | 是否抑制枪声（消音器特有） |
-| `length_modifier` | `float` | `0.0` | 枪口长度修正（m），影响顶墙收枪检测 |
-| `damage_modifier` | `float` | `0.0` | 伤害修正（消音器亚音速弹可能为负值） |
-| `attachment_scene` | `PackedScene` | — | 配件 3D 模型场景，挂在武器指定 Marker3D 上 |
-| `mount_point_name` | `String` | `""` | 挂载的 Marker3D 节点名（留空使用默认位置） |
+| `no_visual` | `bool` | `false` | 纯数值配件，不生成 3D 节点（扳机组参数等）|
+| `rail_adjustable` | `bool` | `false` | 可沿导轨 Z 轴前后滑动（瞄具等）|
+| `rail_offset` | `float` | `0.0` | 当前导轨偏移（m），运行时由代码写入 |
+| `rail_offset_min/max` | `float` | `±0.05` | 滑动范围限制 |
 
-## 枚举
+配件的视觉对齐不在此配置里控制：在配件场景内放一个名为 `SnapPoint` 的 `Marker3D` 即启用精确对齐，没有则回退为原点对齐。详见 `AttachmentManager.md`。
+
+### 数值修正
+`hipfire_spread_modifier` / `ads_spread_modifier` / `recoil_vertical_modifier` / `recoil_horizontal_modifier` / `recoil_recovery_modifier` / `ads_speed_modifier` / `weight_kg` / `center_of_mass_local` / `length_modifier` / `damage_modifier`
+
+`recoil_*_modifier` 字段仅作为旧数据兼容保留；新物理后座系统不读取它们。
+
+均为绝对量叠加，负值 = 减少，正值 = 增加。
+
+### 配件子类
+
+枪管、枪机框、弹匣有专属子类，包含物理参数：
+
+| 子类 | 额外字段 |
+|------|---------|
+| `BarrelConfig` | `barrel_length`, `muzzle_velocity`, `caliber`, `bullet_mass_g`, `ballistic_coefficient`, `propellant_mass_g`, `gas_exit_velocity_mps`, `gas_impulse_factor`, `charge_variation`, `misfire_chance` |
+| `BoltCarrierConfig` | `bolt_mass`, `recoil_spring_strength`, `bolt_travel_m`, `stovepipe_chance`, `double_feed_chance` |
+| `MagazineConfig` | `magazine_capacity`, `magazine_type`, `has_last_round_hold_open`, `reserve_magazines`, `reload_time`, `reload_empty_time` |
+| `MuzzleDeviceConfig` | `gas_impulse_vector`, `gas_impulse_fraction` |
+| `GripConfig` | `grip_point_local`, `support_stiffness`, `support_damping` |
+| `StockConfig` | `shoulder_contact_local`, `support_stiffness`, `support_damping` |
+
+## AttachmentType 枚举
 
 ```
-enum AttachmentType {
-    OPTIC,    # 瞄具
-    GRIP,     # 握把
-    MUZZLE,   # 枪口
-    MAGAZINE, # 弹匣
-    SIDE      # 侧挂
-}
+OPTIC / MUZZLE / GRIP / MAGAZINE / BARREL / HANDGUARD / STOCK /
+PISTOL_GRIP / RECEIVER_COVER / TRIGGER / CHARGING_HANDLE /
+TACTICAL_DEVICE / SIDE / RECEIVER / BOLT_CARRIER / SELECTOR_SWITCH
 ```
-
-## 依赖关系
-- **依赖：** `AttachmentSlot`（引用 `SlotType` 枚举）
-- **被依赖：** `BaseAttachment`（持有 `config` 引用，所有数值读取方法均从此资源取值）、`AttachmentSlot`（装备时检查 `allowed_slot`）
-
-## 注意事项
-
-- 所有数值修正均为绝对值叠加，不是百分比乘数；多个同类配件的修正会被 `AttachmentManager` 线性累加。
-- `damage_modifier` 目前已声明但具体消费逻辑尚未实现（无伤害计算系统引用此字段）。
-- `requires_existing_attachment` 目前已声明但 `AttachmentSlot.attach()` 未检查此约束，需后续实现。

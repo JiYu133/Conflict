@@ -1,0 +1,119 @@
+# 改装系统设计概览
+
+## 核心理念
+
+**配件是主体，武器没有名字。** 玩家从机匣开始，逐件组装出一把枪。机匣（Receiver）是组装基础，所有部件——包括枪管、护木、枪机框、拉机柄——都是"配件"，地位平等，可以拆卸更换。完全可以拿 A 型机匣配 B 型枪管和 C 型枪托，组装出一把无固定型号的武器。
+
+## 文件结构
+
+```
+res/models/attachments/        ← 所有配件的 3D 场景，按类型分子目录
+├── receivers/                 ← 机匣（BaseWeapon 根节点）
+│   └── ak12_receiver/
+│       ├── ak12_receiver.glb
+│       └── ak12_receiver.tscn
+├── bolt_carriers/             ← 枪机框（可动部件）
+├── barrels/
+├── handguards/                ← 护木，场景内含 Underbarrel 子槽
+├── receiver_covers/           ← 机匣盖，场景内含 OpticRail 子槽
+├── magazines/
+├── muzzle_devices/
+├── optics/
+├── grips/
+├── stocks/
+├── side_rails/
+├── triggers/                  ← 纯数值配件，no_visual = true
+└── ammo/                      ← 弹壳视觉
+
+res/config/weapons/attachments/ ← 每个配件的 .tres 数据配置
+```
+
+每个配件独立一个子文件夹，内含：
+- `*.glb` — 3D 模型
+- `*.tscn` — 场景文件，根节点挂 `BaseAttachment` 脚本（机匣用 `BaseWeapon`）
+
+## 槽位系统
+
+### AttachmentSlot 即锚点
+
+`AttachmentSlot` 继承 `Node3D`，放置在武器场景或配件场景中的接口位置，本身就是挂载锚点。配件装入后作为 `AttachmentSlot` 的子节点，`transform = IDENTITY` 自动贴合。**不需要额外 Marker3D。**
+
+### 层级槽位
+
+配件场景内可包含子 `AttachmentSlot`，实现层级依赖：
+
+```
+机匣 (BaseWeapon)
+├── Barrel          (AttachmentSlot) ← 直连机匣
+├── Handguard       (AttachmentSlot) ← 直连机匣
+│   └── Underbarrel (AttachmentSlot) ← 在护木场景内定义，装护木后动态注册
+├── ReceiverCover   (AttachmentSlot) ← 直连机匣
+│   └── OpticRail   (AttachmentSlot) ← 在机匣盖场景内定义，装机匣盖后动态注册
+├── MagazineWell    (AttachmentSlot)
+├── Stock           (AttachmentSlot)
+├── PistolGrip      (AttachmentSlot)
+├── MuzzleThread    (AttachmentSlot)
+├── SideRailLeft    (AttachmentSlot)
+├── SideRailRight   (AttachmentSlot)
+├── TriggerGroup    (AttachmentSlot)
+└── BoltCarrierSlot (AttachmentSlot) ← 枪机框也是可替换配件
+```
+
+`AttachmentManager` 在配件装入时自动扫描并注册子槽，卸下时自动递归清理。
+
+### 导轨滑动
+
+设置 `AttachmentConfig.rail_adjustable = true` 的配件可以沿导轨 Z 轴前后滑动。改装 UI 通过 `WeaponManager.set_rail_offset(slot_name, offset)` 实时调整位置。
+
+## 配件挂载流程
+
+```
+equip_attachment("Barrel", barrel_cfg)
+  → AttachmentFactory.create(cfg, weapon)     // 实例化配件节点
+  → attachment_manager.equip_to_slot(att, "Barrel")
+      → slot.attach(att)                      // 记录状态
+      → _place_attachment(att, slot)          // add_child 到 AttachmentSlot 下
+      → _scan_slots(att)                      // 扫描配件内的子槽位
+      → attachment_equipped.emit()
+      → attachments_changed.emit()            // 触发数值缓存重建
+```
+
+## 数值修正
+
+所有配件的修正值在 `attachments_changed` 时一次性汇总到缓存，各子系统（RecoilComponent、WeaponObstructionDetector 等）直接读缓存，O(1) 查询：
+
+```
+武器实际值 = 武器基础值 + Σ 所有当前配件的修正值
+```
+
+## Mod 开发指南
+
+一个新配件 mod 只需提供：
+
+1. **`*.glb`**：配件模型，原点放在与上级接口的接触面中心，-Z 朝枪口方向
+2. **`*.tscn`**：配件场景，根节点挂 `BaseAttachment`（或子类）脚本；如果配件自身有可挂槽位（如带导轨的护木），在场景内加 `AttachmentSlot` 子节点
+3. **`*.tres`**：`AttachmentConfig` 资源，填写 `allowed_slot`、数值修正、`attachment_scene` 路径
+
+无需修改任何引擎 GDScript。
+
+### 对齐与 SnapPoint
+
+配件挂到槽位上后，位置有两种确定方式：
+
+- **原点对齐（默认）**：配件根节点 `transform = IDENTITY`，原点贴合 `AttachmentSlot`。适用于模型原点已经精确设在接触面中心的配件。
+- **SnapPoint 对齐**：在配件 `.tscn` 里加一个名为 `SnapPoint` 的 `Marker3D`，放到真实的装配接触点，代码会把它对准槽位。原点在哪都无所谓，且支持非对称配件（侧导轨、快慢机、枪托）。
+
+推荐 mod 作者优先用 SnapPoint——不用在 Blender 里反复调原点，在 Godot 编辑器里拖一个点即可，所见即所得。
+
+SnapPoint 放置参考：
+
+| 配件类型 | SnapPoint 位置 |
+|---|---|
+| 枪管组 | 与机匣接触的后端面圆心 |
+| 消音器/制退器 | 螺纹根部端面圆心 |
+| 瞄具 | 底座导轨卡扣下表面中心 |
+| 弹匣 | 弹匣口顶端接口面中心 |
+| 握把 | 安装螺孔接触面中心 |
+| 枪托 | 与机匣铰链接合面中心 |
+| 侧导轨 / 快慢机等非对称件 | 安装面上实际接触点 |
+

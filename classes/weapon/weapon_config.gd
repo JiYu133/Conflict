@@ -2,164 +2,111 @@ class_name WeaponConfig
 extends Resource
 
 # ============================================================
-# 武器配置资源
-# 功能：作为武器参数的中央数据容器，所有子系统（枪机、弹药、
-#       导气、后座等）的初始化均依赖此配置。
-# 用法：在 Godot 编辑器中创建 .tres 资源文件，填入具体数值，
-#       然后通过 BaseWeapon.initialize(cfg) 注入到武器实例。
+# 武器配置资源（机匣固有属性）
+#
+# 只保存机匣本身的参数。以下属性已迁移到对应配件子类：
+#   barrel_length / muzzle_velocity / bullet_mass_g /
+#   ballistic_coefficient / caliber / misfire_chance
+#     → BarrelConfig（classes/weapon/weaponattachments/barrel_config.gd）
+#
+#   bolt_mass / recoil_spring_strength / bolt_travel_m /
+#   stovepipe_chance / double_feed_chance
+#     → BoltCarrierConfig（bolt_carrier_config.gd）
+#
+#   magazine_capacity / magazine_type / has_last_round_hold_open /
+#   reserve_magazines / reload_time / reload_empty_time
+#     → MagazineConfig（magazine_config.gd）
 # ============================================================
 
 # 基础属性 ─────────────────────────────────────────────────
 @export_group("基础属性")
-## 武器显示名称 / Weapon display name
 @export var weapon_name: String = "Unnamed Weapon"
-## 武器种类标识（rifle / smg / shotgun / pistol 等） / Weapon category tag
 @export var weapon_type: String = "rifle"
-## 武器逻辑总开关：关闭时禁用击发/换弹/后座/故障，仅保留模型显示 / Master enable for all weapon logic
+## 武器逻辑总开关：关闭时禁用击发/换弹/后座/故障，仅保留模型显示
 @export var logic_enabled: bool = false
 
 # 自动原理 ─────────────────────────────────────────────────
 @export_group("自动原理")
-## 自动方式：gas_operated / blowback / bolt_action / manual / Action type: gas_operated / blowback / bolt_action / manual
 @export var action_type: String = "gas_operated"
-## true = 开膛待击，false = 闭膛待击 / true = open bolt, false = closed bolt
 @export var open_bolt: bool = false
-## 理论射速（RPM）/ Theoretical rate of fire (rounds per minute)
+## 理论射速（RPM），实际射速由枪机框循环时间决定
 @export var cycle_rate: float = 600.0
-## 枪机组质量（kg），影响循环速度 / Bolt group mass in kg, affects cycle time
-@export var bolt_mass: float = 0.3
-## 复进簧刚度（N/m），影响复进速度 / Recoil spring stiffness in N/m
-@export var recoil_spring_strength: float = 50.0
-
-# 枪管 ────────────────────────────────────────────────────
-@export_group("枪管")
-## 枪管长度（m），影响导气延时和初速 / Barrel length in m, affects gas timing and muzzle velocity
-@export var barrel_length: float = 0.415
-## 弹头初速（m/s）/ Muzzle velocity in m/s
-@export var muzzle_velocity: float = 900.0
-
-# 弹药 ────────────────────────────────────────────────────
-@export_group("弹药")
-## 单弹匣容量 / Magazine capacity in rounds
-@export var magazine_capacity: int = 30
-## 弹匣类型：detachable_box / integral / belt / tube / Magazine type
-@export var magazine_type: String = "detachable_box"
-## 是否支持空仓挂机 / Whether last-round bolt hold-open is supported
-@export var has_last_round_hold_open: bool = true
-## 携带备用弹匣数（不含枪上在用的） / Number of spare magazines carried
-@export var reserve_magazines: int = 4
 
 # 击发 ────────────────────────────────────────────────────
 @export_group("击发")
-## 可选射击模式列表 / Available fire mode list
 @export var fire_modes: Array[String] = ["safe", "semi", "auto"]
-## 默认射击模式 / Default fire mode on spawn
 @export var default_fire_mode: String = "semi"
 
-# 换弹 ────────────────────────────────────────────────────
-@export_group("换弹")
-## 战术换弹时间（s）/ Tactical reload time in seconds
-@export var reload_time: float = 2.5
-## 空仓换弹时间（s）/ Empty-chamber reload time in seconds
-@export var reload_empty_time: float = 4.0
-
-# 后座力 ──────────────────────────────────────────────────
+# 后座力（机匣基准值，配件修正叠加在此之上）────────────────
 @export_group("后座")
-## 每发垂直后座幅度（度）/ Vertical recoil per shot in degrees
 @export var recoil_vertical: float = 2.0
-## 每发水平后座幅度（度）/ Horizontal recoil per shot in degrees
 @export var recoil_horizontal: float = 0.5
-## 后座回正速度（度/秒），新系统中不再驱动自动回正，仅供配件修正读取 / Legacy recovery speed for attachment modifiers
 @export var recoil_recovery_speed: float = 5.0
-
-# 层1：摄像机真实 kick（永久偏移，不回正）─────────────────
-## 每发 pitch kick（度），永久改变摄像机仰角，建议 0.3~1.5
 @export var kick_pitch_deg: float = 0.8
-## 每发 yaw kick 基础值（度），向右偏转，建议 0.05~0.2
 @export var kick_yaw_deg: float = 0.12
-## yaw kick 随机幅度（度），在 ±该值内随机，模拟左右摆动
 @export var kick_yaw_random_deg: float = 0.35
 
-# 散布 ────────────────────────────────────────────────────
+# 散布（机匣基准值）──────────────────────────────────────
 @export_group("散布")
-## 腰射散布（度）/ Hip-fire spread in degrees
 @export var hipfire_spread: float = 3.0
-## 机瞄散布（度）/ ADS spread in degrees
 @export var ads_spread: float = 0.1
 
-# 重量 ────────────────────────────────────────────────────
+# 重量（机匣自身重量）────────────────────────────────────
 @export_group("重量")
-## 武器重量（kg，含空弹匣）/ Weapon weight in kg (with empty magazine)
 @export var weight: float = 3.5
-## 重量是否影响移动速度 / Whether weight affects movement speed
 @export var weight_affects_movement: bool = true
+
+# 后座物理 ----------------------------------------
+@export_group("后座物理")
+## 机匣本体质量，不含可换配件；用于总质量和转动惯量
+@export var receiver_mass_kg: float = 2.2
+## 机匣质心相对武器原点偏移（m）
+@export var receiver_com_local: Vector3 = Vector3.ZERO
+## 枪膛/枪管轴线参考点（武器局部坐标）
+@export var bore_point_local: Vector3 = Vector3(0, 0.06, -0.35)
+## 枪管轴线相对肩部接触点的高度（m），决定俯仰力矩臂
+@export var bore_axis_height_m: float = 0.06
+## 肩部接触点（武器局部坐标），后座绕此点旋转
+@export var shoulder_pivot_local: Vector3 = Vector3(0, -0.04, 0.35)
+## 射手基础控枪刚度（N·m/rad）
+@export var recoil_control_stiffness: float = 120.0
+## 射手基础控枪阻尼（N·m·s/rad）
+@export var recoil_control_damping: float = 18.0
+## 射手扰动产生的随机冲量比例，用于每发横向/纵向噪声
+@export_range(0.0, 0.2, 0.001) var shooter_impulse_noise: float = 0.03
 
 # 视觉效果 ────────────────────────────────────────────────
 @export_group("视觉效果")
-## 武器 3D 模型场景 / Weapon 3D model scene
 @export var weapon_scene: PackedScene
-## 武器全长（m），用于顶墙收枪射线检测 / Full weapon length in m, used for obstruction raycast
 @export var weapon_length: float = 0.75
-## 枪机/活塞后退行程（m），BoltCarrier 节点沿 -Z 位移的最大距离
-@export var bolt_travel_m: float = 0.08
-## 瞄准时间（秒），从腰射到瞄准的过渡时长 / ADS transition time in seconds
 @export var ads_time: float = 0.25
-## 瞄准时武器居中偏移（m），相对摄像机中心的偏移量 / Weapon center offset when ADS
 @export var ads_center_offset: Vector3 = Vector3(0.0, -0.1, -0.05)
-## 瞄准时 FOV 缩放目标值（度），-1 = 使用摄像机默认 / ADS FOV target; -1 = use camera default
 @export var ads_fov_override: float = -1.0
 
 # 握持 IK ─────────────────────────────────────────────────
 @export_group("握持 IK")
-## 左手 IK 强度，0 = 完全用动画，1 = 完全跟随 LeftHandGrip / Left hand IK blend weight
 @export_range(0.0, 1.0) var left_hand_ik_weight: float = 1.0
 
 # 配件槽位声明 ────────────────────────────────────────────
 @export_group("配件槽位")
-## 此武器支持的改装槽位列表，留空表示不支持任何配件改装
-## 对应 AttachmentSlot.SlotType 枚举值（在编辑器下拉选择）
 @export var supported_slots: Array[AttachmentSlot.SlotType] = []
+
+# 预设配件 ────────────────────────────────────────────────
+@export_group("预设配件")
+## 出生时自动装上的槽位名列表，与 default_attachment_configs 一一对应
+@export var default_attachment_slots: Array[String] = []
+## 出生时自动装上的配件配置列表，与 default_attachment_slots 一一对应
+@export var default_attachment_configs: Array[AttachmentConfig] = []
 
 # 武器特征标签 ────────────────────────────────────────────
 @export_group("武器特征")
-## 弹药口径 / Ammunition caliber
-@export var caliber: String = "5.45x39mm"
-
-## 原产国 / Country of origin
 @export var origin_country: String = "Russia"
-
-## 时代 / Era
 @export var era: String = "Modern"
 
-# 可靠性 ──────────────────────────────────────────────────
-@export_group("可靠性")
-## 每次击发时底火哑火的概率（0.0 = 从不）
-## 哑火后弹留在膛内，需拉机柄强制退弹
-@export_range(0.0, 1.0, 0.001) var misfire_chance: float = 0.0
-## 每次抛壳时弹壳卡在抛壳口的概率（烟囱卡弹，0.0 = 从不）
-## 弹壳阻挡复进，枪机停在中途，需拉机柄清除
-@export_range(0.0, 1.0, 0.001) var stovepipe_chance: float = 0.0
-## 抛壳失败后枪机仍强行复进时触发双上膛的概率（0.0 = 从不）
-## 两发子弹卡死在进弹口，需退弹匣+多次拉机柄+重新装填
-@export_range(0.0, 1.0, 0.001) var double_feed_chance: float = 0.0
-
-
-# ============================================================
-# 【未实现 / 待扩展】
-# 以下字段是预留的弹药类型配置，后续需要实现弹种切换功能时启用
-# ============================================================
-# @export var bullet_type: String = "fmj"              # 弹种：fmj（全被甲）/ hp（空尖）/ ap（穿甲）
-
-# 弹道学参数 ────────────────────────────────────────────────
-@export_group("弹道学参数 / Ballistics")
-## 子弹质量（克）；用于弹道动能计算 KE = 0.5 × m × v²
-## 5.45×39mm 弹头约 3.4–5.2 g；7.62×39mm 约 7.9–8.0 g
-@export var bullet_mass_g: float = 5.2
-## 弹道系数（G1 近似），驱动空气阻力衰减：k = 0.00025 / BC（见 Ballistics）
-## 越大越"滑"，远距离存速越好。5.45×39 ≈ 0.22，7.62×39 ≈ 0.27，7.62×54R ≈ 0.4
-@export_range(0.05, 1.0, 0.01) var ballistic_coefficient: float = 0.25
-## 启用弹道模拟（飞行时间 + 重力下坠 + 空气阻力 + 远距离伤害衰减）。
-## 关闭时回退为瞬时 hitscan（无下坠、满动能命中），便于 A/B 对比调参。
+# 弹道学 ──────────────────────────────────────────────────
+@export_group("弹道学")
+## 启用弹道模拟（飞行时间 + 重力下坠 + 空气阻力）
+## 关闭时回退为瞬时 hitscan，便于 A/B 对比调参
 @export var use_ballistic_simulation: bool = true
 
 
@@ -167,6 +114,5 @@ extends Resource
 # 改装系统辅助
 # ============================================================
 
-## 返回此武器配置允许的槽位类型列表，供改装 UI 过滤可装配件
 func get_allowed_slot_types() -> Array[AttachmentSlot.SlotType]:
 	return supported_slots
