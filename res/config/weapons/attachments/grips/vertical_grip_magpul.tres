@@ -6,7 +6,7 @@
 script = ExtResource("1_v")
 attachment_name = "Magpul RVG 垂直握把"
 attachment_type = 2
-allowed_slot = 2
+allowed_slot = 4
 hipfire_spread_modifier = -0.2
 ads_spread_modifier = 0.0
 weight_kg = 0.1

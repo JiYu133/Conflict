@@ -13,5 +13,8 @@ script = ExtResource("1_base")
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0.0078125, 0)
 
 [node name="MuzzleDevice" type="Marker3D" parent="." unique_id=99270094]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.44140625)
+transform = Transform3D(-1, 0, 8.742278e-08, 0, 1, 0, -8.742278e-08, 0, -1, 0, 0, -0.44140625)
 script = ExtResource("2_slot")
+slot_type = 3
+allowed_attachment_types = Array[int]([1])
+slot_name = "MuzzleDevice"

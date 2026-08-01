@@ -34,14 +34,17 @@ weapon_manager.attempt_malfunction_clearance()  # 排障
 # 装上配件
 weapon_manager.equip_attachment("Barrel", barrel_config) -> bool
 
+# 不指定槽位，自动匹配第一个可用槽位（父配件装上后其子槽也会进入匹配）
+weapon_manager.equip_attachment_auto(barrel_config) -> bool
+
 # 卸下配件，返回被卸下的实例
 weapon_manager.detach_attachment("Barrel") -> BaseAttachment
 
 # 查询所有槽位状态（供改装 UI 渲染）
-# 每项: { slot_name, slot_type, is_occupied, attachment_name, attachment_config }
+# 每项: { slot_name, slot_type, allowed_attachment_types, is_occupied, attachment_name, attachment_config }
 weapon_manager.get_attachment_slots() -> Array[Dictionary]
 
-# 查询此武器支持的槽位类型列表
+# 查询当前场景中已注册槽位的类型列表；来源是 AttachmentSlot Marker3D，不再读取 WeaponConfig
 weapon_manager.get_supported_slot_types() -> Array[AttachmentSlot.SlotType]
 
 # 调整导轨配件前后位置（供改装 UI 滑动条）
@@ -59,14 +62,17 @@ var snapshot := weapon_manager.current_weapon.get_stats_snapshot()
 ## 预设配件
 
 `load_and_equip()` 装备武器后自动调用 `_equip_default_attachments()`，
-按 `WeaponConfig.default_attachment_slots` / `default_attachment_configs` 装上出生配件。
+按 `WeaponConfig.default_attachment_configs` 顺序自动匹配当前可用槽位。
 
 在 `WeaponConfig.tres` 里配置：
 ```
-default_attachment_slots  = ["Barrel", "MagazineWell", "Handguard", ...]
-default_attachment_configs = [barrel_cfg, mag_cfg, handguard_cfg, ...]
+default_attachment_configs = [barrel_cfg, mag_cfg, handguard_cfg, dust_cover_cfg, iron_sight_cfg, ...]
 ```
-两个数组必须等长，索引一一对应。
+列表顺序即装配顺序：先装父配件，再装父配件子槽上的配件，例如 `dust_cover_cfg` 后接 `iron_sight_cfg`，游戏会先把机匣盖装到 `ReceiverCover`，随后自动识别机匣盖场景里的 `OpticRail` 子槽并装入照门。
+
+`default_attachment_slots` 仍是旧版显式槽位名的兼容写法；新方案建议留空，让代码自动匹配。
+
+自动匹配会先按 `AttachmentConfig.preferred_slot_names` 找指定槽位，再按当前场景顺序回退。左右侧导轨这类同名类型配件，应在配置里显式填 `["SideRailLeft"]` 或 `["SideRailRight"]`，避免预设时选错边。
 
 ## ADS 相关
 

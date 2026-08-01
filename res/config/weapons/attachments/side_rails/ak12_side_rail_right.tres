@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="AttachmentConfig" format=3 uid="uid://bfmsre0u1hpkw"]
+
+[ext_resource type="PackedScene" uid="uid://d0tbwswl3tlfm" path="res://res/models/attachments/side_rails/side_rail_picatinny/right/side_rail_picatinny_right.tscn" id="1_4q281"]
+[ext_resource type="Script" uid="uid://wwvoc4u8v141" path="res://classes/weapon/weaponattachments/attachment_config.gd" id="2_q2aqr"]
+
+[resource]
+script = ExtResource("2_q2aqr")
+attachment_name = "皮卡汀尼侧导轨"
+attachment_type = 12
+allowed_slot = 2
+preferred_slot_names = Array[String](["SideRailLeft"])
+weight_kg = 0.08
+attachment_scene = ExtResource("1_4q281")

@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://b1wyey0qt85r2"
-path="res://.godot/imported/AK12_SideRail.glb-9e1931b39d320650a55f18af476769ec.scn"
+path="res://.godot/imported/AK12_SideRail.glb-cb67be8e0b94929d29ec6735f724a6d5.scn"
 
 [deps]
 
-source_file="res://res/models/attachments/side_rails/side_rail_picatinny/AK12_SideRail.glb"
-dest_files=["res://.godot/imported/AK12_SideRail.glb-9e1931b39d320650a55f18af476769ec.scn"]
+source_file="res://res/models/attachments/side_rails/AK12_SideRail.glb"
+dest_files=["res://.godot/imported/AK12_SideRail.glb-cb67be8e0b94929d29ec6735f724a6d5.scn"]
 
 [params]
 

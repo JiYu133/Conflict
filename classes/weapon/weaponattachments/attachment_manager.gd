@@ -10,7 +10,7 @@ extends Node
 #   3. 汇总所有配件的数值修正，缓存结果以避免重复遍历
 #
 # 对齐方式：
-#   AttachmentSlot 本身就是 Node3D，在武器/配件场景里放置到接口位置。
+#   AttachmentSlot 本身就是 Marker3D，在武器/配件场景里放置到接口位置。
 #   配件作为 AttachmentSlot 的子节点挂载，transform = IDENTITY 即贴合接口。
 #
 # 层级槽位：
@@ -58,7 +58,7 @@ func initialize(weapon: BaseWeapon, weapon_root: Node) -> void:
 func _scan_slots(root: Node) -> void:
 	for child in root.get_children():
 		if child is AttachmentSlot:
-			var key: String = child.slot_name if child.slot_name != "" else String(child.name)
+			var key: String = child.get_slot_key()
 			if _slots.has(key):
 				push_warning("[AttachmentMgr] 挂载点名称重复，已忽略后者: %s" % key)
 			else:
@@ -114,7 +114,7 @@ func detach_from_slot(slot_name: String) -> BaseAttachment:
 func _remove_child_slots(root: Node) -> void:
 	for child in root.get_children():
 		if child is AttachmentSlot:
-			var key: String = child.slot_name if child.slot_name != "" else String(child.name)
+			var key: String = child.get_slot_key()
 			if _slots.get(key) == child:
 				if child.is_occupied:
 					detach_from_slot(key)
@@ -125,6 +125,25 @@ func _remove_child_slots(root: Node) -> void:
 
 func get_slot(slot_name: String) -> AttachmentSlot:
 	return _slots.get(slot_name, null)
+
+func get_slots() -> Array[AttachmentSlot]:
+	var result: Array[AttachmentSlot] = []
+	for value in _slots.values():
+		var slot: AttachmentSlot = value
+		result.append(slot)
+	return result
+
+## 优先按配件声明的 preferred_slot_names 匹配，再按当前已注册槽位顺序回退。
+func find_first_available_slot_for(cfg: AttachmentConfig) -> AttachmentSlot:
+	for slot_name in cfg.get_preferred_slot_names():
+		var slot := get_slot(slot_name)
+		if slot and not slot.is_occupied and slot.can_accept_attachment(cfg):
+			return slot
+	for value in _slots.values():
+		var slot: AttachmentSlot = value
+		if not slot.is_occupied and slot.can_accept_attachment(cfg):
+			return slot
+	return null
 
 func get_all_attachments() -> Array[BaseAttachment]:
 	var result: Array[BaseAttachment] = []
@@ -147,7 +166,7 @@ func get_attachment_in_slot(slot_name: String) -> BaseAttachment:
 ##   1. 配件场景里若有名为 SnapPoint 的 Marker3D，把它对准 AttachmentSlot
 ##      （美术手动标记装配面，不依赖运行时 AABB 计算）
 ##   2. 没有 SnapPoint 则回退到原点对齐（transform = IDENTITY）
-## 若配件支持导轨滑动（rail_adjustable），在对齐结果上叠加 rail_offset Z 轴偏移
+## 若配件配置了 rail_offset，在对齐结果上叠加 Z 轴偏移；rail_adjustable 只控制 UI 是否可滑动。
 func _place_attachment(att: BaseAttachment, slot: AttachmentSlot) -> void:
 	if att.config.no_visual:
 		return
@@ -157,9 +176,10 @@ func _place_attachment(att: BaseAttachment, slot: AttachmentSlot) -> void:
 		att.transform = _relative_transform(att, snap).inverse()
 	else:
 		att.transform = Transform3D.IDENTITY
-	if att.config.rail_adjustable:
+	if att.config.rail_adjustable or not is_zero_approx(att.config.rail_offset):
+		var clamped := clampf(att.config.rail_offset, att.config.rail_offset_min, att.config.rail_offset_max)
 		att.set_meta(META_RAIL_BASE_Z, att.position.z)
-		att.position.z += att.config.rail_offset
+		att.position.z += clamped
 
 
 ## 计算 descendant 相对 ancestor 的变换（沿父链累乘，不依赖场景树全局状态）
@@ -186,7 +206,7 @@ func set_rail_offset(slot_name: String, offset: float) -> void:
 ## 获取指定槽位配件当前的导轨偏移值
 func get_rail_offset(slot_name: String) -> float:
 	var att := get_attachment_in_slot(slot_name)
-	if not att or not att.config.rail_adjustable:
+	if not att:
 		return 0.0
 	return att.config.rail_offset
 

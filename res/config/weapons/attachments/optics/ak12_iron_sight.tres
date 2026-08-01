@@ -6,6 +6,8 @@
 [resource]
 script = ExtResource("1_a")
 attachment_name = "开放式机械瞄具"
+attachment_type = 0
+allowed_slot = 0
 weight_kg = 0.05
 has_reticle = false
 attachment_scene = ExtResource("2_scene")

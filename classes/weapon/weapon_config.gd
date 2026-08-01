@@ -89,13 +89,14 @@ extends Resource
 
 # 配件槽位声明 ────────────────────────────────────────────
 @export_group("配件槽位")
+## 旧版槽位声明：运行时不再读取；场景内的 AttachmentSlot Marker3D 才是槽位来源。
 @export var supported_slots: Array[AttachmentSlot.SlotType] = []
 
 # 预设配件 ────────────────────────────────────────────────
 @export_group("预设配件")
-## 出生时自动装上的槽位名列表，与 default_attachment_configs 一一对应
+## 旧版显式槽位名列表；留空时按 default_attachment_configs 顺序自动匹配可用槽位。
 @export var default_attachment_slots: Array[String] = []
-## 出生时自动装上的配件配置列表，与 default_attachment_slots 一一对应
+## 出生时按顺序自动装配的配件列表；父配件应先于其子槽上的配件。
 @export var default_attachment_configs: Array[AttachmentConfig] = []
 
 # 武器特征标签 ────────────────────────────────────────────
@@ -115,4 +116,5 @@ extends Resource
 # ============================================================
 
 func get_allowed_slot_types() -> Array[AttachmentSlot.SlotType]:
+	## 已弃用：槽位来源已改为场景 Marker3D，保留此方法仅为兼容旧调用方。
 	return supported_slots

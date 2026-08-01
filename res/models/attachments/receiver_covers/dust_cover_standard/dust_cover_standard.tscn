@@ -10,7 +10,9 @@ script = ExtResource("1_base")
 [node name="Mesh" parent="." unique_id=431256435 instance=ExtResource("3_mesh")]
 
 [node name="OpticRail" type="Marker3D" parent="." unique_id=2100386774]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03294184, -0.11687671)
 script = ExtResource("2_slot")
+allowed_attachment_types = Array[int]([0])
 slot_name = "OpticRail"
 
 [node name="SnapPoint" type="Marker3D" parent="." unique_id=213489451]

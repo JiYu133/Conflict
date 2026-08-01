@@ -29,12 +29,18 @@ extends Resource
 # ──────────────────────────── 槽位约束 ────────────────────────────
 @export_group("槽位约束")
 ## 允许装入的挂载点类型 / Allowed slot type for this attachment
+## 旧版单值槽位约束，仅保留兼容；运行时校验以场景 Marker3D 的 allowed_attachment_types 为准。
 @export var allowed_slot: AttachmentSlot.SlotType = AttachmentSlot.SlotType.OPTIC_RAIL
 
 ## 安装此配件前必须已装的槽位类型列表（空 = 无前置依赖）
 ## 例：瞄具需要机匣盖上的导轨，填 [SlotType.RECEIVER_COVER] 表示必须先装机匣盖
 ## AttachmentSlot.attach() 会检查此约束，不满足时拒绝安装
 @export var required_slots: Array[AttachmentSlot.SlotType] = []
+
+# ──────────────────────────── 安装位置 ────────────────────────────
+@export_group("安装位置")
+## 自动装配时优先尝试的槽位名，按顺序回退；如 ["SideRailLeft", "SideRailRight"]
+@export var preferred_slot_names: Array[String] = []
 
 # ──────────────────────────── 数值修正 ────────────────────────────
 @export_group("散布修正")
@@ -98,7 +104,7 @@ extends Resource
 ## 配件 3D 模型场景 / Attachment 3D model scene
 @export var attachment_scene: PackedScene
 
-## 挂在武器哪个 Marker3D 节点下 / Marker3D node name on the weapon to attach to
+## 旧版单值安装点；preferred_slot_names 为空时使用它 / Legacy single mount point
 @export var mount_point_name: String = ""
 
 ## true = 纯数值配件，不生成任何 3D 节点（扳机组、弹簧等纯参数配件适用）
@@ -113,6 +119,19 @@ extends Resource
 @export var rail_offset_min: float = -0.05
 ## 允许的最大偏移（m），防止滑出导轨后端
 @export var rail_offset_max: float = 0.05
+
+## 返回自动装配时应优先尝试的槽位名。
+## 新字段 preferred_slot_names 优先；旧字段 mount_point_name 作为单值兼容。
+func get_preferred_slot_names() -> Array[String]:
+	var result: Array[String] = []
+	for slot_name in preferred_slot_names:
+		if slot_name != "":
+			result.append(slot_name)
+	if not result.is_empty():
+		return result
+	if mount_point_name != "":
+		return [mount_point_name]
+	return []
 
 # ════════════════════════════════════════════════════════════════════════
 # 枚举类型定义
