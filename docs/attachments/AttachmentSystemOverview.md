@@ -25,7 +25,19 @@ res/models/attachments/        ← 所有配件的 3D 场景，按类型分子�
 ├── triggers/                  ← 纯数值配件，no_visual = true
 └── ammo/                      ← 弹壳视觉
 
-res/config/weapons/attachments/ ← 每个配件的 .tres 数据配置
+res/config/weapons/attachments/
+├── barrel_assemblies/         ← 枪管 .tres
+├── bolt_carriers/             ← 枪机框 .tres
+├── handguards/                ← 护木 .tres
+├── receiver_covers/           ← 机匣盖 .tres
+├── magazines/                 ← 弹匣 .tres
+├── muzzle_devices/            ← 枪口装置 .tres
+├── optics/                    ← 瞄具 .tres
+├── grips/                     ← 握把 .tres
+├── stocks/                    ← 枪托 .tres
+├── side_rails/                ← 左右侧导轨 .tres
+├── selector_switches/         ← 快慢机 .tres
+└── triggers/                  ← 扳机组 .tres
 ```
 
 每个配件独立一个子文件夹，内含：
@@ -36,7 +48,11 @@ res/config/weapons/attachments/ ← 每个配件的 .tres 数据配置
 
 ### AttachmentSlot 即锚点
 
-`AttachmentSlot` 继承 `Node3D`，放置在武器场景或配件场景中的接口位置，本身就是挂载锚点。配件装入后作为 `AttachmentSlot` 的子节点，`transform = IDENTITY` 自动贴合。**不需要额外 Marker3D。**
+`AttachmentSlot` 继承 `Marker3D`，放置在武器场景或配件场景中的接口位置，本身就是挂载锚点。配件装入后作为 `AttachmentSlot` 的子节点，`transform = IDENTITY` 自动贴合。
+
+槽位的数量和名字都以场景里的 `AttachmentSlot` Marker3D 为准：名字默认取节点名，也可以用 `slot_name` 覆盖。`WeaponConfig.supported_slots` 已不再是运行时槽位来源。
+
+每个槽位在检查器里通过 `allowed_attachment_types` 多选限制可安装的配件类型。例如枪管场景里的 `MuzzleDevice` Marker 填 `[MUZZLE]`，就只能装枪口配件；护木 `Underbarrel` 可填 `[GRIP, TACTICAL_DEVICE]` 允许多种下挂配件。
 
 ### 层级槽位
 
@@ -45,16 +61,16 @@ res/config/weapons/attachments/ ← 每个配件的 .tres 数据配置
 ```
 机匣 (BaseWeapon)
 ├── Barrel          (AttachmentSlot) ← 直连机匣
+│   └── MuzzleDevice (AttachmentSlot) ← 在枪管场景内定义，装枪管后动态注册
 ├── Handguard       (AttachmentSlot) ← 直连机匣
 │   └── Underbarrel (AttachmentSlot) ← 在护木场景内定义，装护木后动态注册
+│   ├── SideRailLeft (AttachmentSlot) ← 在护木场景内定义
+│   └── SideRailRight (AttachmentSlot) ← 在护木场景内定义
 ├── ReceiverCover   (AttachmentSlot) ← 直连机匣
 │   └── OpticRail   (AttachmentSlot) ← 在机匣盖场景内定义，装机匣盖后动态注册
 ├── MagazineWell    (AttachmentSlot)
 ├── Stock           (AttachmentSlot)
 ├── PistolGrip      (AttachmentSlot)
-├── MuzzleThread    (AttachmentSlot)
-├── SideRailLeft    (AttachmentSlot)
-├── SideRailRight   (AttachmentSlot)
 ├── TriggerGroup    (AttachmentSlot)
 └── BoltCarrierSlot (AttachmentSlot) ← 枪机框也是可替换配件
 ```
@@ -64,6 +80,8 @@ res/config/weapons/attachments/ ← 每个配件的 .tres 数据配置
 ### 导轨滑动
 
 设置 `AttachmentConfig.rail_adjustable = true` 的配件可以沿导轨 Z 轴前后滑动。改装 UI 通过 `WeaponManager.set_rail_offset(slot_name, offset)` 实时调整位置。
+
+如果同一配件类型存在多个槽位（左右侧导轨、多个导轨段），预设自动装配会优先读取 `AttachmentConfig.preferred_slot_names` 决定装到哪个槽，再读取 `rail_offset` 决定初始位置。`preferred_slot_names` 为空时才按场景中 Marker3D 的注册顺序回退。
 
 ## 配件挂载流程
 
@@ -92,7 +110,7 @@ equip_attachment("Barrel", barrel_cfg)
 
 1. **`*.glb`**：配件模型，原点放在与上级接口的接触面中心，-Z 朝枪口方向
 2. **`*.tscn`**：配件场景，根节点挂 `BaseAttachment`（或子类）脚本；如果配件自身有可挂槽位（如带导轨的护木），在场景内加 `AttachmentSlot` 子节点
-3. **`*.tres`**：`AttachmentConfig` 资源，填写 `allowed_slot`、数值修正、`attachment_scene` 路径
+3. **`*.tres`**：`AttachmentConfig` 资源，填写 `attachment_type`、数值修正、`attachment_scene` 路径；槽位约束写在场景 Marker3D 的 `allowed_attachment_types` 上，可多选。同类多槽位用 `preferred_slot_names` 指定左/右或具体槽名，用 `rail_offset` 指定初始导轨位置
 
 无需修改任何引擎 GDScript。
 
@@ -116,4 +134,3 @@ SnapPoint 放置参考：
 | 握把 | 安装螺孔接触面中心 |
 | 枪托 | 与机匣铰链接合面中心 |
 | 侧导轨 / 快慢机等非对称件 | 安装面上实际接触点 |
-

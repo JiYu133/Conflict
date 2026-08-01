@@ -15,18 +15,21 @@ transform = Transform3D(4.371139e-08, -1, 3.821371e-15, -1, -4.371139e-08, -8.74
 [node name="Underbarrel" type="Marker3D" parent="." unique_id=547466798]
 script = ExtResource("2_slot")
 slot_type = 4
+allowed_attachment_types = Array[int]([2, 11])
 slot_name = "Underbarrel"
 
 [node name="SideRailLeft" type="Marker3D" parent="." unique_id=2139095242]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.025127284, 0.0052949637, 0.027814839)
 script = ExtResource("2_slot")
 slot_type = 1
+allowed_attachment_types = Array[int]([12, 11])
 slot_name = "SideRailLeft"
 
 [node name="SideRailRight" type="Marker3D" parent="." unique_id=453077571]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.007, 0.005, 0.028)
+transform = Transform3D(-1, 0, 8.742278e-08, 0, 1, 0, -8.742278e-08, 0, -1, 0.007, 0.005, 0.028)
 script = ExtResource("2_slot")
 slot_type = 2
+allowed_attachment_types = Array[int]([12, 11])
 slot_name = "SideRailRight"
 
 [node name="SnapPoint" type="Marker3D" parent="." unique_id=1582978548]

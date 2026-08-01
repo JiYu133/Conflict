@@ -11,6 +11,7 @@
 3. 维护数值修正缓存，`attachments_changed` 时触发 `_rebuild_cache()` 重算
 
 `AttachmentSlot` 本身即为挂载锚点，配件作为其子节点挂载，对齐规则见下文「对齐方式（SnapPoint）」。
+槽位允许安装的配件类型在场景 Marker3D 的 `allowed_attachment_types` 上多选；运行时不再读取 `WeaponConfig.supported_slots`。
 
 ## 层级槽位
 
@@ -33,6 +34,8 @@
 | `equip_to_slot(attachment, slot_name) -> bool` | 装入配件，扫描子槽，触发信号 |
 | `detach_from_slot(slot_name) -> BaseAttachment` | 卸下配件，递归清理子槽，从场景树移除 |
 | `get_slot(slot_name) -> AttachmentSlot` | 获取槽位节点 |
+| `get_slots() -> Array[AttachmentSlot]` | 获取所有已注册槽位 |
+| `find_first_available_slot_for(cfg) -> AttachmentSlot` | 先按 `preferred_slot_names` 找，再按场景顺序找第一个可接受且未占用的槽位 |
 | `get_all_attachments() -> Array[BaseAttachment]` | 所有已装配件 |
 | `get_attachment_in_slot(slot_name) -> BaseAttachment` | 指定槽位的配件 |
 | `set_rail_offset(slot_name, offset)` | 调整导轨配件前后位置（clamp 到 min/max） |
@@ -49,7 +52,7 @@
 1. **有 SnapPoint**：配件场景内若存在名为 `SnapPoint` 的 `Marker3D`，管理器计算它相对配件根节点的变换并取逆，使 SnapPoint 的世界位置与 `AttachmentSlot` 重合。美术在 Blender/Godot 里手动摆放这个点，标记真正的装配接触面。
 2. **无 SnapPoint**：回退为 `transform = IDENTITY`，即配件原点贴合槽位。原点已经设在接触面中心的配件可以不加 SnapPoint。
 
-导轨配件（`rail_adjustable = true`）在对齐结果基础上叠加 `rail_offset`；对齐后的基准 Z 存在节点 meta `_rail_base_z` 里，`set_rail_offset()` 每次都从基准重新计算，不会累积漂移。
+配置了非 0 `rail_offset` 的配件（不要求 `rail_adjustable`）在对齐结果基础上叠加 Z 轴偏移；对齐后的基准 Z 存在节点 meta `_rail_base_z` 里，`set_rail_offset()` 每次都从基准重新计算，不会累积漂移。
 
 旧的 `auto_center`（运行时 AABB 居中）已移除——局部 AABB 在子节点带 transform 时结果不可靠，且业界（Arma Reforger 的 Slot/Snap、RoN 的手动偏移）均采用手动标记点方案。
 

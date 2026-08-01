@@ -142,24 +142,35 @@ func load_and_equip(config: WeaponConfig) -> void:
 	_apply_ads_state()
 
 
-## 装上 WeaponConfig.default_attachment_slots/configs 里定义的预设配件
+## 装上 WeaponConfig 里定义的预设配件。
+## 推荐只填 default_attachment_configs，代码会按顺序自动匹配当前可用槽位；
+## 旧的 default_attachment_slots + configs 等长写法仍兼容。
 func _equip_default_attachments(config: WeaponConfig) -> void:
 	var slots   := config.default_attachment_slots
 	var configs := config.default_attachment_configs
-	if slots.size() != configs.size():
-		GlobalLogger.warn("WeaponManager", "预设配件槽位数量与配置数量不一致，跳过自动装配")
+	if not slots.is_empty() and slots.size() == configs.size():
+		for i in slots.size():
+			var slot_name: String        = slots[i]
+			var att_cfg: AttachmentConfig = configs[i]
+			if not att_cfg:
+				GlobalLogger.warn("WeaponManager", "预设配件 [%d] 配置为空，跳过" % i)
+				continue
+			var ok := equip_attachment(slot_name, att_cfg)
+			if ok:
+				GlobalLogger.debug("WeaponManager", "预设配件已装: %s → %s" % [slot_name, att_cfg.attachment_name])
+			else:
+				GlobalLogger.warn("WeaponManager", "预设配件装配失败: %s → %s" % [slot_name, att_cfg.attachment_name])
 		return
-	for i in slots.size():
-		var slot_name: String        = slots[i]
+	for i in configs.size():
 		var att_cfg: AttachmentConfig = configs[i]
 		if not att_cfg:
 			GlobalLogger.warn("WeaponManager", "预设配件 [%d] 配置为空，跳过" % i)
 			continue
-		var ok := equip_attachment(slot_name, att_cfg)
+		var ok := equip_attachment_auto(att_cfg)
 		if ok:
-			GlobalLogger.debug("WeaponManager", "预设配件已装: %s → %s" % [slot_name, att_cfg.attachment_name])
+			GlobalLogger.debug("WeaponManager", "预设配件已自动装好: %s" % att_cfg.attachment_name)
 		else:
-			GlobalLogger.warn("WeaponManager", "预设配件装配失败: %s → %s" % [slot_name, att_cfg.attachment_name])
+			GlobalLogger.warn("WeaponManager", "预设配件无可用槽位，已跳过: %s" % att_cfg.attachment_name)
 
 
 func _apply_ads_state() -> void:
@@ -188,6 +199,17 @@ func equip_attachment(slot_name: String, cfg: AttachmentConfig) -> bool:
 	return current_weapon.attachment_manager.equip_to_slot(att, slot_name)
 
 
+## 不指定槽位名，自动匹配当前第一个能接受该配件的空槽位。
+## 父配件先装上后，它场景内的子槽会立即进入匹配范围。
+func equip_attachment_auto(cfg: AttachmentConfig) -> bool:
+	if not current_weapon or not current_weapon.attachment_manager:
+		return false
+	var slot := current_weapon.attachment_manager.find_first_available_slot_for(cfg)
+	if not slot:
+		return false
+	return equip_attachment(slot.get_slot_key(), cfg)
+
+
 ## 从当前武器的指定槽位卸载配件，返回被卸下的实例（null = 失败）
 func detach_attachment(slot_name: String) -> BaseAttachment:
 	if not current_weapon or not current_weapon.attachment_manager:
@@ -196,7 +218,7 @@ func detach_attachment(slot_name: String) -> BaseAttachment:
 
 
 ## 查询当前武器所有槽位状态，供改装 UI 渲染列表
-## 每项 Dictionary: { slot_name, slot_type, is_occupied, attachment_name, attachment_config }
+## 每项 Dictionary: { slot_name, slot_type, allowed_attachment_types, is_occupied, attachment_name, attachment_config }
 func get_attachment_slots() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	if not current_weapon or not current_weapon.attachment_manager:
@@ -209,6 +231,7 @@ func get_attachment_slots() -> Array[Dictionary]:
 		result.append({
 			"slot_name": slot_name,
 			"slot_type": slot.slot_type,
+			"allowed_attachment_types": slot.allowed_attachment_types,
 			"is_occupied": slot.is_occupied,
 			"attachment_name": slot.current_attachment.config.attachment_name if slot.is_occupied else "",
 			"attachment_config": slot.current_attachment.config if slot.is_occupied else null,
@@ -216,11 +239,15 @@ func get_attachment_slots() -> Array[Dictionary]:
 	return result
 
 
-## 返回当前武器配置中允许的槽位类型列表（基于 supports_* 字段）
+## 返回当前场景中已注册槽位的类型列表；槽位来源是 AttachmentSlot Marker3D，不再读 WeaponConfig。
 func get_supported_slot_types() -> Array[AttachmentSlot.SlotType]:
-	if not current_weapon or not current_weapon.config:
-		return []
-	return current_weapon.config.get_allowed_slot_types()
+	var result: Array[AttachmentSlot.SlotType] = []
+	if not current_weapon or not current_weapon.attachment_manager:
+		return result
+	for slot in current_weapon.attachment_manager.get_slots():
+		if not result.has(slot.slot_type):
+			result.append(slot.slot_type)
+	return result
 
 
 ## 调整指定槽位配件的导轨位置（供改装 UI 滑动条调用）
@@ -241,12 +268,12 @@ func get_rail_offset(slot_name: String) -> float:
 # ============================================================
 
 func _on_weapon_attachment_equipped(slot: AttachmentSlot, attachment: BaseAttachment) -> void:
-	var slot_name: String = slot.slot_name if slot.slot_name != "" else String(slot.name)
+	var slot_name: String = slot.get_slot_key()
 	attachment_equipped.emit(slot_name, attachment.config.attachment_name)
 	_apply_ads_state()
 
 
 func _on_weapon_attachment_detached(slot: AttachmentSlot, attachment: BaseAttachment) -> void:
-	var slot_name: String = slot.slot_name if slot.slot_name != "" else String(slot.name)
+	var slot_name: String = slot.get_slot_key()
 	attachment_detached.emit(slot_name)
 	_apply_ads_state()
