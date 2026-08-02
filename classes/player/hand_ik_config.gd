@@ -50,3 +50,24 @@ extends Resource
 
 ## 状态切换时权重平滑过渡时间（秒）
 @export_range(0.0, 0.5) var weight_blend_time: float = 0.12
+
+
+# ── 手腕朝向 ─────────────────────────────────────────────────
+@export_group("手腕朝向")
+
+## 手腕朝向模式：
+## false =（默认，美术主导）直接使用握把 Marker 的朝向。手腕怎么握由美术在
+##         handguard / 武器场景里摆 LeftHandGrip 决定，改 Marker 即时生效，
+##         这是设计上的正确控制面。
+## true  = 自动标定（应急）。装备武器/更换配件时记录「动画手腕朝向 相对于 握把朝向」
+##         的差值并每帧还原，手腕保持动画姿态。可临时救场，但会【完全忽略】
+##         美术对 Marker 朝向的调整——调 Marker 没反应时先检查这里是不是开着。
+@export var auto_calibrate_wrist: bool = false
+
+## 在上述基础上再叠加的手腕修正角（欧拉角，度）。若手腕仍有偏差，改这里。
+@export var wrist_rotation_offset: Vector3 = Vector3.ZERO
+
+## 握持点偏移（米，握把 Marker 的局部坐标系）。
+## 让手掌略微离开握把中心，避免手指穿进护木、看起来"焊"在枪上。
+## 数值很小即可（1~2 cm）；X = 握把左右，Y = 上下，Z = 沿枪身前后。
+@export var grip_position_offset: Vector3 = Vector3(0.0, -0.015, 0.0)
