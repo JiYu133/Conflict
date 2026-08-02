@@ -18,6 +18,14 @@ var _current_weapon: BaseWeapon
 var _enabled: bool = false
 var _ik_weight: float = 1.0
 
+# 手腕朝向标定：握把 Marker 的朝向由美术随手摆放（AK 本体握把带约 40° 倾斜，
+# 导轨护木握把是 90° 翻转），直接把它套到手骨上会拧歪手腕。
+# 这里记录「动画手腕朝向 相对于 握把朝向」的差值，每帧还原，手腕即保持自然姿态。
+var _skeleton: Skeleton3D = null
+var _hand_bone_idx: int = -1
+var _grip_to_hand_basis: Basis = Basis.IDENTITY
+var _wrist_calibrated: bool = false
+
 var _is_running: bool = false
 var _is_sprinting: bool = false
 var _is_ads: bool = false
@@ -32,6 +40,10 @@ func initialize(_model_manager: PlayerModelManager, _lookup: ModelLookupConfig) 
 
 func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 	_config = config if config else HandIKConfig.new()
+	_skeleton = skeleton
+	_hand_bone_idx = skeleton.find_bone(_config.tip_bone_name)
+	if _hand_bone_idx == -1:
+		GlobalLogger.warn("HandIK", "未找到手腕骨骼 '%s'，手腕朝向标定不可用" % _config.tip_bone_name)
 
 	var node_name := _config.ik_node_name
 	_ik_node = skeleton.get_node_or_null(node_name) as TwoBoneIK3D
@@ -72,6 +84,7 @@ func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 		weapon.attachment_manager.attachments_changed.connect(_on_attachments_changed)
 
 	_left_hand_grip = weapon.find_grip_node("LeftHandGrip")
+	_wrist_calibrated = false  # 换武器 → 握把朝向变了，重新标定手腕
 	if not _left_hand_grip:
 		GlobalLogger.warn("HandIK", "武器 '%s' 没有 LeftHandGrip 节点，左手 IK 不启用" % weapon.name)
 	else:
@@ -94,6 +107,8 @@ func _on_attachments_changed() -> void:
 		return
 	_left_hand_grip = _current_weapon.find_grip_node("LeftHandGrip")
 	_enabled = _left_hand_grip != null
+	# 换护木/握把后握把 Marker 朝向可能完全不同（导轨护木是 90° 翻转），需重新标定
+	_wrist_calibrated = false
 	if _enabled:
 		GlobalLogger.debug("HandIK", "配件变更，左手握把更新: %s" % _left_hand_grip.get_path())
 	else:
@@ -129,9 +144,53 @@ func process_ik(delta: float) -> void:
 
 	# 目标点跟随武器上的左手握把（武器随右手骨骼移动，故目标每帧都在变）
 	if _enabled and is_instance_valid(_left_hand_grip) and _hand_target:
-		_hand_target.global_transform = _left_hand_grip.global_transform
+		_update_hand_target()
 
 	var blend_time := maxf(_config.weight_blend_time if _config else 0.12, 0.001)
 	var effective_target := _target_weight if _enabled else 0.0
 	_current_weight = move_toward(_current_weight, effective_target, delta / blend_time)
 	_ik_node.influence = _current_weight
+
+
+## 位置永远取握把；朝向按配置决定是否用标定后的自然手腕姿态。
+func _update_hand_target() -> void:
+	var grip_xf: Transform3D = _left_hand_grip.global_transform
+	var grip_basis: Basis = grip_xf.basis.orthonormalized()
+
+	if not _config.auto_calibrate_wrist:
+		_hand_target.global_transform = Transform3D(
+			grip_basis * Basis.from_euler(_wrist_offset_rad()), grip_xf.origin
+		)
+		return
+
+	# 首帧（或换武器/换配件后）标定：此时 influence 仍在 0 附近，
+	# 手腕姿态来自动画，未被 IK 污染，正好用作参考姿态。
+	if not _wrist_calibrated:
+		_calibrate_wrist(grip_basis)
+
+	_hand_target.global_transform = Transform3D(
+		grip_basis * _grip_to_hand_basis * Basis.from_euler(_wrist_offset_rad()),
+		grip_xf.origin
+	)
+
+
+## 记录「动画手腕朝向 相对于 握把朝向」的差值
+func _calibrate_wrist(grip_basis: Basis) -> void:
+	if not _skeleton or _hand_bone_idx == -1:
+		_grip_to_hand_basis = Basis.IDENTITY
+		_wrist_calibrated = true
+		return
+	var hand_global: Basis = (
+		_skeleton.global_transform.basis.orthonormalized()
+		* _skeleton.get_bone_global_pose(_hand_bone_idx).basis.orthonormalized()
+	)
+	_grip_to_hand_basis = grip_basis.inverse() * hand_global
+	_wrist_calibrated = true
+	GlobalLogger.debug("HandIK", "手腕朝向已标定（握把→手腕差值已记录）")
+
+
+func _wrist_offset_rad() -> Vector3:
+	if not _config:
+		return Vector3.ZERO
+	var d := _config.wrist_rotation_offset
+	return Vector3(deg_to_rad(d.x), deg_to_rad(d.y), deg_to_rad(d.z))

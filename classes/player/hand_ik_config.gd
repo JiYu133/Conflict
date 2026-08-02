@@ -50,3 +50,17 @@ extends Resource
 
 ## 状态切换时权重平滑过渡时间（秒）
 @export_range(0.0, 0.5) var weight_blend_time: float = 0.12
+
+
+# ── 手腕朝向 ─────────────────────────────────────────────────
+@export_group("手腕朝向")
+
+## 手腕朝向模式：
+## true  = 自动标定（推荐）。装备武器/更换配件时记录「动画手腕朝向 相对于 握把朝向」
+##         的差值，之后每帧用该差值还原手腕姿态。握把 Marker 的朝向是美术随手摆的
+##         （AK 本体握把带约 40° 倾斜，导轨护木握把则是 90° 翻转），直接套用会把手腕拧歪。
+## false = 直接使用握把 Marker 的朝向（需保证美术已按骨骼轴向摆正握把）。
+@export var auto_calibrate_wrist: bool = true
+
+## 在上述基础上再叠加的手腕修正角（欧拉角，度）。自动标定后若仍需微调，改这里。
+@export var wrist_rotation_offset: Vector3 = Vector3.ZERO
