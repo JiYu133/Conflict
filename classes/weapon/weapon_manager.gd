@@ -67,14 +67,21 @@ func equip_weapon(weapon: BaseWeapon, emit_changed: bool = true) -> void:
 		weapon_changed.emit(current_weapon)
 
 
+## 用武器自身的 RightHandGrip 标记对齐到挂载点（右手骨骼）。
+## 位置和朝向都要对齐：只对齐位置会让武器继承手骨自带的约 90° 基向量，
+## 表现为「横着端枪」。取握把相对变换的逆，握把即与挂载点完全重合。
+## 若美术摆放的握把 Marker 轴向与手骨约定不一致，用 WeaponConfig.grip_alignment_offset 微调。
 func _align_to_grip(weapon: BaseWeapon) -> void:
 	var grip := weapon.find_grip_node("RightHandGrip")
 	if not grip:
-		weapon.position = Vector3.ZERO
-		weapon.rotation = Vector3.ZERO
+		weapon.transform = Transform3D.IDENTITY
 		return
 	var grip_relative := _relative_grip_transform(weapon, grip)
-	weapon.transform = Transform3D(Basis.IDENTITY, -grip_relative.origin)
+	var offset := Basis.IDENTITY
+	if weapon.config:
+		var d: Vector3 = weapon.config.grip_alignment_offset
+		offset = Basis.from_euler(Vector3(deg_to_rad(d.x), deg_to_rad(d.y), deg_to_rad(d.z)))
+	weapon.transform = Transform3D(offset, Vector3.ZERO) * grip_relative.affine_inverse()
 
 
 func _relative_grip_transform(root: Node3D, descendant: Node3D) -> Transform3D:
