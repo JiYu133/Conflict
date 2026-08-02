@@ -225,18 +225,17 @@ func _on_model_loaded(_model: Node3D) -> void:
 	var mount = model_manager.find_node_by_names(["WeaponMount"], "Node3D")
 	if mount:
 		GlobalLogger.info("Player", "Weapon mount has been set: " + mount.name)
-		var stable_mount := Node3D.new()
-		stable_mount.name = "WeaponStableMount"
-		_model.add_child(stable_mount)
-		stable_mount.position = _model.to_local(mount.global_position)
-		stable_mount.rotation.y = PI
-		ragdoll_system.set_weapon_mount(stable_mount)
-		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(stable_mount)
+		# 武器直接挂在右手骨骼的 BoneAttachment3D 下（WeaponMount），随右手动画移动。
+		# 不要改挂到模型下的静态节点：那样只能在模型加载瞬间采样一次右手位置
+		# （此时骨骼仍是 rest/T-pose），武器会被焊死在体侧且不随视角俯仰。
+		# 左手再通过 IK 抓握武器上的 LeftHandGrip（见 HandIKController）。
+		ragdoll_system.set_weapon_mount(mount)
+		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(mount)
 		if sway_pivot:
 			weapon_manager.set_mount(sway_pivot)
 			GlobalLogger.info("Player", "Weapon sway pivot created, weapons attach under: " + sway_pivot.name)
 		else:
-			weapon_manager.set_mount(stable_mount)
+			weapon_manager.set_mount(mount)
 	else:
 		GlobalLogger.error("Player", "Cannot find any weapon mount,the weapon will be not visible.")
 		GlobalLogger.error("Player", "If there's already a weapon mount,try to check if its name is \"WeaponMount\" ")
