@@ -4,21 +4,19 @@ extends Node
 # 左手 IK 控制器（TwoBoneIK3D 版本）
 # target_node 指向 Skeleton3D 下的中间 Marker3D（LeftHandTarget），
 # 每帧将其变换同步到武器的 LeftHandGrip，避免跨场景树路径失效。
+#
+# 只对左手做 IK：武器挂在右手骨骼的 WeaponMount 下（见 BasePlayer._on_model_loaded），
+# 右手天然持枪，无需 IK。若对右手也做 IK 去抓武器上的 RightHandGrip，
+# 会形成「右手→武器→握把→右手」的正反馈闭环，每帧累加握把偏移导致右臂漂移。
 
 var _config: HandIKConfig
 
 var _ik_node: TwoBoneIK3D
 var _hand_target: Marker3D      # Skeleton3D 下的中间目标点，由代码每帧更新
 var _left_hand_grip: Node3D     # 武器上的 LeftHandGrip Marker3D
-var _right_ik_node: TwoBoneIK3D
-var _right_hand_target: Marker3D
-var _right_elbow_pole: Marker3D
-var _right_hand_grip: Node3D
 var _current_weapon: BaseWeapon
 var _enabled: bool = false
-var _right_enabled: bool = false
 var _ik_weight: float = 1.0
-var _right_current_weight: float = 0.0
 
 var _is_running: bool = false
 var _is_sprinting: bool = false
@@ -53,38 +51,6 @@ func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 	_ik_node.set_target_node(0, _ik_node.get_path_to(_hand_target))
 	_ik_node.influence = 0.0
 	GlobalLogger.info("HandIK", "TwoBoneIK3D '%s' 已绑定，目标点: LeftHandTarget" % node_name)
-	_setup_right_hand_ik(skeleton)
-
-
-func _setup_right_hand_ik(skeleton: Skeleton3D) -> void:
-	var root_idx := skeleton.find_bone("mixamorig_RightArm")
-	var middle_idx := skeleton.find_bone("mixamorig_RightForeArm")
-	var end_idx := skeleton.find_bone("mixamorig_RightHand")
-	if root_idx == -1 or middle_idx == -1 or end_idx == -1:
-		GlobalLogger.warn("HandIK", "右手骨骼未找到，右手 IK 不启用")
-		return
-
-	_right_ik_node = TwoBoneIK3D.new()
-	_right_ik_node.name = "RightHandIK"
-	skeleton.add_child(_right_ik_node)
-	_right_ik_node.set_setting_count(1)
-	_right_ik_node.set_root_bone(0, root_idx)
-	_right_ik_node.set_middle_bone(0, middle_idx)
-	_right_ik_node.set_end_bone(0, end_idx)
-	_right_ik_node.influence = 0.0
-
-	_right_hand_target = Marker3D.new()
-	_right_hand_target.name = "RightHandTarget"
-	skeleton.add_child(_right_hand_target)
-
-	_right_elbow_pole = Marker3D.new()
-	_right_elbow_pole.name = "RightElbowPole"
-	skeleton.add_child(_right_elbow_pole)
-	_right_elbow_pole.position = Vector3(-0.45, 1.45, -0.1)
-
-	_right_ik_node.set_target_node(0, _right_ik_node.get_path_to(_right_hand_target))
-	_right_ik_node.set_pole_node(0, _right_ik_node.get_path_to(_right_elbow_pole))
-	GlobalLogger.info("HandIK", "右手 TwoBoneIK3D 已创建")
 
 
 func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
@@ -113,11 +79,6 @@ func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 		GlobalLogger.info("HandIK", "左手 IK 启用: grip=%s  weight=%.2f" % [
 			_left_hand_grip.get_path(), _ik_weight])
 
-	_right_hand_grip = weapon.find_grip_node("RightHandGrip")
-	_right_enabled = _right_ik_node != null and _right_hand_grip != null
-	if _right_enabled:
-		_right_current_weight = 1.0
-
 
 func _disconnect_weapon_attachments() -> void:
 	if is_instance_valid(_current_weapon) and _current_weapon.attachment_manager:
@@ -127,13 +88,16 @@ func _disconnect_weapon_attachments() -> void:
 	_current_weapon = null
 
 
+## 配件变更（换护木/握把等）后握把节点可能被替换，重新查找并更新 IK 目标
 func _on_attachments_changed() -> void:
 	if not _current_weapon:
 		return
 	_left_hand_grip = _current_weapon.find_grip_node("LeftHandGrip")
 	_enabled = _left_hand_grip != null
-	_right_hand_grip = _current_weapon.find_grip_node("RightHandGrip")
-	_right_enabled = _right_ik_node != null and _right_hand_grip != null
+	if _enabled:
+		GlobalLogger.debug("HandIK", "配件变更，左手握把更新: %s" % _left_hand_grip.get_path())
+	else:
+		GlobalLogger.warn("HandIK", "配件变更后未找到 LeftHandGrip，左手 IK 暂停")
 
 
 func set_movement_state(running: bool, sprinting: bool) -> void:
@@ -160,22 +124,14 @@ func _update_target_weight() -> void:
 
 
 func process_ik(delta: float) -> void:
-	if not _ik_node and not _right_ik_node:
+	if not _ik_node:
 		return
 
-	if _ik_node:
-		if _enabled and is_instance_valid(_left_hand_grip) and _hand_target:
-			_hand_target.global_transform = _left_hand_grip.global_transform
-		var blend_time := maxf(_config.weight_blend_time if _config else 0.12, 0.001)
-		var effective_target := _target_weight if _enabled else 0.0
-		_current_weight = move_toward(_current_weight, effective_target, delta / blend_time)
-		_ik_node.influence = _current_weight
+	# 目标点跟随武器上的左手握把（武器随右手骨骼移动，故目标每帧都在变）
+	if _enabled and is_instance_valid(_left_hand_grip) and _hand_target:
+		_hand_target.global_transform = _left_hand_grip.global_transform
 
-	if _right_ik_node:
-		if _right_enabled and is_instance_valid(_right_hand_grip) and _right_hand_target:
-			_right_hand_target.global_transform = _right_hand_grip.global_transform
-		var right_target := 1.0 if _right_enabled else 0.0
-		_right_current_weight = move_toward(
-			_right_current_weight, right_target, delta / 0.08
-		)
-		_right_ik_node.influence = _right_current_weight
+	var blend_time := maxf(_config.weight_blend_time if _config else 0.12, 0.001)
+	var effective_target := _target_weight if _enabled else 0.0
+	_current_weight = move_toward(_current_weight, effective_target, delta / blend_time)
+	_ik_node.influence = _current_weight
