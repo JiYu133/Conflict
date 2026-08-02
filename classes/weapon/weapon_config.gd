@@ -85,6 +85,10 @@ extends Resource
 
 # 握持 IK ─────────────────────────────────────────────────
 @export_group("握持 IK")
+## 持枪姿态修正角（欧拉角，度）。武器默认按自身 RightHandGrip 标记对齐到右手骨骼；
+## 若美术摆放握把 Marker 的轴向与骨骼约定不一致（枪身侧倒/上下颠倒），在此修正。
+## 通常只需调 Z（枪身滚转）或 X（枪口俯仰）。
+@export var grip_alignment_offset: Vector3 = Vector3.ZERO
 @export_range(0.0, 1.0) var left_hand_ik_weight: float = 1.0
 
 # 配件槽位声明 ────────────────────────────────────────────
