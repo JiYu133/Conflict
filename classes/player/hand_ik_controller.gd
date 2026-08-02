@@ -156,10 +156,12 @@ func process_ik(delta: float) -> void:
 func _update_hand_target() -> void:
 	var grip_xf: Transform3D = _left_hand_grip.global_transform
 	var grip_basis: Basis = grip_xf.basis.orthonormalized()
+	# 握持点偏移在握把局部坐标系下施加，手掌略微离开握把表面
+	var origin: Vector3 = grip_xf.origin + grip_basis * _config.grip_position_offset
 
 	if not _config.auto_calibrate_wrist:
 		_hand_target.global_transform = Transform3D(
-			grip_basis * Basis.from_euler(_wrist_offset_rad()), grip_xf.origin
+			grip_basis * Basis.from_euler(_wrist_offset_rad()), origin
 		)
 		return
 
@@ -170,7 +172,7 @@ func _update_hand_target() -> void:
 
 	_hand_target.global_transform = Transform3D(
 		grip_basis * _grip_to_hand_basis * Basis.from_euler(_wrist_offset_rad()),
-		grip_xf.origin
+		origin
 	)
 
 

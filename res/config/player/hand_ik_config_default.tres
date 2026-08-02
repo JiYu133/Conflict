@@ -6,9 +6,10 @@
 script = ExtResource("1_hq47r")
 ik_node_name = "LeftHandIK"
 default_ik_weight = 1.0
-walk_ik_weight = 1.0
-run_ik_weight = 0.85
-sprint_ik_weight = 0.6
-ads_ik_weight = 1.0
+walk_ik_weight = 0.65
+run_ik_weight = 0.4
+sprint_ik_weight = 0.15
+ads_ik_weight = 0.8
 weight_blend_time = 0.12
+grip_position_offset = Vector3(0, -0.015, 0)
 metadata/_custom_type_script = "uid://b304dqmhgyp3b"
