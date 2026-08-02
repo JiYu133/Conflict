@@ -44,6 +44,7 @@ var _model_manager: PlayerModelManager
 var _model_lookup_config: ModelLookupConfig
 var _camera_config: CameraConfig
 var _player: BasePlayer
+var _settings_service
 var _bone_attachment: BoneAttachment3D
 
 var _mouse_sensitivity: float
@@ -87,11 +88,13 @@ func initialize(
 	player: BasePlayer,
 	model_manager: PlayerModelManager,
 	model_lookup_config: ModelLookupConfig,
-	camera_config: CameraConfig
+	camera_config: CameraConfig,
+	settings_service
 ) -> void:
 	_model_manager = model_manager
 	_model_lookup_config = model_lookup_config if model_lookup_config else ModelLookupConfig.new()
 	_camera_config = camera_config if camera_config else CameraConfig.new()
+	_settings_service = settings_service
 	_player = player
 
 	_spring_x = CameraSpring1D.new()
@@ -306,8 +309,12 @@ func _input(event: InputEvent) -> void:
 		return
 	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
 		return
-	_player.rotate_y(-event.relative.x * _mouse_sensitivity)
-	_vertical_angle -= event.relative.y * _mouse_sensitivity
+	var aim_multiplier := float(_settings_service.get_value("controls/aim_sensitivity", 1.0)) if _is_ads and _settings_service else 1.0
+	var horizontal_multiplier := float(_settings_service.get_value("controls/mouse_sensitivity", 1.0)) * aim_multiplier if _settings_service else 1.0
+	var vertical_multiplier := float(_settings_service.get_value("controls/vertical_sensitivity", 1.0)) * aim_multiplier if _settings_service else 1.0
+	var invert_sign := -1.0 if _settings_service and bool(_settings_service.get_value("controls/invert_y", false)) else 1.0
+	_player.rotate_y(-event.relative.x * _mouse_sensitivity * horizontal_multiplier)
+	_vertical_angle -= event.relative.y * _mouse_sensitivity * vertical_multiplier * invert_sign
 	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
 
 
