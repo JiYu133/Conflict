@@ -1,6 +1,10 @@
 class_name BasePlayer
 extends CharacterBody3D
 
+const SETTINGS_SERVICE_SCRIPT := preload("res://classes/ui/settings/settings_service.gd")
+const SETTINGS_MENU_SCRIPT := preload("res://classes/ui/settings/settings_menu.gd")
+const PAUSE_MENU_SCRIPT := preload("res://classes/ui/pause_menu.gd")
+
 # 在定义玩家对象时绑定给玩家的脚本 同时也要绑定玩家配置文件
 
 
@@ -45,7 +49,9 @@ var animation_controller: PlayerAnimationController
 var health_system: HealthSystem
 var stamina_system: StaminaSystem
 var screen_effects: PlayerScreenEffects
-var settings_menu: SettingsMenu
+var settings_service
+var settings_menu
+var pause_menu
 var free_camera_controller: FreeCameraController
 var medical_debug_menu: MedicalDebugMenu
 
@@ -82,6 +88,7 @@ func _ready() -> void:
 func _initialize_subsystems() -> void:
 	GlobalLogger.info("Player", "Initializing player subsystems.")
 	# 创建子系统
+	settings_service = _create_subsystem(SETTINGS_SERVICE_SCRIPT.new(), "SettingsService")
 	model_manager = _create_subsystem(PlayerModelManager.new(), "ModelManager")
 	camera_controller = _create_subsystem(PlayerCameraController.new(),"CameraController")
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
@@ -95,6 +102,7 @@ func _initialize_subsystems() -> void:
 	stamina_system = _create_subsystem(StaminaSystem.new(), "StaminaSystem")
 
 	# 初始化子系统
+	settings_service.initialize()
 
 	stance_controller.initialize(self, player_config)
 
@@ -102,7 +110,8 @@ func _initialize_subsystems() -> void:
 		self,
 		model_manager,
 		player_config.model_config if player_config else null,
-		player_config.camera_config if player_config else null
+		player_config.camera_config if player_config else null,
+		settings_service
 		)
 
 	movement_controller.initialize(
@@ -137,9 +146,11 @@ func _initialize_subsystems() -> void:
 	var _combat_notif := _create_subsystem(CombatNotificationBridge.new(), "CombatNotifBridge")
 	_combat_notif.initialize(self)
 
-	# 设置菜单（ESC 打开）：所有构建可用。启动时套用已保存键位并接管 ESC。
-	settings_menu = _create_subsystem(SettingsMenu.new(), "SettingsMenu") as SettingsMenu
-	settings_menu.initialize(self)
+	# 暂停菜单拥有本地输入阻断；设置页由它打开，避免 ESC 直接跳入设置。
+	settings_menu = _create_subsystem(SETTINGS_MENU_SCRIPT.new(), "SettingsMenu")
+	settings_menu.initialize(settings_service)
+	pause_menu = _create_subsystem(PAUSE_MENU_SCRIPT.new(), "PauseMenu")
+	pause_menu.initialize(self, settings_menu)
 
 	if OS.is_debug_build():
 		free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
@@ -256,10 +267,9 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	# 设置菜单打开时独占输入（含 ESC 关闭、键位监听），玩家让出全部操作
-	if settings_menu and settings_menu.is_open():
+	# 暂停菜单/设置页打开时，本地玩家让出全部输入。
+	if (settings_menu and settings_menu.is_open()) or (pause_menu and pause_menu.is_open()):
 		return
-	# ESC 由 SettingsMenu 接管：关闭时按 ESC 打开菜单（并释放鼠标）
 
 	if is_alive and controllable:
 		# 换弹

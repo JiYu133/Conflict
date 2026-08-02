@@ -67,29 +67,28 @@ Conflict 的 UI 系统采用**统一的视觉语言**：扁平、克制、单一
 
 ## 核心组件
 
-### 1. 设置菜单 (SettingsMenu)
+### 1. 暂停与设置 (PauseMenu / SettingsMenu)
 
 **文件位置**:
-- 脚本: `classes/ui/settings/settings_menu.gd`
-- 场景: `res/ui/settings_menu.tscn`
-- 主题: `res/themes/settings_theme.tres`
-- 数据: `classes/ui/settings/keybind_store.gd`
+- 暂停菜单: `classes/ui/pause_menu.gd`
+- 设置界面: `classes/ui/settings/settings_menu.gd`
+- 玩家偏好组件: `classes/ui/settings/settings_service.gd`
+- 键位数据: `classes/ui/settings/keybind_store.gd`
+- 玩家可见文本: `classes/ui/settings/settings_text.gd`
 
 **功能**:
-- 键位重新绑定（点击监听模式）
-- 实时冲突检测（红色警告）
-- 持久化到 `user://keybinds.cfg`
-- ESC 键打开/关闭
+- ESC 打开本地暂停菜单，再进入设置；不会暂停整个场景树
+- 黑灰白半透明设置面板，控制页采用左侧分类和连续设置行
+- 水平/垂直/瞄具灵敏度与反转 Y（瞄具倍率不由 FOV 改写）
+- 主、副键位绑定、冲突替换或保留、取消时恢复运行时草稿
+- 键位保存于 `user://keybinds.cfg`，其他偏好保存于 `user://settings.cfg`
 
 **设计特点**:
-- 场景文件定义固定 UI 结构
-- 代码动态生成键位行（基于 `KeybindStore.ACTIONS`）
-- 分类标题组织（移动、姿态、战斗、调试）
-- 单项/全局恢复默认功能
+- 设置界面纯代码构建，文本均集中于 `SettingsText`
+- `SettingsService` 由 `BasePlayer` 创建并注入依赖；不依赖新的 Autoload 或全局类
+- 画面、音频、界面与辅助功能分类已预留，未接入的分类不提供虚假选项
 
-**手动绘制指南**: 见 [SETTINGS_UI_GUIDE.md](../SETTINGS_UI_GUIDE.md)
-
-**CanvasLayer**: 20
+**CanvasLayer**: PauseMenu 20；SettingsMenu 21
 
 ---
 
@@ -189,7 +188,8 @@ TopRightNotificationManager.show_notification("equip", config)
 | 5 | 调试信息 | MedicalDebugHUD |
 | 10 | 游戏内 HUD | KeyPromptManager |
 | 15 | 临时通知 | TopRightNotificationManager |
-| 20 | 全屏菜单 | SettingsMenu |
+| 20 | 暂停菜单 | PauseMenu |
+| 21 | 设置页面 | SettingsMenu |
 | 100 | 遮罩与终局 | DeathScreen |
 
 ---
@@ -310,9 +310,8 @@ button.theme_type_variation = "AccentButton"
 ## 未来扩展计划
 
 1. **多分类设置**:
-   - 标签式界面（控制、图形、音频、游戏性）
-   - 图形设置: 分辨率、帧率上限、抗锯齿
-   - 音频设置: 主音量、分轨音量、音频设备
+   - 接入画面设置：显示模式、帧率上限、渲染比例与瞄具视口质量
+   - 接入音频设置：主音量、分轨音量、音频设备
 
 2. **辅助功能**:
    - 色盲模式

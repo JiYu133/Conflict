@@ -1,6 +1,8 @@
 # 设置界面手动绘制指南 (Godot 4.7)
 
-> 这份指南将带你在 Godot 编辑器中从零开始创建设置界面的场景文件。  
+> 已归档：当前设置系统由 PauseMenu、SettingsMenu 与 BasePlayer 持有的 SettingsService 以代码构建，玩家可见文本集中在 `classes/ui/settings/settings_text.gd`。本指南保留作早期 Theme/布局参考，不应再用于创建 `settings_menu.tscn`。
+
+> 这份指南将带你在 Godot 编辑器中从零开始创建设置界面的场景文件。
 > 预计耗时：30-45 分钟
 
 ---
