@@ -70,6 +70,20 @@ enum SlotType {
 ## 显示名（HUD提示用），如"瞄具导轨"
 
 @export var can_be_empty: bool = true
+
+## 核心配件槽位：这些位置一旦空着，枪就不成立——没有握把没地方握、
+## 没有护木没法托前手、机匣盖敞着机框直接暴露。改装时不允许留空。
+## 单个槽位可用 can_be_empty = false 额外标记为核心。
+const CORE_SLOT_TYPES: Array[SlotType] = [
+	SlotType.PISTOL_GRIP,
+	SlotType.HANDGUARD,
+	SlotType.RECEIVER_COVER,
+]
+
+
+## 该槽位是否属于核心配件（不允许空置）
+func is_core() -> bool:
+	return not can_be_empty or slot_type in CORE_SLOT_TYPES
 ## 是否可以为空（机械瞄具槽不能为空，要保留后照门）
 
 # ──────────────────────────── 运行时状态 ────────────────────────────

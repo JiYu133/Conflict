@@ -113,7 +113,8 @@ func _restore_attachments(attachment_state: Dictionary) -> void:
 			elif att:
 				att.queue_free()
 	if not remaining.is_empty():
-		GlobalLogger.warn("WeaponPreview", "预览未能还原的配件槽位: %s" % ", ".join(remaining.keys()))
+		# 常见于父件被卸下、子槽位暂时消失；父件装回来后会自动复位，不是错误
+		GlobalLogger.debug("WeaponPreview", "暂未还原的配件槽位: %s" % ", ".join(remaining.keys()))
 
 
 ## 依据武器包围盒自动取景（侧视），保证不同长度的枪都能填满画面。
