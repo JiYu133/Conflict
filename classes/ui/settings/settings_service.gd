@@ -10,9 +10,7 @@ const SAVE_PATH := "user://settings.cfg"
 const VERSION := 1
 
 const DEFAULTS := {
-	"controls/mouse_sensitivity": 1.0,
-	"controls/vertical_sensitivity": 1.0,
-	"controls/aim_sensitivity": 0.70,
+	"controls/sensitivity": 1.0,
 	"controls/invert_y": false,
 }
 
@@ -83,7 +81,7 @@ func save_settings() -> Error:
 
 func _normalize_value(key: String, value: Variant) -> Variant:
 	match key:
-		"controls/mouse_sensitivity", "controls/vertical_sensitivity", "controls/aim_sensitivity":
+		"controls/sensitivity":
 			return clampf(float(value), 0.10, 3.00)
 		"controls/invert_y":
 			return bool(value)

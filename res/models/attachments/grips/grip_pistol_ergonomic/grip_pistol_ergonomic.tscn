@@ -9,7 +9,7 @@ script = ExtResource("1_base")
 [node name="Mesh" parent="." unique_id=1924163973 instance=ExtResource("2_mesh")]
 
 [node name="RightHandGrip" type="Marker3D" parent="." unique_id=1934027506]
-transform = Transform3D(-4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0, 1, 0.012911864, -0.08706989, 0)
+transform = Transform3D(-5.7320566e-15, -1.3113416e-07, -1, 1, -4.371139e-08, 0, -4.371139e-08, -1, 1.3113416e-07, 0.04635913, -0.05508747, 0.039154053)
 
 [node name="SnapPoint" type="Marker3D" parent="." unique_id=738933634]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.017191358, -0.010047287, 0.013451405)
