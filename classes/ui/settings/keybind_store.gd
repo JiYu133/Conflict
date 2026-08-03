@@ -30,7 +30,6 @@ const ACTIONS: Array[Dictionary] = [
 	{ "action": "stance_raise", "display": SettingsText.ACTION_STANCE_RAISE, "category": SettingsText.CATEGORY_STANCE },
 	{ "action": "stance_lower", "display": SettingsText.ACTION_STANCE_LOWER, "category": SettingsText.CATEGORY_STANCE },
 	{ "action": "fire", "display": SettingsText.ACTION_FIRE, "category": SettingsText.CATEGORY_COMBAT },
-	{ "action": "aim", "display": SettingsText.ACTION_AIM, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "reload", "display": SettingsText.ACTION_RELOAD, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "cycle_fire_mode", "display": SettingsText.ACTION_CYCLE_FIRE_MODE, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "clear_malfunction", "display": SettingsText.ACTION_CLEAR_MALFUNCTION, "category": SettingsText.CATEGORY_COMBAT },

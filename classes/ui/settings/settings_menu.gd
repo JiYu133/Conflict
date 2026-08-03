@@ -5,6 +5,8 @@ extends CanvasLayer
 const FONT_PATH := "res://res/fonts/ConflictCJKUI.ttf"
 const KeybindStore = preload("res://classes/ui/settings/keybind_store.gd")
 const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
+const AnimatedToggle = preload("res://classes/ui/settings/animated_toggle.gd")
+const BLUR_SHADER_PATH := "res://res/shaders/death_blur.gdshader"
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)
 const COL_PANEL := Color(0.063, 0.067, 0.075, 0.90)
 const COL_SURFACE := Color(0.10, 0.106, 0.12, 0.76)
@@ -28,6 +30,7 @@ signal closed
 var _open := false
 var _settings_service
 var _theme: Theme
+var _background_blur_layer: CanvasLayer
 var _active_category := "controls"
 var _category_buttons: Dictionary = {}
 var _content_title: Label
@@ -64,6 +67,7 @@ func _ready() -> void:
 	if ResourceLoader.exists(FONT_PATH):
 		_theme.default_font = load(FONT_PATH)
 	_theme.default_font_size = 15
+	_setup_background_blur()
 	_build_ui()
 	visible = false
 
@@ -76,6 +80,8 @@ func open() -> void:
 	_bindings_snapshot = KeybindStore.snapshot_bindings()
 	_dirty = false
 	visible = true
+	if _background_blur_layer:
+		_background_blur_layer.visible = true
 	_select_category("controls")
 
 
@@ -106,7 +112,14 @@ func _close() -> void:
 		return
 	_open = false
 	visible = false
+	if _background_blur_layer:
+		_background_blur_layer.visible = false
 	closed.emit()
+
+
+func _exit_tree() -> void:
+	if _background_blur_layer and is_instance_valid(_background_blur_layer):
+		_background_blur_layer.queue_free()
 
 
 func _input(event: InputEvent) -> void:
@@ -190,6 +203,31 @@ func _build_ui() -> void:
 
 	root.add_child(_divider())
 	_build_footer(root)
+
+
+func _setup_background_blur() -> void:
+	_background_blur_layer = CanvasLayer.new()
+	_background_blur_layer.name = "SettingsBackgroundBlurLayer"
+	_background_blur_layer.layer = 19
+	_background_blur_layer.visible = false
+	get_parent().add_child(_background_blur_layer)
+	_background_blur_layer.add_child(_make_background_blur())
+
+
+func _make_background_blur() -> ColorRect:
+	var blur := ColorRect.new()
+	blur.name = "SettingsBackgroundBlur"
+	blur.set_anchors_preset(Control.PRESET_FULL_RECT)
+	blur.color = Color.WHITE
+	blur.modulate.a = 0.72
+	blur.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shader := load(BLUR_SHADER_PATH) as Shader
+	if shader:
+		var material := ShaderMaterial.new()
+		material.shader = shader
+		material.set_shader_parameter("blur_amount", 3.0)
+		blur.material = material
+	return blur
 
 
 func _build_header(parent: Control) -> void:
@@ -332,9 +370,7 @@ func _build_controls_page() -> void:
 	_content_title.text = SettingsText.CATEGORY_CONTROLS
 	_content_subtitle.text = SettingsText.CONTROLS_SUBTITLE
 	_add_section(SettingsText.SECTION_MOUSE_AND_OPTICS)
-	_add_slider_row(SettingsText.CONTROL_HORIZONTAL_SENSITIVITY, SettingsText.CONTROL_HORIZONTAL_SENSITIVITY_HINT, "controls/mouse_sensitivity", 0.10, 3.00, 0.05)
-	_add_slider_row(SettingsText.CONTROL_VERTICAL_SENSITIVITY, SettingsText.CONTROL_VERTICAL_SENSITIVITY_HINT, "controls/vertical_sensitivity", 0.10, 3.00, 0.05)
-	_add_slider_row(SettingsText.CONTROL_AIM_SENSITIVITY, SettingsText.CONTROL_AIM_SENSITIVITY_HINT, "controls/aim_sensitivity", 0.10, 3.00, 0.05)
+	_add_slider_row(SettingsText.CONTROL_SENSITIVITY, SettingsText.CONTROL_SENSITIVITY_HINT, "controls/sensitivity", 0.10, 3.00, 0.05)
 	_add_toggle_row(SettingsText.CONTROL_INVERT_Y, SettingsText.CONTROL_INVERT_Y_HINT, "controls/invert_y")
 	_add_section(SettingsText.SECTION_KEYBINDS)
 	var current_category := ""
@@ -392,7 +428,8 @@ func _add_slider_row(title: String, description: String, key: String, minimum: f
 	value_label.add_theme_color_override("font_color", COL_TEXT)
 	row.add_child(value_label)
 	var slider := HSlider.new()
-	slider.custom_minimum_size = Vector2(210, 0)
+	slider.custom_minimum_size = Vector2(260, 24)
+	_style_slider(slider)
 	slider.min_value = minimum
 	slider.max_value = maximum
 	slider.step = step
@@ -406,11 +443,40 @@ func _add_slider_row(title: String, description: String, key: String, minimum: f
 	row.add_child(slider)
 
 
+func _style_slider(slider: HSlider) -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(1.0, 1.0, 1.0, 0.14)
+	track.set_corner_radius_all(0)
+	track.content_margin_top = 7.0
+	track.content_margin_bottom = 7.0
+	slider.add_theme_stylebox_override("slider", track)
+
+	var active_track := StyleBoxFlat.new()
+	active_track.bg_color = Color(1.0, 1.0, 1.0, 0.76)
+	active_track.set_corner_radius_all(0)
+	active_track.content_margin_top = 7.0
+	active_track.content_margin_bottom = 7.0
+	slider.add_theme_stylebox_override("grabber_area", active_track)
+	slider.add_theme_icon_override("grabber", _make_slider_grabber(Color(0.96, 0.96, 0.96)))
+	slider.add_theme_icon_override("grabber_highlight", _make_slider_grabber(Color.WHITE))
+
+
+func _make_slider_grabber(color: Color) -> GradientTexture2D:
+	var gradient := Gradient.new()
+	gradient.colors = PackedColorArray([color, color])
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.width = 14
+	texture.height = 22
+	texture.fill_from = Vector2(0.0, 0.5)
+	texture.fill_to = Vector2(1.0, 0.5)
+	return texture
+
+
 func _add_toggle_row(title: String, description: String, key: String) -> void:
 	var row := _new_row()
 	_add_row_labels(row, title, description)
-	var toggle := CheckBox.new()
-	toggle.text = SettingsText.TOGGLE_ENABLED
+	var toggle := AnimatedToggle.new()
 	toggle.button_pressed = bool(_settings_service.get_value(key))
 	toggle.toggled.connect(func(enabled: bool):
 		_settings_service.set_value(key, enabled)

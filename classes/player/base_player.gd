@@ -279,11 +279,6 @@ func _input(event: InputEvent) -> void:
 			weapon_manager.press_trigger()
 		if event.is_action_released("fire"):
 			weapon_manager.release_trigger()
-		# 瞄准（ADS）
-		if event.is_action_pressed("aim"):
-			weapon_manager.set_aiming(true)
-		if event.is_action_released("aim"):
-			weapon_manager.set_aiming(false)
 		# 切换射击模式
 		if event.is_action_pressed("cycle_fire_mode"):
 			weapon_manager.cycle_fire_mode()
@@ -377,6 +372,8 @@ func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathTy
 
 ## 启动布娃娃物理的公共逻辑，die() 和 go_unconscious() 共用
 func _activate_ragdoll(death_type: PlayerRagdollSystem.DeathType, impact_direction: Vector3) -> void:
+	if free_camera_controller:
+		free_camera_controller.force_exit()
 	is_ragdolled = true
 	velocity = Vector3.ZERO
 	_set_collision_enabled(false)

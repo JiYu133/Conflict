@@ -309,12 +309,10 @@ func _input(event: InputEvent) -> void:
 		return
 	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
 		return
-	var aim_multiplier := float(_settings_service.get_value("controls/aim_sensitivity", 1.0)) if _is_ads and _settings_service else 1.0
-	var horizontal_multiplier := float(_settings_service.get_value("controls/mouse_sensitivity", 1.0)) * aim_multiplier if _settings_service else 1.0
-	var vertical_multiplier := float(_settings_service.get_value("controls/vertical_sensitivity", 1.0)) * aim_multiplier if _settings_service else 1.0
+	var unified_multiplier := float(_settings_service.get_value("controls/sensitivity", 1.0)) if _settings_service else 1.0
 	var invert_sign := -1.0 if _settings_service and bool(_settings_service.get_value("controls/invert_y", false)) else 1.0
-	_player.rotate_y(-event.relative.x * _mouse_sensitivity * horizontal_multiplier)
-	_vertical_angle -= event.relative.y * _mouse_sensitivity * vertical_multiplier * invert_sign
+	_player.rotate_y(-event.relative.x * _mouse_sensitivity * unified_multiplier)
+	_vertical_angle -= event.relative.y * _mouse_sensitivity * unified_multiplier * invert_sign
 	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
 
 
@@ -461,6 +459,10 @@ func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
 
 func get_active_camera() -> Camera3D:
 	return _active_camera
+
+
+func get_base_mouse_sensitivity() -> float:
+	return _mouse_sensitivity
 
 
 func get_vertical_angle() -> float:

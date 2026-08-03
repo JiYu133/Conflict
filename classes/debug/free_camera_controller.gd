@@ -132,6 +132,16 @@ func toggle() -> void:
 		_enter()
 
 
+func is_active() -> bool:
+	return _active
+
+
+## 玩家进入死亡/失去意识流程时清理自由视角，避免相机和第一人称模型状态残留。
+func force_exit() -> void:
+	if _active:
+		_exit()
+
+
 func _set_head_mesh_shadow(mode: GeometryInstance3D.ShadowCastingSetting) -> void:
 	if not _player.model_manager or not _player.model_manager.model_node:
 		return
@@ -210,12 +220,13 @@ func _exit() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not _active or not _free_cam:
+	if _input_blocked():
 		return
 
 	if event is InputEventMouseMotion:
-		_yaw   -= event.relative.x * sensitivity
-		_pitch -= event.relative.y * sensitivity
+		var look_sensitivity := _get_look_sensitivity()
+		_yaw   -= event.relative.x * look_sensitivity
+		_pitch -= event.relative.y * look_sensitivity
 		_pitch  = clamp(_pitch, -PI / 2.0 + 0.01, PI / 2.0 - 0.01)
 		_free_cam.global_rotation = Vector3(_pitch, _yaw, 0.0)
 
@@ -305,7 +316,7 @@ func _find_health_system(collider: Object) -> HealthSystem:
 
 
 func _physics_process(_delta: float) -> void:
-	if not _active or not _free_cam:
+	if _input_blocked():
 		return
 
 	var origin  := _free_cam.global_position
@@ -329,7 +340,7 @@ func _physics_process(_delta: float) -> void:
 
 
 func _process(delta: float) -> void:
-	if not _active or not _free_cam:
+	if _input_blocked():
 		return
 
 	# 淡入淡出
@@ -374,6 +385,27 @@ func _process(delta: float) -> void:
 
 	if dir.length_squared() > 0.0:
 		_free_cam.global_position += dir.normalized() * speed * delta
+
+
+func _input_blocked() -> bool:
+	if not _active or not _free_cam:
+		return true
+	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
+		return true
+	if _player and _player.pause_menu and _player.pause_menu.is_open():
+		return true
+	if _player and _player.settings_menu and _player.settings_menu.is_open():
+		return true
+	return false
+
+
+func _get_look_sensitivity() -> float:
+	var base := sensitivity
+	if _camera_controller and _camera_controller.has_method("get_base_mouse_sensitivity"):
+		base = _camera_controller.get_base_mouse_sensitivity()
+	var settings = _player.settings_service if _player else null
+	var unified := float(settings.get_value("controls/sensitivity", 1.0)) if settings else 1.0
+	return base * unified
 
 
 func _get_part_color(part: int) -> Color:
