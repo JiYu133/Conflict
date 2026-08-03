@@ -3,7 +3,12 @@ extends RefCounted
 ## 改装界面文案集中管理（与 settings_text.gd 同思路，便于后续本地化）
 
 const TITLE := "武器改装"
-const SUBTITLE := "选择左侧挂载点，再从右侧列表安装或卸下配件"
+const SUBTITLE := "点击引线标注的挂载点卡片，安装或卸下配件 · 改装即时生效"
+const RESET_VIEW := "复位视角"
+const OPTION_COUNT := "%d 个可用配件"
+const INSTALL := "安装"
+const DETACH_SHORT := "卸下"
+const NO_MODIFIER := "无数值修正"
 
 const NO_WEAPON := "当前没有装备武器"
 const NO_WEAPON_HINT := "装备一把武器后再打开改装界面"
