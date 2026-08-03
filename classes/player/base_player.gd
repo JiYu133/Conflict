@@ -4,6 +4,7 @@ extends CharacterBody3D
 const SETTINGS_SERVICE_SCRIPT := preload("res://classes/ui/settings/settings_service.gd")
 const SETTINGS_MENU_SCRIPT := preload("res://classes/ui/settings/settings_menu.gd")
 const PAUSE_MENU_SCRIPT := preload("res://classes/ui/pause_menu.gd")
+const WEAPON_MOD_MENU_SCRIPT := preload("res://classes/ui/weapon_mod/weapon_mod_menu.gd")
 
 # 在定义玩家对象时绑定给玩家的脚本 同时也要绑定玩家配置文件
 
@@ -52,6 +53,7 @@ var screen_effects: PlayerScreenEffects
 var settings_service
 var settings_menu
 var pause_menu
+var weapon_mod_menu
 var free_camera_controller: FreeCameraController
 var medical_debug_menu: MedicalDebugMenu
 
@@ -151,6 +153,12 @@ func _initialize_subsystems() -> void:
 	settings_menu.initialize(settings_service)
 	pause_menu = _create_subsystem(PAUSE_MENU_SCRIPT.new(), "PauseMenu")
 	pause_menu.initialize(self, settings_menu)
+
+	# 武器改装界面：接口已就绪（open/close/toggle/is_open + opened/closed 信号），
+	# 正式入口（军械库/装备界面）接入前，暂由 debug 构建的 weapon_mod_menu 动作
+	# （默认 N，可在设置→控制→调试 中改绑）打开。
+	weapon_mod_menu = _create_subsystem(WEAPON_MOD_MENU_SCRIPT.new(), "WeaponModMenu")
+	weapon_mod_menu.initialize(self)
 
 	if OS.is_debug_build():
 		free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
@@ -266,8 +274,9 @@ func _process(delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	# 暂停菜单/设置页打开时，本地玩家让出全部输入。
-	if (settings_menu and settings_menu.is_open()) or (pause_menu and pause_menu.is_open()):
+	# 暂停菜单/设置页/改装界面打开时，本地玩家让出全部输入。
+	if (settings_menu and settings_menu.is_open()) or (pause_menu and pause_menu.is_open()) \
+			or (weapon_mod_menu and weapon_mod_menu.is_open()):
 		return
 
 	if is_alive and controllable:
@@ -293,6 +302,11 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_free_cam"):
 		if free_camera_controller:
 			free_camera_controller.toggle()
+
+	# 改装界面（debug 临时入口，默认 N，可在设置中改绑）
+	if event.is_action_pressed("weapon_mod_menu"):
+		if weapon_mod_menu:
+			weapon_mod_menu.toggle()
 
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:

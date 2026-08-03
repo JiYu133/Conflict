@@ -16,6 +16,8 @@ const COL_MUTED := Color(0.61, 0.64, 0.68)
 const COL_DANGER := Color(0.84, 0.42, 0.39)
 const COL_DANGER_DIM := Color(0.84, 0.42, 0.39, 0.12)
 const COL_HOVER := Color(1.0, 1.0, 1.0, 0.055)
+## 提示气泡底色：必须接近不透明，否则文字与背后界面重叠看不清
+const COL_TOOLTIP_BG := Color(0.043, 0.047, 0.055, 0.98)
 
 const CATEGORIES := [
 	{ "id": "controls", "label": SettingsText.CATEGORY_CONTROLS },
@@ -67,6 +69,7 @@ func _ready() -> void:
 	if ResourceLoader.exists(FONT_PATH):
 		_theme.default_font = load(FONT_PATH)
 	_theme.default_font_size = 15
+	_setup_tooltip_style()
 	_setup_background_blur()
 	_build_ui()
 	visible = false
@@ -203,6 +206,21 @@ func _build_ui() -> void:
 
 	root.add_child(_divider())
 	_build_footer(root)
+
+
+## 提示气泡（未开放分类等）默认背景过于透明，文字会与下层界面叠在一起看不清。
+## 这里给 TooltipPanel 一个近乎不透明的深色底并加描边，文字压在其上。
+func _setup_tooltip_style() -> void:
+	var box := _box(COL_TOOLTIP_BG, COL_BORDER, 3)
+	box.content_margin_left = 12
+	box.content_margin_right = 12
+	box.content_margin_top = 8
+	box.content_margin_bottom = 8
+	_theme.set_stylebox("panel", "TooltipPanel", box)
+	_theme.set_color("font_color", "TooltipLabel", COL_TEXT)
+	_theme.set_font_size("font_size", "TooltipLabel", 13)
+	if ResourceLoader.exists(FONT_PATH):
+		_theme.set_font("font", "TooltipLabel", load(FONT_PATH))
 
 
 func _setup_background_blur() -> void:
