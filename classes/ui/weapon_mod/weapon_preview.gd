@@ -18,6 +18,7 @@ var _yaw: float = 0.0
 var _pitch: float = 0.0
 var _frame_distance: float = 1.0
 var _frame_center: Vector3 = Vector3.ZERO
+var _view_axis: Vector3 = Vector3.RIGHT  # 相机站位方向（与枪身长轴垂直）
 
 
 func _init() -> void:
@@ -94,15 +95,34 @@ func rebuild(config: WeaponConfig, attachment_state: Dictionary) -> void:
 	_frame_weapon()
 
 
-## 依据武器包围盒自动取景（侧视），保证不同长度的枪都能填满画面
+## 依据武器包围盒自动取景（侧视），保证不同长度的枪都能填满画面。
+## 关键：枪身最长的那根轴要横躺在画面里，相机必须站在与之垂直的方向上。
+## AK 系列模型枪口朝 -Z（见 BaseWeapon._get_muzzle_position），若相机也放在 Z 轴上
+## 就会正对枪口"看进枪管"，画面只剩机匣截面。
 func _frame_weapon() -> void:
 	var aabb := _compute_aabb(_weapon)
 	if aabb.size == Vector3.ZERO:
-		aabb = AABB(Vector3(-0.4, -0.15, -0.05), Vector3(0.8, 0.3, 0.1))
+		aabb = AABB(Vector3(-0.05, -0.15, -0.4), Vector3(0.1, 0.3, 0.8))
 	_frame_center = aabb.get_center()
-	# 侧面观察：以最长边为准，留出 1.5 倍余量放标注引线
-	var span: float = maxf(aabb.size.x, aabb.size.y)
-	_frame_distance = maxf(span * 1.5, 0.5)
+
+	# 取水平面内较长的那根轴作为"枪身方向"，相机站到另一根水平轴上
+	var box := aabb.size
+	var width: float
+	if box.z >= box.x:
+		_view_axis = Vector3.RIGHT   # 枪身沿 Z → 从 X 侧看
+		width = box.z
+	else:
+		_view_axis = Vector3.BACK    # 枪身沿 X → 从 Z 侧看
+		width = box.x
+	var height: float = box.y
+
+	# 同时满足横向与纵向装得下，再留 1.25 倍余量给引线
+	var v_half := tan(deg_to_rad(_camera.fov) * 0.5) if _camera else 0.287
+	var aspect: float = float(size.x) / maxf(float(size.y), 1.0)
+	var h_half: float = v_half * aspect
+	var dist_for_width: float = (width * 0.5) / maxf(h_half, 0.001)
+	var dist_for_height: float = (height * 0.5) / maxf(v_half, 0.001)
+	_frame_distance = maxf(maxf(dist_for_width, dist_for_height) * 1.25, 0.25)
 	_apply_camera()
 
 
@@ -110,8 +130,7 @@ func _apply_camera() -> void:
 	if not _camera:
 		return
 	var basis := Basis.from_euler(Vector3(_pitch, _yaw, 0.0))
-	# 默认从武器左侧看过去（-Z 方向），与玩家视角里的侧面一致
-	var offset: Vector3 = basis * Vector3(0.0, 0.06, _frame_distance)
+	var offset: Vector3 = basis * (_view_axis * _frame_distance + Vector3.UP * _frame_distance * 0.06)
 	_camera.global_transform = Transform3D(Basis.IDENTITY, _frame_center + offset)
 	_camera.look_at(_frame_center, Vector3.UP)
 
