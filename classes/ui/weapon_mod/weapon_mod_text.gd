@@ -22,7 +22,16 @@ const DETACH := "卸下当前配件"
 const INSTALLED := "已安装"
 
 const CLOSE := "关闭"
-const FOOTER_HINT := "ESC 关闭 · 改装即时生效"
+const APPLY := "应用更改"
+const REVERT := "放弃更改"
+const REPLACE := "更换"
+const FOOTER_HINT := "改装先在预览中生效，点「应用更改」写入武器 · ESC 关闭"
+
+# 核心配件（握把 / 护木 / 机匣盖）：缺一不可，否则枪无法正常持握使用
+const CORE_TAG := "· 核心"
+const CORE_MISSING := "缺少核心配件"
+const CORE_HINT := "核心配件不可卸下，只能更换"
+const CORE_BLOCKED := "无法应用：以下核心挂载点为空 — %s"
 
 const STAT_HEADER := "武器参数"
 const STAT_SPREAD_HIP := "腰射散布"

@@ -53,6 +53,13 @@ var _callout_layer: WeaponCalloutLayer
 var _stage: Control
 var _chip_layer: Control
 
+## 改装草稿：{ slot_name: AttachmentConfig }。所有操作只改这里，
+## 预览实时反映草稿；点"应用更改"才写回真枪。核心槽位空缺时禁止应用。
+var _draft: Dictionary = {}
+var _dirty := false
+var _apply_button: Button
+var _revert_button: Button
+
 var _active_slot := ""
 var _slot_chips: Dictionary = {}   # slot_name -> PanelContainer
 var _slot_order: Array[String] = []
@@ -95,6 +102,9 @@ func open() -> void:
 		_was_controllable = _player.controllable
 		_player.set_controllable(false)
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	_draft = _capture_attachment_state()
+	_dirty = false
+	_active_slot = ""
 	_rebuild_all()
 	opened.emit()
 
@@ -330,13 +340,31 @@ func _build_footer(parent: Control) -> void:
 	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(hint)
 
+	_revert_button = Button.new()
+	_revert_button.text = ModText.REVERT
+	_revert_button.custom_minimum_size = Vector2(112, 38)
+	_revert_button.focus_mode = Control.FOCUS_NONE
+	_revert_button.disabled = true
+	_style_button(_revert_button, false)
+	_revert_button.pressed.connect(_revert_changes)
+	row.add_child(_revert_button)
+
 	var close_button := Button.new()
 	close_button.text = ModText.CLOSE
-	close_button.custom_minimum_size = Vector2(132, 38)
+	close_button.custom_minimum_size = Vector2(112, 38)
 	close_button.focus_mode = Control.FOCUS_NONE
 	_style_button(close_button, false)
 	close_button.pressed.connect(close)
 	row.add_child(close_button)
+
+	_apply_button = Button.new()
+	_apply_button.text = ModText.APPLY
+	_apply_button.custom_minimum_size = Vector2(148, 38)
+	_apply_button.focus_mode = Control.FOCUS_NONE
+	_apply_button.disabled = true
+	_style_button(_apply_button, true)
+	_apply_button.pressed.connect(_apply_changes)
+	row.add_child(_apply_button)
 
 
 # ── 数据构建 ────────────────────────────────────────────────
@@ -373,9 +401,14 @@ func _rebuild_all() -> void:
 	_title_label.text = weapon.config.weapon_name if weapon.config else ModText.TITLE
 	_subtitle_label.text = ModText.SUBTITLE
 
-	_preview.rebuild(weapon.config, _capture_attachment_state())
-	_build_chips(weapon)
+	# 预览按草稿重建；槽位清单也取自预览——因为可用槽位本身取决于装了什么
+	# （机匣盖带出 OpticRail、护木带出 Underbarrel）
+	_preview.rebuild(weapon.config, _draft)
+	var preview_weapon = _preview.get_weapon()
+	if preview_weapon:
+		_build_chips(preview_weapon)
 	_refresh_stats()
+	_refresh_apply_state()
 	if _active_slot != "" and _slot_chips.has(_active_slot):
 		_show_slot_detail(_active_slot)
 	else:
@@ -424,19 +457,24 @@ func _make_chip(slot_name: String, slot: AttachmentSlot) -> PanelContainer:
 	vbox.add_theme_constant_override("separation", 1)
 	margin.add_child(vbox)
 
+	var is_core: bool = slot != null and slot.is_core()
 	var name_label := Label.new()
-	name_label.text = slot_name
+	name_label.text = "%s %s" % [slot_name, ModText.CORE_TAG] if is_core else slot_name
 	name_label.add_theme_font_size_override("font_size", 13)
 	name_label.add_theme_color_override("font_color", COL_MUTED)
 	vbox.add_child(name_label)
 
-	var value_label := Label.new()
+	# 卡片显示的是草稿状态（预览武器上的实际装配）
 	var installed := slot.current_attachment if slot else null
+	var missing_core: bool = is_core and installed == null
+	var value_label := Label.new()
 	value_label.text = installed.config.attachment_name if (installed and installed.config) else ModText.SLOT_EMPTY
 	value_label.add_theme_font_size_override("font_size", 14)
-	value_label.add_theme_color_override(
-		"font_color", COL_TEXT if installed else COL_MUTED.darkened(0.15)
-	)
+	var value_col := COL_TEXT if installed else COL_MUTED.darkened(0.15)
+	if missing_core:
+		value_col = COL_DANGER
+		value_label.text = ModText.CORE_MISSING
+	value_label.add_theme_color_override("font_color", value_col)
 	value_label.clip_text = true
 	vbox.add_child(value_label)
 
@@ -529,33 +567,37 @@ func _update_callouts() -> void:
 
 func _show_slot_detail(slot_name: String) -> void:
 	_active_slot = slot_name
-	_notice.visible = false
 	for key in _slot_chips:
 		_style_chip(_slot_chips[key], key == slot_name)
 
-	var weapon = _current_weapon()
-	if not weapon or not weapon.attachment_manager:
+	# 槽位取自预览武器（草稿状态），因为部分槽位由已装配件带出
+	var preview_weapon = _preview.get_weapon()
+	if not preview_weapon or not preview_weapon.attachment_manager:
 		return
-	var slot: AttachmentSlot = weapon.attachment_manager.get_slot(slot_name)
+	var slot: AttachmentSlot = preview_weapon.attachment_manager.get_slot(slot_name)
 	if not slot:
 		return
 
-	_detail_title.text = slot_name
+	var is_core := slot.is_core()
+	_detail_title.text = "%s %s" % [slot_name, ModText.CORE_TAG] if is_core else slot_name
 	var options := AttachmentCatalog.for_slot(slot)
 	_detail_sub.text = ModText.OPTION_COUNT % options.size()
 
 	for child in _detail_rows.get_children():
 		child.queue_free()
 
-	if slot.current_attachment:
-		if slot.can_be_empty:
-			_add_detach_row(slot_name)
-		else:
+	var current: AttachmentConfig = _draft.get(slot_name, null)
+
+	# 核心槽位不提供"卸下"——空了枪就没法用；只能更换
+	if current:
+		if is_core:
 			var locked := Label.new()
-			locked.text = ModText.SLOT_LOCKED
-			locked.add_theme_font_size_override("font_size", 13)
+			locked.text = ModText.CORE_HINT
+			locked.add_theme_font_size_override("font_size", 12)
 			locked.add_theme_color_override("font_color", COL_MUTED)
 			_detail_rows.add_child(locked)
+		else:
+			_add_detach_row(slot_name)
 
 	if options.is_empty():
 		var empty := Label.new()
@@ -565,9 +607,7 @@ func _show_slot_detail(slot_name: String) -> void:
 		_detail_rows.add_child(empty)
 	else:
 		for cfg in options:
-			var installed: bool = slot.current_attachment != null \
-				and slot.current_attachment.config == cfg
-			_add_option_row(cfg, installed, slot_name)
+			_add_option_row(cfg, current, slot_name)
 
 	# 面板贴在所选卡片的对侧，避免遮住引线
 	var chip: PanelContainer = _slot_chips.get(slot_name)
@@ -580,7 +620,11 @@ func _show_slot_detail(slot_name: String) -> void:
 		)
 
 
-func _add_option_row(cfg: AttachmentConfig, installed: bool, slot_name: String) -> void:
+## current: 该槽位草稿中已装的配件（null = 空）。
+## 已装的这一件显示"已安装"；槽位空 → "安装"；槽位已有别的件 → "更换"，直接顶替，
+## 不需要先卸下再装。
+func _add_option_row(cfg: AttachmentConfig, current: AttachmentConfig, slot_name: String) -> void:
+	var installed: bool = current == cfg
 	var row := PanelContainer.new()
 	row.add_theme_stylebox_override(
 		"panel",
@@ -611,13 +655,18 @@ func _add_option_row(cfg: AttachmentConfig, installed: bool, slot_name: String) 
 	info.add_child(stat_label)
 
 	var action := Button.new()
-	action.text = ModText.INSTALLED if installed else ModText.INSTALL
+	if installed:
+		action.text = ModText.INSTALLED
+	elif current != null:
+		action.text = ModText.REPLACE
+	else:
+		action.text = ModText.INSTALL
 	action.custom_minimum_size = Vector2(78, 32)
 	action.focus_mode = Control.FOCUS_NONE
 	action.disabled = installed
 	_style_button(action, not installed)
 	if not installed:
-		action.pressed.connect(func(): _do_equip(cfg, slot_name))
+		action.pressed.connect(func(): _set_draft_slot(slot_name, cfg))
 	hbox.add_child(action)
 
 
@@ -639,40 +688,106 @@ func _add_detach_row(slot_name: String) -> void:
 	button.custom_minimum_size = Vector2(78, 32)
 	button.focus_mode = Control.FOCUS_NONE
 	_style_button(button, false)
-	button.pressed.connect(func(): _do_detach(slot_name))
+	button.pressed.connect(func(): _clear_draft_slot(slot_name))
 	hbox.add_child(button)
 
 
-# ── 改装操作 ────────────────────────────────────────────────
+# ── 草稿编辑（不动真枪）──────────────────────────────────────
 
-func _do_equip(cfg: AttachmentConfig, slot_name: String) -> void:
-	var weapon = _current_weapon()
-	if not weapon or not weapon.attachment_manager:
-		return
-	var attachment := AttachmentFactory.create(cfg, weapon)
-	if not attachment or not weapon.attachment_manager.equip_to_slot(attachment, slot_name):
-		if attachment:
-			attachment.queue_free()
-		_notice.text = ModText.EQUIP_FAILED % cfg.attachment_name
-		_notice.visible = true
-		return
-	GlobalLogger.info("WeaponMod", "已安装 %s → %s" % [cfg.attachment_name, slot_name])
+func _set_draft_slot(slot_name: String, cfg: AttachmentConfig) -> void:
+	_draft[slot_name] = cfg
+	_dirty = true
 	_rebuild_all()
 
 
-func _do_detach(slot_name: String) -> void:
+func _clear_draft_slot(slot_name: String) -> void:
+	if not _draft.has(slot_name):
+		return
+	_draft.erase(slot_name)
+	# 挂在该配件子槽位上的草稿项会暂时"无处安放"，故意保留：
+	# 若玩家又把父件装回来，这些配件会自动复位（见 _restore_attachments）
+	_dirty = true
+	_rebuild_all()
+
+
+## 草稿中仍空缺的核心槽位（读预览武器，即草稿的实际装配结果）
+func _missing_core_slots() -> Array[String]:
+	var missing: Array[String] = []
+	var preview_weapon = _preview.get_weapon()
+	if not preview_weapon or not preview_weapon.attachment_manager:
+		return missing
+	for slot in preview_weapon.attachment_manager.get_slots():
+		var s := slot as AttachmentSlot
+		if s.is_core() and s.current_attachment == null:
+			missing.append(s.get_slot_key())
+	return missing
+
+
+func _refresh_apply_state() -> void:
+	if not _apply_button:
+		return
+	var missing := _missing_core_slots()
+	var blocked := not missing.is_empty()
+	_apply_button.disabled = blocked or not _dirty
+	_revert_button.disabled = not _dirty
+	if blocked:
+		_notice.text = ModText.CORE_BLOCKED % ", ".join(missing)
+		_notice.visible = true
+	else:
+		_notice.visible = false
+
+
+## 把草稿写回真枪：逐槽比对，不同就先卸后装；反复扫描直到稳定，
+## 保证嵌套槽位（机匣盖→导轨、护木→下挂）也能正确落位。
+func _apply_changes() -> void:
+	if not _missing_core_slots().is_empty():
+		return
 	var weapon = _current_weapon()
 	if not weapon or not weapon.attachment_manager:
 		return
-	weapon.attachment_manager.detach_from_slot(slot_name)
-	GlobalLogger.info("WeaponMod", "已卸下 %s" % slot_name)
+	var am = weapon.attachment_manager
+	var guard := 0
+	var progressed := true
+	while progressed and guard < 16:
+		guard += 1
+		progressed = false
+		var keys: Array[String] = []
+		for slot in am.get_slots():
+			keys.append((slot as AttachmentSlot).get_slot_key())
+		for key in keys:
+			var slot: AttachmentSlot = am.get_slot(key)
+			if not slot:
+				continue
+			var want: AttachmentConfig = _draft.get(key, null)
+			var have: AttachmentConfig = slot.current_attachment.config \
+				if slot.current_attachment else null
+			if want == have:
+				continue
+			if slot.current_attachment:
+				am.detach_from_slot(key)
+				progressed = true
+			if want:
+				var att := AttachmentFactory.create(want, weapon)
+				if att and am.equip_to_slot(att, key):
+					progressed = true
+				elif att:
+					att.queue_free()
+	_dirty = false
+	GlobalLogger.info("WeaponMod", "改装已应用到武器")
+	_rebuild_all()
+
+
+func _revert_changes() -> void:
+	_draft = _capture_attachment_state()
+	_dirty = false
 	_rebuild_all()
 
 
 # ── 数据条 ──────────────────────────────────────────────────
 
+## 数据条读预览武器 —— 即草稿装配后的结果，改装收益立刻可见
 func _refresh_stats() -> void:
-	var weapon = _current_weapon()
+	var weapon = _preview.get_weapon()
 	if not weapon or not weapon.config:
 		return
 	var cfg: WeaponConfig = weapon.config
