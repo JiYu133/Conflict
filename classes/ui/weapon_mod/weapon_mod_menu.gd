@@ -16,6 +16,7 @@ extends CanvasLayer
 
 const FONT_PATH := "res://res/fonts/ConflictCJKUI.ttf"
 const BLUR_SHADER_PATH := "res://res/shaders/death_blur.gdshader"
+const GRID_SHADER_PATH := "res://res/shaders/blueprint_grid.gdshader"
 const AttachmentCatalog = preload("res://classes/ui/weapon_mod/attachment_catalog.gd")
 const ModText = preload("res://classes/ui/weapon_mod/weapon_mod_text.gd")
 const WeaponPreviewScript = preload("res://classes/ui/weapon_mod/weapon_preview.gd")
@@ -49,6 +50,7 @@ var _background_blur_layer: CanvasLayer
 
 var _preview: SubViewport
 var _preview_display: TextureRect
+var _grid_rect: ColorRect
 var _callout_layer: WeaponCalloutLayer
 var _stage: Control
 var _chip_layer: Control
@@ -216,6 +218,25 @@ func _build_ui() -> void:
 	_stage.clip_contents = false
 	root.add_child(_stage)
 
+	# 蓝图网格：着色器实现，铺在最底层（放在预览与引线之前加入即可压在下面）
+	_grid_rect = ColorRect.new()
+	_grid_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_grid_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_grid_rect.color = Color(1, 1, 1, 1)
+	var grid_shader := load(GRID_SHADER_PATH) as Shader
+	if grid_shader:
+		var mat := ShaderMaterial.new()
+		mat.shader = grid_shader
+		mat.set_shader_parameter("grid_step", 46.0)
+		mat.set_shader_parameter("major_every", 4.0)
+		mat.set_shader_parameter("minor_color", Color(1, 1, 1, 0.030))
+		mat.set_shader_parameter("major_color", Color(1, 1, 1, 0.055))
+		_grid_rect.material = mat
+	_stage.add_child(_grid_rect)
+	# rect_size 需与控件实际像素尺寸同步，否则网格会被拉伸
+	_grid_rect.resized.connect(_sync_grid_size)
+	_sync_grid_size.call_deferred()
+
 	_preview = WeaponPreviewScript.new()
 	_stage.add_child(_preview)
 
@@ -247,6 +268,13 @@ func _build_ui() -> void:
 	root.add_child(_divider())
 	_build_stat_strip(root)
 	_build_footer(root)
+
+
+## 把控件像素尺寸传给网格着色器，保证格子是正方形而非被拉伸
+func _sync_grid_size() -> void:
+	if not _grid_rect or not _grid_rect.material:
+		return
+	(_grid_rect.material as ShaderMaterial).set_shader_parameter("rect_size", _grid_rect.size)
 
 
 func _build_header(parent: Control) -> void:

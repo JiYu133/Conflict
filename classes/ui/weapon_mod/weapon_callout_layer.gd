@@ -10,11 +10,9 @@ extends Control
 ##   · 引线末端的短横线"托住"卡片，形成技术图纸的引出标注感
 ##   · 底层蓝图网格 + 四角取景括号，强调"军械档案"而非"商店货架"
 
-const GRID_STEP := 46.0
 const NODE_RADIUS := 4.0
 const NODE_RING_RADIUS := 9.0
 
-var grid_color := Color(1.0, 1.0, 1.0, 0.028)
 var line_color := Color(0.61, 0.64, 0.68, 0.55)
 var line_active_color := Color(0.55, 0.72, 0.90, 1.0)
 var bracket_color := Color(0.55, 0.72, 0.90, 0.40)
@@ -46,24 +44,12 @@ func set_callouts(data: Array) -> void:
 	queue_redraw()
 
 
+## 只画会动的东西（引线 / 节点 / 角标）。
+## 网格背景交给 blueprint_grid.gdshader，在 GPU 上出，不占 draw call。
 func _draw() -> void:
-	_draw_grid()
 	_draw_frame_brackets()
 	for c in callouts:
 		_draw_callout(c)
-
-
-func _draw_grid() -> void:
-	var w := size.x
-	var h := size.y
-	var x := fmod(w, GRID_STEP) * 0.5
-	while x < w:
-		draw_line(Vector2(x, 0), Vector2(x, h), grid_color, 1.0)
-		x += GRID_STEP
-	var y := fmod(h, GRID_STEP) * 0.5
-	while y < h:
-		draw_line(Vector2(0, y), Vector2(w, y), grid_color, 1.0)
-		y += GRID_STEP
 
 
 ## 四角取景括号，像瞄具/技术图纸的裁切标记
