@@ -81,18 +81,39 @@ func rebuild(config: WeaponConfig, attachment_state: Dictionary) -> void:
 	_pivot.add_child(_weapon)
 	_weapon.initialize(config)
 
-	# 还原配件（顺序按管理器给出的槽位顺序，保证依赖槽先装）
-	if _weapon.attachment_manager:
-		for slot in _weapon.attachment_manager.get_slots():
-			var key: String = (slot as AttachmentSlot).get_slot_key()
-			if not attachment_state.has(key):
-				continue
-			var cfg: AttachmentConfig = attachment_state[key]
-			var att := AttachmentFactory.create(cfg, _weapon)
-			if att:
-				_weapon.attachment_manager.equip_to_slot(att, key)
-
+	_restore_attachments(attachment_state)
 	_frame_weapon()
+
+
+## 还原配件。必须反复扫描：部分槽位是被别的配件带出来的
+## （机匣盖带出 OpticRail、护木带出 Underbarrel / SideRail 等），
+## 一次性遍历初始槽位会漏掉这些嵌套件，预览就与真枪对不上。
+func _restore_attachments(attachment_state: Dictionary) -> void:
+	var am = _weapon.attachment_manager
+	if not am:
+		return
+	var remaining := attachment_state.duplicate()
+	var guard := 0
+	var progressed := true
+	while progressed and not remaining.is_empty() and guard < 16:
+		guard += 1
+		progressed = false
+		# 先快照当前槽位名，装配过程会往 _slots 里加新槽，避免边遍历边改
+		var keys: Array[String] = []
+		for slot in am.get_slots():
+			keys.append((slot as AttachmentSlot).get_slot_key())
+		for key in keys:
+			if not remaining.has(key):
+				continue
+			var cfg: AttachmentConfig = remaining[key]
+			var att := AttachmentFactory.create(cfg, _weapon)
+			if att and am.equip_to_slot(att, key):
+				remaining.erase(key)
+				progressed = true
+			elif att:
+				att.queue_free()
+	if not remaining.is_empty():
+		GlobalLogger.warn("WeaponPreview", "预览未能还原的配件槽位: %s" % ", ".join(remaining.keys()))
 
 
 ## 依据武器包围盒自动取景（侧视），保证不同长度的枪都能填满画面。
