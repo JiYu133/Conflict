@@ -155,7 +155,8 @@ func _initialize_subsystems() -> void:
 	pause_menu.initialize(self, settings_menu)
 
 	# 武器改装界面：接口已就绪（open/close/toggle/is_open + opened/closed 信号），
-	# 正式入口（军械库/装备界面）接入前，暂由 debug 构建的 N 键打开。
+	# 正式入口（军械库/装备界面）接入前，暂由 debug 构建的 weapon_mod_menu 动作
+	# （默认 N，可在设置→控制→调试 中改绑）打开。
 	weapon_mod_menu = _create_subsystem(WEAPON_MOD_MENU_SCRIPT.new(), "WeaponModMenu")
 	weapon_mod_menu.initialize(self)
 
@@ -302,7 +303,7 @@ func _input(event: InputEvent) -> void:
 		if free_camera_controller:
 			free_camera_controller.toggle()
 
-	# 改装界面（debug 临时入口，默认 N）
+	# 改装界面（debug 临时入口，默认 N，可在设置中改绑）
 	if event.is_action_pressed("weapon_mod_menu"):
 		if weapon_mod_menu:
 			weapon_mod_menu.toggle()

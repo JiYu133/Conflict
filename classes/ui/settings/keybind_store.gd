@@ -34,6 +34,7 @@ const ACTIONS: Array[Dictionary] = [
 	{ "action": "cycle_fire_mode", "display": SettingsText.ACTION_CYCLE_FIRE_MODE, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "clear_malfunction", "display": SettingsText.ACTION_CLEAR_MALFUNCTION, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "toggle_free_cam", "display": SettingsText.ACTION_TOGGLE_FREE_CAM, "category": SettingsText.CATEGORY_DEBUG, "debug_only": true },
+	{ "action": "weapon_mod_menu", "display": SettingsText.ACTION_WEAPON_MOD_MENU, "category": SettingsText.CATEGORY_DEBUG, "debug_only": true },
 ]
 
 static var _applied: bool = false
