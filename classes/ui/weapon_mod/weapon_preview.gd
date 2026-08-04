@@ -19,6 +19,8 @@ var _pitch: float = 0.0
 var _frame_distance: float = 1.0
 var _frame_center: Vector3 = Vector3.ZERO
 var _view_axis: Vector3 = Vector3.RIGHT  # 相机站位方向（与枪身长轴垂直）
+var _frame_tween: Tween
+var _has_frame := false
 
 
 func _init() -> void:
@@ -65,7 +67,8 @@ func _ready() -> void:
 
 ## 用给定配置与配件状态重建预览武器。
 ## attachment_state: { slot_name(String): AttachmentConfig }
-func rebuild(config: WeaponConfig, attachment_state: Dictionary) -> void:
+## rail_offsets: { slot_name(String): float }，保存草稿中的导轨位置
+func rebuild(config: WeaponConfig, attachment_state: Dictionary, rail_offsets: Dictionary = {}) -> void:
 	if _weapon and is_instance_valid(_weapon):
 		_weapon.queue_free()
 	_weapon = null
@@ -82,7 +85,16 @@ func rebuild(config: WeaponConfig, attachment_state: Dictionary) -> void:
 	_weapon.initialize(config)
 
 	_restore_attachments(attachment_state)
+	for slot_name in rail_offsets:
+		set_rail_offset(slot_name, float(rail_offsets[slot_name]))
 	_frame_weapon()
+
+
+## 只更新预览中一个已安装配件的位置，不必重建整把武器。
+func set_rail_offset(slot_name: String, offset: float) -> void:
+	if not _weapon or not _weapon.attachment_manager:
+		return
+	_weapon.attachment_manager.set_rail_offset(slot_name, offset)
 
 
 ## 还原配件。必须反复扫描：部分槽位是被别的配件带出来的
@@ -121,20 +133,21 @@ func _restore_attachments(attachment_state: Dictionary) -> void:
 ## 关键：枪身最长的那根轴要横躺在画面里，相机必须站在与之垂直的方向上。
 ## AK 系列模型枪口朝 -Z（见 BaseWeapon._get_muzzle_position），若相机也放在 Z 轴上
 ## 就会正对枪口"看进枪管"，画面只剩机匣截面。
-func _frame_weapon() -> void:
+func _frame_weapon(animate: bool = true) -> void:
 	var aabb := _compute_aabb(_weapon)
 	if aabb.size == Vector3.ZERO:
 		aabb = AABB(Vector3(-0.05, -0.15, -0.4), Vector3(0.1, 0.3, 0.8))
-	_frame_center = aabb.get_center()
+	var target_center := aabb.get_center()
 
 	# 取水平面内较长的那根轴作为"枪身方向"，相机站到另一根水平轴上
 	var box := aabb.size
 	var width: float
+	var target_view_axis: Vector3
 	if box.z >= box.x:
-		_view_axis = Vector3.RIGHT   # 枪身沿 Z → 从 X 侧看
+		target_view_axis = Vector3.RIGHT   # 枪身沿 Z → 从 X 侧看
 		width = box.z
 	else:
-		_view_axis = Vector3.BACK    # 枪身沿 X → 从 Z 侧看
+		target_view_axis = Vector3.BACK    # 枪身沿 X → 从 Z 侧看
 		width = box.x
 	var height: float = box.y
 
@@ -144,7 +157,33 @@ func _frame_weapon() -> void:
 	var h_half: float = v_half * aspect
 	var dist_for_width: float = (width * 0.5) / maxf(h_half, 0.001)
 	var dist_for_height: float = (height * 0.5) / maxf(v_half, 0.001)
-	_frame_distance = maxf(maxf(dist_for_width, dist_for_height) * 1.25, 0.25)
+	var target_distance := maxf(maxf(dist_for_width, dist_for_height) * 1.25, 0.25)
+	_view_axis = target_view_axis
+	if not _has_frame or not animate:
+		_frame_center = target_center
+		_frame_distance = target_distance
+		_has_frame = true
+		_apply_camera()
+		return
+
+	if _frame_tween and _frame_tween.is_running():
+		_frame_tween.kill()
+	_frame_tween = create_tween().set_parallel()
+	_frame_tween.tween_method(
+		Callable(self, "_set_frame_center"), _frame_center, target_center, 0.28
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_frame_tween.tween_method(
+		Callable(self, "_set_frame_distance"), _frame_distance, target_distance, 0.28
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func _set_frame_center(value: Vector3) -> void:
+	_frame_center = value
+	_apply_camera()
+
+
+func _set_frame_distance(value: float) -> void:
+	_frame_distance = value
 	_apply_camera()
 
 
@@ -188,8 +227,13 @@ func project_slot(slot_name: String, display_size: Vector2) -> Dictionary:
 	if _camera.is_position_behind(world_pos):
 		return result
 	var viewport_pos: Vector2 = _camera.unproject_position(world_pos)
-	var scale := display_size / Vector2(size)
-	result["position"] = viewport_pos * scale
+	# TextureRect 使用 KEEP_ASPECT_CENTERED，实际纹理通常不会铺满控件；
+	# 除了缩放，还要补上居中产生的留白，否则引线会整体偏离枪上的挂载点。
+	var viewport_size := Vector2(size)
+	var texture_scale := minf(display_size.x / maxf(viewport_size.x, 1.0), display_size.y / maxf(viewport_size.y, 1.0))
+	var rendered_size := viewport_size * texture_scale
+	var centered_offset := (display_size - rendered_size) * 0.5
+	result["position"] = viewport_pos * texture_scale + centered_offset
 	result["visible"] = true
 	return result
 

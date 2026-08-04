@@ -153,7 +153,7 @@ func _play_open_animation() -> void:
 	_transition.chain().tween_callback(func(): _transitioning = false)
 
 
-func _play_close_animation() -> void:
+func _play_close_animation(on_finished: Callable = Callable()) -> void:
 	_stop_transition()
 	_transitioning = true
 	_transition = create_tween()
@@ -161,17 +161,19 @@ func _play_close_animation() -> void:
 	_transition.tween_property(_backdrop, "modulate:a", 0.0, 0.10)
 	_transition.tween_property(_panel, "modulate:a", 0.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	_transition.tween_property(_panel, "position", _panel_rest_position + Vector2(0.0, 8.0), 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	_transition.chain().tween_callback(_finish_close)
+	_transition.chain().tween_callback(func(): _finish_close(on_finished))
 
 
-func _finish_close() -> void:
+func _finish_close(on_finished: Callable = Callable()) -> void:
 	_transitioning = false
 	visible = false
 	_panel.position = _panel_rest_position
 	_panel.modulate.a = 1.0
 	if _background_blur_layer:
 		_background_blur_layer.visible = false
-	if _player:
+	if on_finished.is_valid():
+		on_finished.call()
+	elif _player:
 		_player.set_controllable(_was_controllable and _player.is_alive)
 
 
@@ -224,18 +226,29 @@ func _add_button(parent: Control, text: String, callback: Callable, primary: boo
 
 
 func _open_settings() -> void:
-	visible = false
-	if _background_blur_layer:
-		_background_blur_layer.visible = false
+	if not _open or _transitioning or not _settings_menu:
+		return
+	_open = false
+	_play_close_animation(_finish_switch_to_settings)
+
+
+func _finish_switch_to_settings() -> void:
 	if _settings_menu:
 		_settings_menu.open()
 
 
 func _on_settings_closed() -> void:
-	if _open:
-		visible = true
-		if _background_blur_layer:
-			_background_blur_layer.visible = true
+	if _open or _transitioning:
+		return
+	_open = true
+	visible = true
+	_panel_rest_position = _panel.position
+	_backdrop.modulate.a = 0.0
+	_panel.modulate.a = 0.0
+	_panel.position = _panel_rest_position + Vector2(0.0, 8.0)
+	if _background_blur_layer:
+		_background_blur_layer.visible = true
+	_play_open_animation()
 
 
 func _quit_game() -> void:

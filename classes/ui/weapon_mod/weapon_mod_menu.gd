@@ -38,6 +38,7 @@ const COL_TOOLTIP_BG := Color(0.043, 0.047, 0.055, 0.98)
 
 const CHIP_SIZE := Vector2(184, 52)
 const CHIP_GAP := 12.0
+const SIDE_RAIL_GROUP := "__side_rail__"
 
 signal opened
 signal closed
@@ -48,7 +49,7 @@ var _was_controllable := false
 var _theme: Theme
 var _background_blur_layer: CanvasLayer
 
-var _preview: SubViewport
+var _preview: WeaponPreview
 var _preview_display: TextureRect
 var _grid_rect: ColorRect
 var _callout_layer: WeaponCalloutLayer
@@ -58,12 +59,15 @@ var _chip_layer: Control
 ## 改装草稿：{ slot_name: AttachmentConfig }。所有操作只改这里，
 ## 预览实时反映草稿；点"应用更改"才写回真枪。核心槽位空缺时禁止应用。
 var _draft: Dictionary = {}
+## { slot_name: float }，与配件配置分离，避免改动共享资源
+var _draft_rail_offsets: Dictionary = {}
 var _dirty := false
 var _apply_button: Button
 var _revert_button: Button
 
 var _active_slot := ""
 var _slot_chips: Dictionary = {}   # slot_name -> PanelContainer
+var _slot_groups: Dictionary = {}  # 显示项 -> 技术槽位名数组
 var _slot_order: Array[String] = []
 var _detail_panel: PanelContainer
 var _detail_title: Label
@@ -74,6 +78,7 @@ var _stat_strip: HBoxContainer
 var _notice: Label
 var _title_label: Label
 var _subtitle_label: Label
+var _dragging_view := false
 
 
 # ── 对外接口 ────────────────────────────────────────────────
@@ -105,6 +110,7 @@ func open() -> void:
 		_player.set_controllable(false)
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	_draft = _capture_attachment_state()
+	_draft_rail_offsets = _capture_rail_offsets()
 	_dirty = false
 	_active_slot = ""
 	_rebuild_all()
@@ -145,14 +151,29 @@ func _exit_tree() -> void:
 
 func _process(_delta: float) -> void:
 	if _open:
+		_layout_chips()
 		_update_callouts()
 
 
 func _input(event: InputEvent) -> void:
 	if not _open:
 		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		_dragging_view = false
 	if event.is_action_pressed("ui_cancel"):
 		close()
+		get_viewport().set_input_as_handled()
+
+
+## 在预览空白区域拖拽旋转武器；配件卡片自身仍保留点击选择行为。
+func _on_stage_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_dragging_view = event.pressed
+		if event.pressed:
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseMotion and _dragging_view:
+		_preview.rotate_view(-event.relative.x * 0.010, -event.relative.y * 0.010)
 		get_viewport().set_input_as_handled()
 
 
@@ -216,6 +237,7 @@ func _build_ui() -> void:
 	_stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_stage.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_stage.clip_contents = false
+	_stage.gui_input.connect(_on_stage_gui_input)
 	root.add_child(_stage)
 
 	# 蓝图网格：着色器实现，铺在最底层（放在预览与引线之前加入即可压在下面）
@@ -305,6 +327,8 @@ func _build_header(parent: Control) -> void:
 	_style_button(reset, false)
 	reset.pressed.connect(func():
 		_preview.reset_view()
+		_layout_chips()
+		_update_callouts()
 	)
 	header.add_child(reset)
 
@@ -416,6 +440,20 @@ func _capture_attachment_state() -> Dictionary:
 	return state
 
 
+## 采集当前武器中可调配件的导轨位置
+func _capture_rail_offsets() -> Dictionary:
+	var offsets := {}
+	var weapon = _current_weapon()
+	if not weapon or not weapon.attachment_manager:
+		return offsets
+	for slot in weapon.attachment_manager.get_slots():
+		var s := slot as AttachmentSlot
+		var att := s.current_attachment
+		if att and att.config and att.config.rail_adjustable:
+			offsets[s.get_slot_key()] = weapon.attachment_manager.get_rail_offset(s.get_slot_key())
+	return offsets
+
+
 func _rebuild_all() -> void:
 	_notice.visible = false
 	var weapon = _current_weapon()
@@ -431,7 +469,7 @@ func _rebuild_all() -> void:
 
 	# 预览按草稿重建；槽位清单也取自预览——因为可用槽位本身取决于装了什么
 	# （机匣盖带出 OpticRail、护木带出 Underbarrel）
-	_preview.rebuild(weapon.config, _draft)
+	_preview.rebuild(weapon.config, _draft, _draft_rail_offsets)
 	var preview_weapon = _preview.get_weapon()
 	if preview_weapon:
 		_build_chips(preview_weapon)
@@ -447,6 +485,7 @@ func _clear_chips() -> void:
 	for child in _chip_layer.get_children():
 		child.queue_free()
 	_slot_chips.clear()
+	_slot_groups.clear()
 	_slot_order.clear()
 	_callout_layer.set_callouts([])
 
@@ -456,23 +495,31 @@ func _build_chips(weapon) -> void:
 	var slots: Array = weapon.attachment_manager.get_slots()
 	for slot in slots:
 		var s := slot as AttachmentSlot
-		_slot_order.append(s.get_slot_key())
+		var key := s.get_slot_key()
+		if _is_side_rail_slot(s):
+			key = SIDE_RAIL_GROUP
+			if not _slot_groups.has(key):
+				_slot_groups[key] = []
+				_slot_order.append(key)
+			(_slot_groups[key] as Array).append(s.get_slot_key())
+		else:
+			_slot_groups[key] = [key]
+			_slot_order.append(key)
 
 	for key in _slot_order:
-		var slot: AttachmentSlot = weapon.attachment_manager.get_slot(key)
-		var chip := _make_chip(key, slot)
+		var chip := _make_chip(key, _slot_groups[key], weapon)
 		_chip_layer.add_child(chip)
 		_slot_chips[key] = chip
 
 	_layout_chips.call_deferred()
 
 
-func _make_chip(slot_name: String, slot: AttachmentSlot) -> PanelContainer:
+func _make_chip(group_key: String, slot_names: Array, weapon) -> PanelContainer:
 	var chip := PanelContainer.new()
 	chip.custom_minimum_size = CHIP_SIZE
 	chip.size = CHIP_SIZE
 	chip.mouse_filter = Control.MOUSE_FILTER_STOP
-	_style_chip(chip, slot_name == _active_slot)
+	_style_chip(chip, group_key == _active_slot)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 10)
@@ -485,18 +532,28 @@ func _make_chip(slot_name: String, slot: AttachmentSlot) -> PanelContainer:
 	vbox.add_theme_constant_override("separation", 1)
 	margin.add_child(vbox)
 
-	var is_core: bool = slot != null and slot.is_core()
+	var slot: AttachmentSlot = weapon.attachment_manager.get_slot(slot_names[0]) if not slot_names.is_empty() else null
+	var is_core: bool = slot_names.size() == 1 and slot != null and slot.is_core()
 	var name_label := Label.new()
-	name_label.text = "%s %s" % [slot_name, ModText.CORE_TAG] if is_core else slot_name
+	var display_name := _group_display_name(group_key, slot_names)
+	name_label.text = "%s %s" % [display_name, ModText.CORE_TAG] if is_core else display_name
 	name_label.add_theme_font_size_override("font_size", 13)
 	name_label.add_theme_color_override("font_color", COL_MUTED)
 	vbox.add_child(name_label)
 
 	# 卡片显示的是草稿状态（预览武器上的实际装配）
 	var installed := slot.current_attachment if slot else null
+	var installed_count := 0
+	for slot_name in slot_names:
+		var grouped_slot: AttachmentSlot = weapon.attachment_manager.get_slot(slot_name)
+		if grouped_slot and grouped_slot.current_attachment:
+			installed_count += 1
 	var missing_core: bool = is_core and installed == null
 	var value_label := Label.new()
-	value_label.text = installed.config.attachment_name if (installed and installed.config) else ModText.SLOT_EMPTY
+	if group_key == SIDE_RAIL_GROUP:
+		value_label.text = ModText.SIDE_RAIL_STATUS % installed_count
+	else:
+		value_label.text = installed.config.attachment_name if (installed and installed.config) else ModText.SLOT_EMPTY
 	value_label.add_theme_font_size_override("font_size", 14)
 	var value_col := COL_TEXT if installed else COL_MUTED.darkened(0.15)
 	if missing_core:
@@ -509,13 +566,23 @@ func _make_chip(slot_name: String, slot: AttachmentSlot) -> PanelContainer:
 	chip.gui_input.connect(func(event: InputEvent):
 		if event is InputEventMouseButton and event.pressed \
 				and event.button_index == MOUSE_BUTTON_LEFT:
-			_show_slot_detail(slot_name)
+			_show_slot_detail(group_key)
 	)
 	return chip
 
 
-## 卡片沿左右两条竖直导轨均匀排布；按挂载点在画面中的高度分配左右，
-## 使引线尽量不交叉。
+func _is_side_rail_slot(slot: AttachmentSlot) -> bool:
+	return slot.slot_type == AttachmentSlot.SlotType.SIDE_RAIL_LEFT \
+			or slot.slot_type == AttachmentSlot.SlotType.SIDE_RAIL_RIGHT
+
+
+func _group_display_name(group_key: String, slot_names: Array) -> String:
+	if group_key == SIDE_RAIL_GROUP:
+		return ModText.SIDE_RAIL
+	return slot_names[0] if not slot_names.is_empty() else group_key
+
+
+## 卡片围绕挂载点自由排布；武器旋转后重新投影，卡片随挂载点移动。
 func _layout_chips() -> void:
 	if _slot_order.is_empty() or not is_instance_valid(_stage):
 		return
@@ -523,45 +590,108 @@ func _layout_chips() -> void:
 	if stage_size.x <= 0.0:
 		return
 
-	# 依据投影位置把槽位分到左右两列
 	var display_size := _preview_display.size
-	var entries: Array = []
+	var placements: Array = []
 	for key in _slot_order:
-		var proj: Dictionary = _preview.project_slot(key, display_size)
-		var anchor: Vector2 = proj.get("position", stage_size * 0.5)
-		entries.append({ "key": key, "anchor": anchor, "visible": proj.get("visible", false) })
+		var proj: Dictionary = _project_group(key, display_size, stage_size)
+		if not proj.get("visible", false):
+			continue
+		var anchor: Vector2 = proj["position"]
+		var direction := anchor - stage_size * 0.5
+		if direction.length_squared() < 1.0:
+			direction = Vector2.RIGHT
+		direction = direction.normalized()
+		var offset := Vector2(
+			direction.x * (CHIP_SIZE.x * 0.5 + 24.0),
+			direction.y * (CHIP_SIZE.y * 0.5 + 24.0)
+		)
+		var position := anchor + offset - CHIP_SIZE * 0.5
+		position.x = clampf(position.x, 8.0, maxf(stage_size.x - CHIP_SIZE.x - 8.0, 8.0))
+		position.y = clampf(position.y, 8.0, maxf(stage_size.y - CHIP_SIZE.y - 8.0, 8.0))
+		placements.append({ "key": key, "position": position, "anchor": anchor })
 
-	entries.sort_custom(func(a, b): return a["anchor"].y < b["anchor"].y)
-	var left: Array = []
-	var right: Array = []
-	for e in entries:
-		if (e["anchor"] as Vector2).x < stage_size.x * 0.5:
-			left.append(e)
-		else:
-			right.append(e)
-	# 两侧数量差距过大时匀一匀，避免一列排到画面外
-	while left.size() > right.size() + 1:
-		right.append(left.pop_back())
-	while right.size() > left.size() + 1:
-		left.append(right.pop_back())
-
-	_place_column(left, -1, stage_size)
-	_place_column(right, 1, stage_size)
-
-
-func _place_column(entries: Array, side: int, stage_size: Vector2) -> void:
-	if entries.is_empty():
-		return
-	var total_h: float = entries.size() * CHIP_SIZE.y + (entries.size() - 1) * CHIP_GAP
-	var start_y: float = maxf((stage_size.y - total_h) * 0.5, 0.0)
-	var x: float = 0.0 if side < 0 else stage_size.x - CHIP_SIZE.x
-	for i in entries.size():
-		var key: String = entries[i]["key"]
-		var chip: PanelContainer = _slot_chips.get(key)
+	_resolve_chip_overlaps(placements, stage_size)
+	for placement in placements:
+		var chip: PanelContainer = _slot_chips.get(placement["key"])
 		if not chip:
 			continue
-		chip.position = Vector2(x, start_y + i * (CHIP_SIZE.y + CHIP_GAP))
-		chip.set_meta("side", side)
+		_animate_chip_to(chip, placement["position"], placement["anchor"])
+		var target_position: Vector2 = placement["position"]
+		chip.set_meta("side", -1 if target_position.x + chip.size.x * 0.5 < stage_size.x * 0.5 else 1)
+	_position_detail_panel()
+
+
+func _animate_chip_to(chip: PanelContainer, target: Vector2, anchor: Vector2) -> void:
+	var previous_tween = chip.get_meta("_chip_tween") if chip.has_meta("_chip_tween") else null
+	if previous_tween is Tween and previous_tween.is_running():
+		previous_tween.kill()
+	var previous_target = chip.get_meta("_chip_target") if chip.has_meta("_chip_target") else null
+	var is_new := previous_target == null
+	if not is_new and (previous_target as Vector2).distance_to(target) < 0.75:
+		chip.position = target
+		return
+
+	chip.pivot_offset = CHIP_SIZE * 0.5
+	var start := target
+	if is_new:
+		var direction := target - anchor
+		if direction.length_squared() < 1.0:
+			direction = Vector2.RIGHT
+		start = target + direction.normalized() * 14.0
+		chip.position = start
+		chip.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		chip.scale = Vector2(0.92, 0.92)
+
+	var duration := 0.22 if is_new else 0.14
+	var tween := chip.create_tween().set_parallel()
+	tween.tween_property(chip, "position", target, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	if is_new:
+		tween.tween_property(chip, "modulate:a", 1.0, duration).set_trans(Tween.TRANS_CUBIC)
+		tween.tween_property(chip, "scale", Vector2.ONE, duration).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	chip.set_meta("_chip_tween", tween)
+	chip.set_meta("_chip_target", target)
+
+
+## 轻量避让：优先沿离挂载点较远的轴推开重叠卡片，再限制在舞台内。
+func _resolve_chip_overlaps(placements: Array, stage_size: Vector2) -> void:
+	for _pass in 4:
+		for i in placements.size():
+			var current: Dictionary = placements[i]
+			var current_rect := Rect2(current["position"], CHIP_SIZE)
+			for j in i:
+				var other: Dictionary = placements[j]
+				var other_rect := Rect2(other["position"], CHIP_SIZE)
+				if not current_rect.intersects(other_rect):
+					continue
+				var overlap_x := minf(current_rect.end.x, other_rect.end.x) - maxf(current_rect.position.x, other_rect.position.x)
+				var overlap_y := minf(current_rect.end.y, other_rect.end.y) - maxf(current_rect.position.y, other_rect.position.y)
+				var current_pos: Vector2 = current["position"]
+				if overlap_y <= overlap_x:
+					var direction_y := 1.0 if current_rect.get_center().y >= other_rect.get_center().y else -1.0
+					current_pos.y += direction_y * (overlap_y + CHIP_GAP)
+				else:
+					var direction_x := 1.0 if current_rect.get_center().x >= other_rect.get_center().x else -1.0
+					current_pos.x += direction_x * (overlap_x + CHIP_GAP)
+				current_pos.x = clampf(current_pos.x, 8.0, maxf(stage_size.x - CHIP_SIZE.x - 8.0, 8.0))
+				current_pos.y = clampf(current_pos.y, 8.0, maxf(stage_size.y - CHIP_SIZE.y - 8.0, 8.0))
+				current["position"] = current_pos
+				current_rect = Rect2(current_pos, CHIP_SIZE)
+
+
+func _project_group(group_key: String, display_size: Vector2, fallback: Vector2) -> Dictionary:
+	var names: Array = _slot_groups.get(group_key, [group_key])
+	var positions: Array[Vector2] = []
+	for slot_name in names:
+		var projection := _preview.project_slot(slot_name, display_size)
+		if projection.get("visible", false):
+			positions.append(projection["position"])
+	if positions.is_empty():
+		return { "position": fallback, "visible": false }
+	var center := Vector2.ZERO
+	for position in positions:
+		center += position
+	center /= positions.size()
+	return { "position": center, "visible": true }
 
 
 ## 每帧刷新引线（预览旋转/窗口缩放时都要跟着动）
@@ -574,21 +704,34 @@ func _update_callouts() -> void:
 		var chip: PanelContainer = _slot_chips.get(key)
 		if not chip or not is_instance_valid(chip):
 			continue
-		var proj: Dictionary = _preview.project_slot(key, display_size)
-		if not proj.get("visible", false):
-			continue
-		var side: int = chip.get_meta("side", -1)
-		# 引线接到卡片朝向画面中心的那条边的中点
-		var target := chip.position + Vector2(
-			chip.size.x if side < 0 else 0.0, chip.size.y * 0.5
-		)
-		data.append({
-			"anchor": proj["position"],
-			"target": target,
-			"active": key == _active_slot,
-			"side": side,
-		})
+		# 一个概念卡片可能对应多个技术槽位（例如左右侧导轨），
+		# 每个实体挂载点都独立连线，避免把引线锚在两者之间的虚构位置。
+		for actual_slot_name in _slot_groups.get(key, [key]):
+			var proj: Dictionary = _preview.project_slot(actual_slot_name, display_size)
+			if not proj.get("visible", false):
+				continue
+			var anchor: Vector2 = proj["position"]
+			data.append({
+				"anchor": anchor,
+				"target": _get_card_edge_target(chip, anchor),
+				"active": key == _active_slot,
+			})
 	_callout_layer.set_callouts(data)
+
+
+func _get_card_edge_target(chip: PanelContainer, anchor: Vector2) -> Vector2:
+	var rect := Rect2(chip.position, chip.size)
+	var center := rect.get_center()
+	var delta := anchor - center
+	if absf(delta.x) / maxf(rect.size.x, 1.0) >= absf(delta.y) / maxf(rect.size.y, 1.0):
+		return Vector2(
+			rect.end.x if delta.x >= 0.0 else rect.position.x,
+			clampf(anchor.y, rect.position.y + 6.0, rect.end.y - 6.0)
+		)
+	return Vector2(
+		clampf(anchor.x, rect.position.x + 6.0, rect.end.x - 6.0),
+			rect.end.y if delta.y >= 0.0 else rect.position.y
+	)
 
 
 # ── 配件列表 ────────────────────────────────────────────────
@@ -602,30 +745,88 @@ func _show_slot_detail(slot_name: String) -> void:
 	var preview_weapon = _preview.get_weapon()
 	if not preview_weapon or not preview_weapon.attachment_manager:
 		return
-	var slot: AttachmentSlot = preview_weapon.attachment_manager.get_slot(slot_name)
-	if not slot:
+	var slot_names: Array = _slot_groups.get(slot_name, [slot_name])
+	if slot_names.is_empty():
 		return
 
-	var is_core := slot.is_core()
-	_detail_title.text = "%s %s" % [slot_name, ModText.CORE_TAG] if is_core else slot_name
-	var options := AttachmentCatalog.for_slot(slot)
-	_detail_sub.text = ModText.OPTION_COUNT % options.size()
+	_detail_title.text = _group_display_name(slot_name, slot_names)
 
 	for child in _detail_rows.get_children():
 		child.queue_free()
 
+	var option_count := 0
+	for actual_slot_name in slot_names:
+		var slot: AttachmentSlot = preview_weapon.attachment_manager.get_slot(actual_slot_name)
+		if not slot:
+			continue
+		if slot_names.size() > 1:
+			_add_slot_heading(_slot_side_display_name(slot), slot.is_core())
+		option_count += _add_slot_options(slot)
+	_detail_sub.text = ModText.OPTION_COUNT % option_count
+
+	_detail_panel.visible = true
+	_position_detail_panel()
+
+
+## 详情面板跟随自由布局中的卡片移动，避免配件卡片旋转后面板脱节。
+func _position_detail_panel() -> void:
+	if not _detail_panel or not _detail_panel.visible:
+		return
+	var chip: PanelContainer = _slot_chips.get(_active_slot)
+	if not chip:
+		return
+	var side: int = chip.get_meta("side") if chip.has_meta("side") else 1
+	var target := Vector2(
+		CHIP_SIZE.x + 28.0 if side < 0 else _stage.size.x - CHIP_SIZE.x - 368.0,
+		clampf(chip.position.y - 40.0, 0.0, maxf(_stage.size.y - 380.0, 0.0))
+	)
+	var previous_target = _detail_panel.get_meta("_detail_target") if _detail_panel.has_meta("_detail_target") else null
+	if previous_target is Vector2 and previous_target.distance_to(target) < 0.75:
+		return
+	_detail_panel.set_meta("_detail_target", target)
+	var previous_tween = _detail_panel.get_meta("_detail_tween") if _detail_panel.has_meta("_detail_tween") else null
+	if previous_tween is Tween and previous_tween.is_running():
+		previous_tween.kill()
+	if _detail_panel.position.distance_to(target) < 0.75:
+		_detail_panel.position = target
+		return
+	var tween := _detail_panel.create_tween()
+	tween.tween_property(_detail_panel, "position", target, 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_detail_panel.set_meta("_detail_tween", tween)
+
+
+func _add_slot_heading(text: String, core: bool) -> void:
+	var heading := Label.new()
+	heading.text = "%s %s" % [text, ModText.CORE_TAG] if core else text
+	heading.add_theme_font_size_override("font_size", 13)
+	heading.add_theme_color_override("font_color", COL_ACCENT)
+	_detail_rows.add_child(heading)
+
+
+func _slot_side_display_name(slot: AttachmentSlot) -> String:
+	if slot.slot_type == AttachmentSlot.SlotType.SIDE_RAIL_LEFT:
+		return ModText.SIDE_RAIL_LEFT
+	if slot.slot_type == AttachmentSlot.SlotType.SIDE_RAIL_RIGHT:
+		return ModText.SIDE_RAIL_RIGHT
+	return slot.get_slot_key()
+
+
+func _add_slot_options(slot: AttachmentSlot) -> int:
+	var slot_name := slot.get_slot_key()
+	var options := AttachmentCatalog.for_slot(slot)
 	var current: AttachmentConfig = _draft.get(slot_name, null)
 
-	# 核心槽位不提供"卸下"——空了枪就没法用；只能更换
 	if current:
-		if is_core:
-			var locked := Label.new()
-			locked.text = ModText.CORE_HINT
-			locked.add_theme_font_size_override("font_size", 12)
-			locked.add_theme_color_override("font_color", COL_MUTED)
-			_detail_rows.add_child(locked)
-		else:
-			_add_detach_row(slot_name)
+		# 核心配件允许在草稿中卸下；真正应用时由 _missing_core_slots() 拦截。
+		if slot.is_core():
+			var core_hint := Label.new()
+			core_hint.text = ModText.CORE_HINT
+			core_hint.add_theme_font_size_override("font_size", 12)
+			core_hint.add_theme_color_override("font_color", COL_MUTED)
+			_detail_rows.add_child(core_hint)
+		_add_detach_row(slot_name)
+		if current.rail_adjustable:
+			_add_rail_offset_row(slot_name, current)
 
 	if options.is_empty():
 		var empty := Label.new()
@@ -636,16 +837,7 @@ func _show_slot_detail(slot_name: String) -> void:
 	else:
 		for cfg in options:
 			_add_option_row(cfg, current, slot_name)
-
-	# 面板贴在所选卡片的对侧，避免遮住引线
-	var chip: PanelContainer = _slot_chips.get(slot_name)
-	_detail_panel.visible = true
-	if chip:
-		var side: int = chip.get_meta("side", -1)
-		_detail_panel.position = Vector2(
-			CHIP_SIZE.x + 28.0 if side < 0 else _stage.size.x - CHIP_SIZE.x - 368.0,
-			clampf(chip.position.y - 40.0, 0.0, maxf(_stage.size.y - 380.0, 0.0))
-		)
+	return options.size()
 
 
 ## current: 该槽位草稿中已装的配件（null = 空）。
@@ -720,22 +912,78 @@ func _add_detach_row(slot_name: String) -> void:
 	hbox.add_child(button)
 
 
+func _add_rail_offset_row(slot_name: String, cfg: AttachmentConfig) -> void:
+	var section := VBoxContainer.new()
+	section.add_theme_constant_override("separation", 3)
+	_detail_rows.add_child(section)
+
+	var header := HBoxContainer.new()
+	section.add_child(header)
+	var label := Label.new()
+	label.text = ModText.RAIL_POSITION
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", COL_MUTED)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(label)
+	var value_label := Label.new()
+	value_label.add_theme_font_size_override("font_size", 12)
+	value_label.add_theme_color_override("font_color", COL_TEXT)
+	header.add_child(value_label)
+
+	var slider := HSlider.new()
+	slider.min_value = cfg.rail_offset_min
+	slider.max_value = cfg.rail_offset_max
+	slider.step = 0.001
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var offset := clampf(float(_draft_rail_offsets.get(slot_name, cfg.rail_offset)), slider.min_value, slider.max_value)
+	slider.value = offset
+	value_label.text = _format_rail_offset(offset)
+	slider.tooltip_text = ModText.RAIL_POSITION_HINT
+	slider.value_changed.connect(func(value: float):
+		value_label.text = _format_rail_offset(value)
+		_set_draft_rail_offset(slot_name, value)
+	)
+	section.add_child(slider)
+
+
+func _format_rail_offset(offset: float) -> String:
+	return "%+.0f mm" % (offset * 1000.0)
+
+
 # ── 草稿编辑（不动真枪）──────────────────────────────────────
 
 func _set_draft_slot(slot_name: String, cfg: AttachmentConfig) -> void:
 	_draft[slot_name] = cfg
+	if cfg.rail_adjustable:
+		_draft_rail_offsets[slot_name] = clampf(cfg.rail_offset, cfg.rail_offset_min, cfg.rail_offset_max)
+	else:
+		_draft_rail_offsets.erase(slot_name)
 	_dirty = true
 	_rebuild_all()
 
 
 func _clear_draft_slot(slot_name: String) -> void:
-	if not _draft.has(slot_name):
+	if not _draft.has(slot_name) and not _draft_rail_offsets.has(slot_name):
 		return
 	_draft.erase(slot_name)
+	_draft_rail_offsets.erase(slot_name)
 	# 挂在该配件子槽位上的草稿项会暂时"无处安放"，故意保留：
 	# 若玩家又把父件装回来，这些配件会自动复位（见 _restore_attachments）
 	_dirty = true
 	_rebuild_all()
+
+
+func _set_draft_rail_offset(slot_name: String, offset: float) -> void:
+	var cfg: AttachmentConfig = _draft.get(slot_name, null)
+	if not cfg or not cfg.rail_adjustable:
+		return
+	var clamped := clampf(offset, cfg.rail_offset_min, cfg.rail_offset_max)
+	_draft_rail_offsets[slot_name] = clamped
+	_dirty = true
+	_preview.set_rail_offset(slot_name, clamped)
+	_refresh_stats()
+	_refresh_apply_state()
+	_update_callouts()
 
 
 ## 草稿中仍空缺的核心槽位（读预览武器，即草稿的实际装配结果）
@@ -800,6 +1048,8 @@ func _apply_changes() -> void:
 					progressed = true
 				elif att:
 					att.queue_free()
+	for slot_name in _draft_rail_offsets:
+		am.set_rail_offset(slot_name, float(_draft_rail_offsets[slot_name]))
 	_dirty = false
 	GlobalLogger.info("WeaponMod", "改装已应用到武器")
 	_rebuild_all()
@@ -807,6 +1057,7 @@ func _apply_changes() -> void:
 
 func _revert_changes() -> void:
 	_draft = _capture_attachment_state()
+	_draft_rail_offsets = _capture_rail_offsets()
 	_dirty = false
 	_rebuild_all()
 

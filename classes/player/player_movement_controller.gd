@@ -76,6 +76,7 @@ func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
 	if not _player.controllable:
+		clear_locomotion_state()
 		# 死亡或布娃娃激活时停止所有物理移动，让布娃娃自己处理物理
 		if not _player.is_alive or _player.is_ragdolled:
 			_velocity = Vector3.ZERO
@@ -86,9 +87,10 @@ func _physics_process(delta: float) -> void:
 			_velocity.y -= _config.gravity * delta
 		else:
 			_velocity.y = _config.floor_snap_velocity
-			# 水平方向用制动力减速至零，保留脚感
-			_velocity.x = move_toward(_velocity.x, 0.0, _config.stop_brake_strength * delta)
-			_velocity.z = move_toward(_velocity.z, 0.0, _config.stop_brake_strength * delta)
+		# 水平制动与地面判定无关：菜单/自由视角接管时，
+		# 即使角色正在空中或处于斜坡判定过渡，也必须消化已有水平速度。
+		_velocity.x = move_toward(_velocity.x, 0.0, _config.stop_brake_strength * delta)
+		_velocity.z = move_toward(_velocity.z, 0.0, _config.stop_brake_strength * delta)
 		_player.velocity = _velocity
 		_player.move_and_slide()
 		_velocity = _player.velocity
@@ -328,6 +330,18 @@ func _exit_run() -> void:
 	if _is_running:
 		_is_running = false
 		stopped_running.emit()
+
+
+func clear_locomotion_state() -> void:
+	if _is_sprinting:
+		_exit_sprint()
+	if _is_running:
+		_exit_run()
+	_shift_held_time = 0.0
+	_shift_was_held = false
+	_burst_timer = 0.0
+	_gait_phase = 0.0
+	_had_input = false
 
 
 # ──────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ extends Control
 ## 以及蓝图网格 / 取景角标等装饰。
 ##
 ## 与 Delta Force / 塔科夫 的直线细引线不同，这里用：
-##   · 贝塞尔曲线引线（从挂载点平滑弯向卡片，带方向感）
+##   · 贝塞尔曲线引线（从挂载点平滑弯向卡片，避免直角折点）
 ##   · 挂载点处的双层圆环节点（选中时外环放大 + 呼吸）
 ##   · 引线末端的短横线"托住"卡片，形成技术图纸的引出标注感
 ##   · 底层蓝图网格 + 四角取景括号，强调"军械档案"而非"商店货架"
@@ -74,26 +74,33 @@ func _draw_callout(c: Dictionary) -> void:
 	var anchor: Vector2 = c.get("anchor", Vector2.ZERO)
 	var target: Vector2 = c.get("target", Vector2.ZERO)
 	var active: bool = c.get("active", false)
-	var side: int = c.get("side", -1)
 	var col := line_active_color if active else line_color
 	var width := 2.0 if active else 1.0
 
-	# 末端短横线：从卡片边缘朝画面中心伸出一小段，引线接在它末端
+	# 根据挂载点到卡片的相对位置，选择曲线的起始/结束切线方向。
+	# 卡片现在可以出现在武器四周，不能再假定只有左右两个连接边。
+	var delta := target - anchor
+	var horizontal := absf(delta.x) >= absf(delta.y)
+	var route_dir := Vector2(signf(delta.x), 0.0) if horizontal else Vector2(0.0, signf(delta.y))
+	if route_dir == Vector2.ZERO:
+		route_dir = Vector2.RIGHT
+
+	# 末端短连接段：从卡片边缘朝挂载点伸出一小段，引线接在它末端。
 	var stub_len := 18.0
-	var stub_end := target + Vector2(stub_len * -side, 0.0)
+	var stub_end := target - route_dir * stub_len
 	draw_line(target, stub_end, col, width)
 
-	# 贝塞尔引线：控制点沿水平方向拉开，形成平滑的 S 弯
-	var dx: float = absf(stub_end.x - anchor.x)
-	var ctrl_pull: float = clampf(dx * 0.55, 40.0, 200.0)
+	# 曲线两端都沿着卡片方向出入，中间自然过渡，避免 90 度折点。
+	var travel := absf(delta.x) if horizontal else absf(delta.y)
+	var pull := clampf(travel * 0.38, 24.0, 120.0)
 	var p0 := anchor
-	var p1 := anchor + Vector2(ctrl_pull * -side, 0.0)
-	var p2 := stub_end + Vector2(ctrl_pull * side, 0.0)
+	var p1 := anchor + route_dir * pull
+	var p2 := stub_end - route_dir * pull
 	var p3 := stub_end
 	var points := PackedVector2Array()
-	var steps := 26
-	for i in range(steps + 1):
-		points.append(_bezier(p0, p1, p2, p3, float(i) / steps))
+	for i in range(25):
+		var t := float(i) / 24.0
+		points.append(_bezier(p0, p1, p2, p3, t))
 	draw_polyline(points, col, width, true)
 
 	# 挂载点节点：实心点 + 外环（选中时外环随呼吸放大）

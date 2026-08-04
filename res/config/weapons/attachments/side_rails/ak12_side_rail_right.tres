@@ -8,6 +8,6 @@ script = ExtResource("2_q2aqr")
 attachment_name = "皮卡汀尼侧导轨"
 attachment_type = 12
 allowed_slot = 2
-preferred_slot_names = Array[String](["SideRailLeft"])
+preferred_slot_names = Array[String](["SideRailRight"])
 weight_kg = 0.08
 attachment_scene = ExtResource("1_4q281")

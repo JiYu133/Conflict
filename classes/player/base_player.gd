@@ -428,6 +428,8 @@ func revive() -> void:
 
 func set_controllable(enabled: bool) -> void:
 	controllable = enabled
+	if not enabled and movement_controller:
+		movement_controller.clear_locomotion_state()
 	GlobalLogger.info("Player", "Controller of player " + get_parent().name + " has been" + ("ENABLED" if enabled else "DISABLED"))
 
 
