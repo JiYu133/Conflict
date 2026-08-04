@@ -87,6 +87,10 @@ Conflict 的 UI 系统采用**统一的视觉语言**：扁平、克制、单一
 - 设置界面纯代码构建，文本均集中于 `SettingsText`
 - `SettingsService` 由 `BasePlayer` 创建并注入依赖；不依赖新的 Autoload 或全局类
 - 画面、音频、界面与辅助功能分类已预留，未接入的分类不提供虚假选项
+- 暂停菜单、设置页均以淡入和 8 px 位移动画开关；从暂停页进入设置时先完成退出动画，设置关闭后再重播暂停页进入动画，切换期间不会提前恢复玩家控制
+- `is_open()` 在打开/关闭过渡期间仍返回 true，输入处理会忽略过渡期事件，避免快速重复按键造成重入
+- 设置滑块拖动时，数值标签会放大并变为高亮黄色，松开后平滑恢复；轨道厚度为 10 px
+- `AnimatedToggle` 使用无圆角的矩形轨道、滑块和焦点框，并通过 `tween_method()` 每帧重绘 0.16 秒切换动画
 
 **CanvasLayer**: PauseMenu 20；SettingsMenu 21
 
@@ -179,6 +183,27 @@ TopRightNotificationManager.show_notification("equip", config)
 
 ---
 
+### 6. 武器改装界面 (WeaponModMenu)
+
+**文件位置**:
+- `classes/ui/weapon_mod/weapon_mod_menu.gd`
+- `classes/ui/weapon_mod/weapon_preview.gd`
+- `classes/ui/weapon_mod/weapon_callout_layer.gd`
+- [完整使用与扩展文档](WeaponModMenu.md)
+
+**功能**:
+- 独立 3D 武器副本、自动侧视取景和鼠标拖拽旋转
+- 实体挂载点投影、动态引线、槽位卡片与左右侧导轨分组
+- 配件安装、卸下与导轨位置调整的草稿预览
+- 核心配件完整性校验，确认后才将草稿写回当前武器
+- 实时展示散布、后座、重量和全长变化
+
+**临时入口**: 调试动作 `weapon_mod_menu`，默认 `N`，可在设置中改绑
+
+**CanvasLayer**: 22
+
+---
+
 ## CanvasLayer 层级规范
 
 为避免 UI 元素互相遮挡，使用以下层级约定：
@@ -190,6 +215,7 @@ TopRightNotificationManager.show_notification("equip", config)
 | 15 | 临时通知 | TopRightNotificationManager |
 | 20 | 暂停菜单 | PauseMenu |
 | 21 | 设置页面 | SettingsMenu |
+| 22 | 武器改装 | WeaponModMenu |
 | 100 | 遮罩与终局 | DeathScreen |
 
 ---
@@ -330,7 +356,7 @@ button.theme_type_variation = "AccentButton"
 
 ## 参考资源
 
-- [设置界面手动绘制指南](../SETTINGS_UI_GUIDE.md)
+- [设置界面手动绘制指南](../../SETTINGS_UI_GUIDE.md)
 - [Godot 主题系统文档](https://docs.godotengine.org/en/stable/tutorials/ui/gui_using_theme_editor.html)
 - [Godot CanvasLayer 文档](https://docs.godotengine.org/en/stable/classes/class_canvaslayer.html)
 

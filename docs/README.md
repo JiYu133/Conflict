@@ -142,6 +142,7 @@ BaseWeapon
 |------|------|
 | [UI System Overview](ui/UISystem.md) | UI 架构、配色规范、组件索引、主题使用、CanvasLayer 层级管理 |
 | [Settings UI Guide](../SETTINGS_UI_GUIDE.md) | 设置界面手动绘制指南（Godot 编辑器操作步骤） |
+| [Weapon Mod Menu](ui/WeaponModMenu.md) | 3D 改装预览、草稿应用流程、操作说明与配件接入指南 |
 
 **核心组件**:
 - **SettingsMenu** (`classes/ui/settings/settings_menu.gd`) - 键位绑定设置面板
@@ -149,6 +150,7 @@ BaseWeapon
 - **TopRightNotificationManager** (`classes/ui/top_right_notification_manager.gd`) - 右上角通知系统
 - **DeathScreen** (`classes/ui/death_screen.gd`) - 死亡屏幕遮罩
 - **MedicalDebugHUD** (`classes/ui/medical_debug_hud.gd`) - 医疗调试面板
+- **WeaponModMenu** (`classes/ui/weapon_mod/weapon_mod_menu.gd`) - 草稿式 3D 武器改装界面
 
 ---
 
