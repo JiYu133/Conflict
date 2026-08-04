@@ -38,13 +38,20 @@
 
 返回当前是否处于奔跑状态，供外部系统（如摄像机控制器、动画控制器）查询。
 
+### `clear_locomotion_state() -> void`
+
+清除冲刺、奔跑、Shift 长按、起步爆发计时、步态相位和“上一帧有输入”等瞬时状态。如果调用前正在冲刺或奔跑，会通过正常退出路径发射对应的停止信号。
+
+`BasePlayer.set_controllable(false)` 会立即调用该方法；控制器在后续不可控帧也会防御性地再次调用。这保证暂停菜单、设置页、武器改装界面或自由视角接管输入后，旧的奔跑状态不会在恢复控制时继续生效。
+
 ## 内部逻辑说明
 
 每帧 `_physics_process` 按以下顺序执行：
 
-1. **读取输入方向** — 从 `move_left/right/forward/backward` 四轴合成二维输入向量
-2. **Sprint 信号检测** — 在地面/空中均有效，松开 sprint 立即发出 `stopped_running`
-3. **地面水平速度**
+1. **控制权检查** — 玩家不可控时先清理移动状态；死亡或布娃娃状态直接清零速度，其他接管状态继续应用重力、地面贴合和水平制动后调用 `move_and_slide()`，但不再读取移动输入
+2. **读取输入方向** — 从 `move_left/right/forward/backward` 四轴合成二维输入向量
+3. **Sprint 信号检测** — 在地面/空中均有效，松开 sprint 立即发出 `stopped_running`
+4. **地面水平速度**
    - 根据 sprint 状态选择 `walk_speed` 或 `run_speed` 作为基础速度
    - 横向移动乘以 `lateral_speed_ratio`，后退乘以 `backward_speed_ratio`
    - 通过 dot product 计算速度方向与输入方向夹角，进行转向减速
@@ -52,11 +59,11 @@
    - 使用 `move_toward` 向目标速度加速
    - 在速度方向叠加 sin 波动（步态波动），模拟重心摆动
    - 无输入时以 `stop_brake_strength` 快速制动并重置步态相位
-4. **空中水平速度** — 使用 `air_acceleration` / `air_deceleration` 进行有限空中控制
-5. **跳跃** — `jump` 动作刚按下且在地面时，设置 `_velocity.y` 并发出 `jumped`
-6. **重力** — 不在地面时每帧累减 `gravity * delta`；落地后将 `_velocity.y` 钳制到 `PlayerConfig.floor_snap_velocity`（默认 `-0.5`），防止下坡时向下速度持续累积
-7. **应用移动** — 写入 `_player.velocity` 并调用 `move_and_slide()`，再将碰撞后实际速度同步回 `_velocity`
-8. **落地检测** — 检测 `is_on_floor()` 上升沿并发出 `landed`
+5. **空中水平速度** — 使用 `air_acceleration` / `air_deceleration` 进行有限空中控制
+6. **跳跃** — `jump` 动作刚按下且在地面时，设置 `_velocity.y` 并发出 `jumped`
+7. **重力** — 不在地面时每帧累减 `gravity * delta`；落地后将 `_velocity.y` 钳制到 `PlayerConfig.floor_snap_velocity`（默认 `-0.5`），防止下坡时向下速度持续累积
+8. **应用移动** — 写入 `_player.velocity` 并调用 `move_and_slide()`，再将碰撞后实际速度同步回 `_velocity`
+9. **落地检测** — 检测 `is_on_floor()` 上升沿并发出 `landed`
 
 ## 依赖关系
 
@@ -68,3 +75,4 @@
 - 步态波动直接修改速度向量，会影响 `PlayerCameraController` 读取的速度值，进而轻微影响头部摆动振幅计算。
 - 转向减速公式使用世界空间 XZ 平面的二维 dot product，急转弯（≈90°）约损失 35–50% 速度，取决于 `turn_decel_factor` 的值。
 - `_velocity` 在每帧末从 `_player.velocity` 同步回来，确保碰撞响应（如撞墙停速）被正确反映到下一帧的计算中。
+- 玩家暂时不可控但仍存活时，水平制动不依赖 `is_on_floor()`：即使角色在空中或斜坡判定过渡中打开菜单，也会持续消化已有 XZ 速度，避免无输入滑行。
