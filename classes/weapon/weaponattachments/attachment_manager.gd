@@ -26,6 +26,8 @@ signal attachments_changed()
 const SNAP_POINT_NAME := "SnapPoint"
 ## 记录导轨配件对齐后、未叠加 rail_offset 时的基准 Z，供滑动条重复调整
 const META_RAIL_BASE_Z := "_rail_base_z"
+## 保存实例自己的导轨偏移，避免修改共享的 AttachmentConfig 资源
+const META_RAIL_OFFSET := "_rail_offset"
 
 var parent_weapon: BaseWeapon
 var _slots: Dictionary = {}  # {String: AttachmentSlot}
@@ -179,6 +181,7 @@ func _place_attachment(att: BaseAttachment, slot: AttachmentSlot) -> void:
 	if att.config.rail_adjustable or not is_zero_approx(att.config.rail_offset):
 		var clamped := clampf(att.config.rail_offset, att.config.rail_offset_min, att.config.rail_offset_max)
 		att.set_meta(META_RAIL_BASE_Z, att.position.z)
+		att.set_meta(META_RAIL_OFFSET, clamped)
 		att.position.z += clamped
 
 
@@ -199,8 +202,9 @@ func set_rail_offset(slot_name: String, offset: float) -> void:
 	if not att or not att.config.rail_adjustable:
 		return
 	var clamped := clampf(offset, att.config.rail_offset_min, att.config.rail_offset_max)
-	att.config.rail_offset = clamped
-	att.position.z = att.get_meta(META_RAIL_BASE_Z, 0.0) + clamped
+	att.set_meta(META_RAIL_OFFSET, clamped)
+	var base_z: float = att.get_meta(META_RAIL_BASE_Z) if att.has_meta(META_RAIL_BASE_Z) else att.position.z
+	att.position.z = base_z + clamped
 
 
 ## 获取指定槽位配件当前的导轨偏移值
@@ -208,7 +212,7 @@ func get_rail_offset(slot_name: String) -> float:
 	var att := get_attachment_in_slot(slot_name)
 	if not att:
 		return 0.0
-	return att.config.rail_offset
+	return att.get_meta(META_RAIL_OFFSET) if att.has_meta(META_RAIL_OFFSET) else att.config.rail_offset
 
 
 # ──────────────────────────── 数值缓存重建 ────────────────────────────

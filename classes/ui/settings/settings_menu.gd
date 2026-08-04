@@ -18,6 +18,7 @@ const COL_DANGER_DIM := Color(0.84, 0.42, 0.39, 0.12)
 const COL_HOVER := Color(1.0, 1.0, 1.0, 0.055)
 ## 提示气泡底色：必须接近不透明，否则文字与背后界面重叠看不清
 const COL_TOOLTIP_BG := Color(0.043, 0.047, 0.055, 0.98)
+const COL_VALUE_HIGHLIGHT := Color(1.0, 0.92, 0.52)
 
 const CATEGORIES := [
 	{ "id": "controls", "label": SettingsText.CATEGORY_CONTROLS },
@@ -33,6 +34,11 @@ var _open := false
 var _settings_service
 var _theme: Theme
 var _background_blur_layer: CanvasLayer
+var _backdrop: ColorRect
+var _panel: PanelContainer
+var _panel_rest_position := Vector2.ZERO
+var _transition: Tween
+var _transitioning := false
 var _active_category := "controls"
 var _category_buttons: Dictionary = {}
 var _content_title: Label
@@ -53,10 +59,11 @@ var _listen_frame := 0
 var _pending_event: InputEvent
 var _pending_action := ""
 var _pending_slot := -1
+var _value_label_tweens: Dictionary = {}
 
 
 func is_open() -> bool:
-	return _open
+	return _open or _transitioning
 
 
 func initialize(settings_service) -> void:
@@ -76,16 +83,21 @@ func _ready() -> void:
 
 
 func open() -> void:
-	if _open:
+	if _open or _transitioning:
 		return
 	_open = true
 	_values_snapshot = _settings_service.snapshot()
 	_bindings_snapshot = KeybindStore.snapshot_bindings()
 	_dirty = false
 	visible = true
+	_panel_rest_position = _panel.position
+	_backdrop.modulate.a = 0.0
+	_panel.modulate.a = 0.0
+	_panel.position = _panel_rest_position + Vector2(0.0, 8.0)
 	if _background_blur_layer:
 		_background_blur_layer.visible = true
 	_select_category("controls")
+	_play_open_animation()
 
 
 func apply_changes() -> void:
@@ -111,13 +123,10 @@ func cancel_and_close() -> void:
 
 
 func _close() -> void:
-	if not _open:
+	if not _open or _transitioning:
 		return
 	_open = false
-	visible = false
-	if _background_blur_layer:
-		_background_blur_layer.visible = false
-	closed.emit()
+	_play_close_animation()
 
 
 func _exit_tree() -> void:
@@ -126,7 +135,7 @@ func _exit_tree() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if not _open:
+	if not _open or _transitioning:
 		return
 	if _listening_action != "":
 		_handle_listen_input(event)
@@ -165,25 +174,26 @@ func _handle_listen_input(event: InputEvent) -> void:
 
 
 func _build_ui() -> void:
-	var backdrop := ColorRect.new()
-	backdrop.color = COL_BACKDROP
-	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(backdrop)
+	_backdrop = ColorRect.new()
+	_backdrop.color = COL_BACKDROP
+	_backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_backdrop)
 
-	var panel := PanelContainer.new()
-	panel.theme = _theme
-	panel.add_theme_stylebox_override("panel", _box(COL_PANEL, COL_BORDER, 4))
-	panel.custom_minimum_size = Vector2(1080, 650)
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	backdrop.add_child(panel)
+	_panel = PanelContainer.new()
+	_panel.theme = _theme
+	_panel.add_theme_stylebox_override("panel", _box(COL_PANEL, COL_BORDER, 4))
+	_panel.custom_minimum_size = Vector2(1080, 650)
+	_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_backdrop.add_child(_panel)
+	_panel_rest_position = _panel.position
 
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 26)
-	panel.add_child(margin)
+	_panel.add_child(margin)
 
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 16)
@@ -442,6 +452,7 @@ func _add_slider_row(title: String, description: String, key: String, minimum: f
 	var labels := _add_row_labels(row, title, description)
 	var value_label := Label.new()
 	value_label.custom_minimum_size = Vector2(48, 0)
+	value_label.pivot_offset = Vector2(24.0, 10.0)
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	value_label.add_theme_color_override("font_color", COL_TEXT)
 	row.add_child(value_label)
@@ -457,6 +468,10 @@ func _add_slider_row(title: String, description: String, key: String, minimum: f
 		value_label.text = "%.2f" % value
 		_settings_service.set_value(key, value)
 		_mark_dirty()
+		_pulse_value_label(value_label, true)
+	)
+	slider.drag_ended.connect(func(_value_changed: bool):
+		_pulse_value_label(value_label, false)
 	)
 	row.add_child(slider)
 
@@ -465,15 +480,15 @@ func _style_slider(slider: HSlider) -> void:
 	var track := StyleBoxFlat.new()
 	track.bg_color = Color(1.0, 1.0, 1.0, 0.14)
 	track.set_corner_radius_all(0)
-	track.content_margin_top = 7.0
-	track.content_margin_bottom = 7.0
+	track.content_margin_top = 5.0
+	track.content_margin_bottom = 5.0
 	slider.add_theme_stylebox_override("slider", track)
 
 	var active_track := StyleBoxFlat.new()
 	active_track.bg_color = Color(1.0, 1.0, 1.0, 0.76)
 	active_track.set_corner_radius_all(0)
-	active_track.content_margin_top = 7.0
-	active_track.content_margin_bottom = 7.0
+	active_track.content_margin_top = 5.0
+	active_track.content_margin_bottom = 5.0
 	slider.add_theme_stylebox_override("grabber_area", active_track)
 	slider.add_theme_icon_override("grabber", _make_slider_grabber(Color(0.96, 0.96, 0.96)))
 	slider.add_theme_icon_override("grabber_highlight", _make_slider_grabber(Color.WHITE))
@@ -489,6 +504,58 @@ func _make_slider_grabber(color: Color) -> GradientTexture2D:
 	texture.fill_from = Vector2(0.0, 0.5)
 	texture.fill_to = Vector2(1.0, 0.5)
 	return texture
+
+
+func _pulse_value_label(label: Label, active: bool) -> void:
+	var old_tween := _value_label_tweens.get(label) as Tween
+	if old_tween and old_tween.is_valid():
+		old_tween.kill()
+	var target_scale := Vector2(1.07, 1.07) if active else Vector2.ONE
+	var target_modulate := COL_VALUE_HIGHLIGHT if active else Color.WHITE
+	var tween := create_tween()
+	tween.set_parallel()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT if active else Tween.EASE_IN_OUT)
+	tween.tween_property(label, "scale", target_scale, 0.12 if active else 0.18)
+	tween.tween_property(label, "modulate", target_modulate, 0.12 if active else 0.18)
+	_value_label_tweens[label] = tween
+
+
+func _play_open_animation() -> void:
+	_stop_transition()
+	_transitioning = true
+	_transition = create_tween()
+	_transition.set_parallel()
+	_transition.tween_property(_backdrop, "modulate:a", 1.0, 0.15)
+	_transition.tween_property(_panel, "modulate:a", 1.0, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_transition.tween_property(_panel, "position", _panel_rest_position, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_transition.chain().tween_callback(func(): _transitioning = false)
+
+
+func _play_close_animation() -> void:
+	_stop_transition()
+	_transitioning = true
+	_transition = create_tween()
+	_transition.set_parallel()
+	_transition.tween_property(_backdrop, "modulate:a", 0.0, 0.10)
+	_transition.tween_property(_panel, "modulate:a", 0.0, 0.09).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_transition.tween_property(_panel, "position", _panel_rest_position + Vector2(0.0, 8.0), 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_transition.chain().tween_callback(_finish_close)
+
+
+func _finish_close() -> void:
+	_transitioning = false
+	visible = false
+	_panel.position = _panel_rest_position
+	_panel.modulate.a = 1.0
+	if _background_blur_layer:
+		_background_blur_layer.visible = false
+	closed.emit()
+
+
+func _stop_transition() -> void:
+	if _transition and _transition.is_valid():
+		_transition.kill()
+	_transition = null
 
 
 func _add_toggle_row(title: String, description: String, key: String) -> void:

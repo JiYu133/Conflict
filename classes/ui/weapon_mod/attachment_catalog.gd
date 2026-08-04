@@ -26,6 +26,11 @@ static func for_slot(slot: AttachmentSlot) -> Array[AttachmentConfig]:
 		return result
 	for cfg in all():
 		if slot.can_accept_attachment(cfg):
+			# 左右侧导轨在运行时是两个技术槽位，但具体模型只能落在
+			# 自己声明的那一侧；没有首选槽位的通用配件仍可匹配两侧。
+			var preferred := cfg.get_preferred_slot_names()
+			if not preferred.is_empty() and not preferred.has(slot.get_slot_key()):
+				continue
 			result.append(cfg)
 	result.sort_custom(func(a, b): return a.attachment_name < b.attachment_name)
 	return result

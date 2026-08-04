@@ -139,6 +139,7 @@ func initialize(
 	if not _skeleton:
 		GlobalLogger.warn("RagdollSystem", "Initialized without skeleton; ragdoll disabled.")
 		return
+	_disable_authored_physics_bones()
 	GlobalLogger.info("RagdollSystem", "Initialized with skeleton: %s" % _skeleton.name)
 
 ## 清除仅属于旧模型骨骼的缓存。模型热重载时 initialize() 会再次调用。
@@ -155,6 +156,27 @@ func _reset_skeleton_state() -> void:
 	_current_phase = RagdollPhase.INACTIVE
 	_death_anim_timer = 0.0
 	set_process(false)
+
+
+## 模型场景可能带有编辑器生成的 PhysicalBoneSimulator3D。
+## 本系统在死亡时动态创建并配置自己的物理骨骼；两套骨骼同时拥有默认碰撞
+## 会让正常玩家胶囊体与模型骨骼互相干扰，表现为无输入滑行或被地面推走。
+func _disable_authored_physics_bones() -> void:
+	if not is_instance_valid(_skeleton):
+		return
+	var simulators := _skeleton.find_children("*", "PhysicalBoneSimulator3D", true, false)
+	for simulator_node in simulators:
+		var simulator := simulator_node as PhysicalBoneSimulator3D
+		if not simulator or simulator == _physical_simulator:
+			continue
+		if simulator.is_simulating_physics():
+			simulator.physical_bones_stop_simulation()
+		simulator.active = false
+		for bone_node in simulator.find_children("*", "PhysicalBone3D", true, false):
+			var bone := bone_node as PhysicalBone3D
+			if bone:
+				bone.collision_layer = 0
+				bone.collision_mask = 0
 
 ## 设置武器挂载点（死亡时隐藏、复活时恢复）
 ## 挂载点在 initialize() 之后才由 BasePlayer 查找到，因此单独提供设置入口
