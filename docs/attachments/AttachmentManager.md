@@ -52,7 +52,7 @@
 1. **有 SnapPoint**：配件场景内若存在名为 `SnapPoint` 的 `Marker3D`，管理器计算它相对配件根节点的变换并取逆，使 SnapPoint 的世界位置与 `AttachmentSlot` 重合。美术在 Blender/Godot 里手动摆放这个点，标记真正的装配接触面。
 2. **无 SnapPoint**：回退为 `transform = IDENTITY`，即配件原点贴合槽位。原点已经设在接触面中心的配件可以不加 SnapPoint。
 
-配置了非 0 `rail_offset` 的配件（不要求 `rail_adjustable`）在对齐结果基础上叠加 Z 轴偏移；对齐后的基准 Z 存在节点 meta `_rail_base_z` 里，`set_rail_offset()` 每次都从基准重新计算，不会累积漂移。
+配置了非 0 `rail_offset` 的配件（不要求 `rail_adjustable`）在对齐结果基础上叠加 Z 轴偏移；对齐后的基准 Z 存在节点 meta `_rail_base_z` 里，当前实例的偏移存在 `_rail_offset` 里。`set_rail_offset()` 每次都从基准重新计算，不会累积漂移，也不会修改可能被预览武器和真枪共同引用的 `AttachmentConfig` 资源。`get_rail_offset()` 优先读取实例元数据，旧实例没有元数据时才回退到配置默认值。
 
 旧的 `auto_center`（运行时 AABB 居中）已移除——局部 AABB 在子节点带 transform 时结果不可靠，且业界（Arma Reforger 的 Slot/Snap、RoN 的手动偏移）均采用手动标记点方案。
 
@@ -61,3 +61,4 @@
 - 数值查询全部走缓存，无性能问题，不需要每帧遍历
 - 卸下配件时递归 `_remove_child_slots()`，防止子槽残留
 - 重名槽位只保留先扫描到的，后者打警告忽略
+- 右侧 AK-12 皮卡汀尼侧导轨的预设首选槽位是 `SideRailRight`；左右专用资源必须让 `preferred_slot_names` 与模型方向一致
