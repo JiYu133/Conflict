@@ -294,8 +294,9 @@ func get_stats_snapshot() -> Dictionary:
 	return {
 		"spread_ads": get_current_spread(true),
 		"spread_hip": get_current_spread(false),
-		"recoil_v": rad_to_deg(physics.get("pitch_impulse_rad_s", 0.0)),
-		"recoil_h": rad_to_deg(physics.get("yaw_impulse_rad_s", 0.0)),
+		# UI-facing values are physical angular-speed impulse magnitudes per shot.
+		"recoil_v": absf(rad_to_deg(physics.get("pitch_impulse_rad_s", 0.0))),
+		"recoil_h": absf(rad_to_deg(physics.get("yaw_impulse_rad_s", 0.0))),
 		"recoil_impulse_ns": physics.get("impulse_magnitude_ns", 0.0),
 		"recoil_mass_kg": physics.get("total_mass_kg", 0.0),
 		"recoil_recovery_stiffness": physics.get("control_stiffness", 0.0),

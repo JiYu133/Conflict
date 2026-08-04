@@ -3,7 +3,7 @@ extends RefCounted
 ## 改装界面文案集中管理（与 settings_text.gd 同思路，便于后续本地化）
 
 const TITLE := "武器改装"
-const SUBTITLE := "点击引线标注的挂载点卡片，安装或卸下配件 · 改装即时生效"
+const SUBTITLE := "点击引线标注的挂载点卡片，安装或卸下配件 · 应用后生效"
 const RESET_VIEW := "复位视角"
 const OPTION_COUNT := "%d 个可用配件"
 const INSTALL := "安装"
@@ -42,8 +42,8 @@ const CORE_BLOCKED := "无法应用：以下核心挂载点为空 — %s"
 const STAT_HEADER := "武器参数"
 const STAT_SPREAD_HIP := "腰射散布"
 const STAT_SPREAD_ADS := "机瞄散布"
-const STAT_RECOIL_V := "垂直后座"
-const STAT_RECOIL_H := "水平后座"
+const STAT_RECOIL_V := "单发俯仰角速度(°/s)"
+const STAT_RECOIL_H := "单发偏航角速度(°/s)"
 const STAT_WEIGHT := "总重量"
 const STAT_LENGTH := "全长"
 

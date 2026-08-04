@@ -56,7 +56,8 @@ weapon_manager.get_rail_offset("OpticRail") -> float
 
 ```gdscript
 var snapshot := weapon_manager.current_weapon.get_stats_snapshot()
-# 返回: { spread_ads, spread_hip, recoil_v, recoil_h, ads_time, weight, suppressed, fov_override }
+# 返回: { spread_ads, spread_hip, recoil_v, recoil_h, recoil_impulse_ns, recoil_mass_kg, recoil_recovery_stiffness, recoil_recovery_damping, ads_time, weight, suppressed, fov_override }
+# recoil_v / recoil_h 为物理模型计算出的单发俯仰/偏航角速度冲量绝对值（度/秒）
 ```
 
 ## 预设配件

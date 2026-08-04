@@ -18,9 +18,9 @@ const FONT_PATH := "res://res/fonts/ConflictCJKUI.ttf"
 const BLUR_SHADER_PATH := "res://res/shaders/death_blur.gdshader"
 const GRID_SHADER_PATH := "res://res/shaders/blueprint_grid.gdshader"
 const AttachmentCatalog = preload("res://classes/ui/weapon_mod/attachment_catalog.gd")
-const ModText = preload("res://classes/ui/weapon_mod/weapon_mod_text.gd")
 const WeaponPreviewScript = preload("res://classes/ui/weapon_mod/weapon_preview.gd")
 const CalloutLayerScript = preload("res://classes/ui/weapon_mod/weapon_callout_layer.gd")
+const MOD_CONFIG: WeaponModConfig = preload("res://res/config/ui/weapon_mod_config.tres")
 
 # 配色沿用设置页
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)
@@ -36,8 +36,6 @@ const COL_DANGER_DIM := Color(0.84, 0.42, 0.39, 0.12)
 const COL_HOVER := Color(1.0, 1.0, 1.0, 0.055)
 const COL_TOOLTIP_BG := Color(0.043, 0.047, 0.055, 0.98)
 
-const CHIP_SIZE := Vector2(184, 52)
-const CHIP_GAP := 12.0
 const SIDE_RAIL_GROUP := "__side_rail__"
 
 signal opened
@@ -47,6 +45,7 @@ var _player
 var _open := false
 var _was_controllable := false
 var _theme: Theme
+var _config: WeaponModConfig = MOD_CONFIG
 var _background_blur_layer: CanvasLayer
 
 var _preview: WeaponPreview
@@ -79,6 +78,8 @@ var _notice: Label
 var _title_label: Label
 var _subtitle_label: Label
 var _dragging_view := false
+var _view_drag_start := Vector2.ZERO
+var _view_dragged := false
 
 
 # ── 对外接口 ────────────────────────────────────────────────
@@ -120,6 +121,8 @@ func open() -> void:
 func close() -> void:
 	if not _open:
 		return
+	_dragging_view = false
+	_view_dragged = false
 	_open = false
 	visible = false
 	if _background_blur_layer:
@@ -158,8 +161,15 @@ func _process(_delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if not _open:
 		return
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT \
+			and not event.pressed and _dragging_view:
+		# 鼠标释放在舞台外时，舞台本身可能收不到释放事件；这里补充收尾。
+		if not _view_dragged:
+			_clear_slot_selection()
 		_dragging_view = false
+		_view_dragged = false
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("ui_cancel"):
 		close()
 		get_viewport().set_input_as_handled()
@@ -168,12 +178,25 @@ func _input(event: InputEvent) -> void:
 ## 在预览空白区域拖拽旋转武器；配件卡片自身仍保留点击选择行为。
 func _on_stage_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		_dragging_view = event.pressed
 		if event.pressed:
+			_dragging_view = true
+			_view_drag_start = event.position
+			_view_dragged = false
 			get_viewport().set_input_as_handled()
+		else:
+			# 没有超过移动阈值才算点击空白区域，拖动旋转不会清除选中状态。
+			if not _view_dragged:
+				_clear_slot_selection()
+			_dragging_view = false
 		return
 	if event is InputEventMouseMotion and _dragging_view:
-		_preview.rotate_view(-event.relative.x * 0.010, -event.relative.y * 0.010)
+		if not _view_dragged and event.position.distance_to(_view_drag_start) >= _config.view_drag_threshold:
+			_view_dragged = true
+		if _view_dragged:
+			_preview.rotate_view(
+				-event.relative.x * _config.view_rotation_sensitivity,
+				-event.relative.y * _config.view_rotation_sensitivity
+			)
 		get_viewport().set_input_as_handled()
 
 
@@ -260,6 +283,7 @@ func _build_ui() -> void:
 	_sync_grid_size.call_deferred()
 
 	_preview = WeaponPreviewScript.new()
+	_preview.mod_config = _config
 	_stage.add_child(_preview)
 
 	_preview_display = TextureRect.new()
@@ -271,6 +295,7 @@ func _build_ui() -> void:
 	_stage.add_child(_preview_display)
 
 	_callout_layer = CalloutLayerScript.new()
+	_callout_layer.mod_config = _config
 	_callout_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_stage.add_child(_callout_layer)
 
@@ -308,20 +333,20 @@ func _build_header(parent: Control) -> void:
 	header.add_child(titles)
 
 	_title_label = Label.new()
-	_title_label.text = ModText.TITLE
+	_title_label.text = _config.title
 	_title_label.add_theme_font_size_override("font_size", 26)
 	_title_label.add_theme_color_override("font_color", COL_TEXT)
 	titles.add_child(_title_label)
 
 	_subtitle_label = Label.new()
-	_subtitle_label.text = ModText.SUBTITLE
+	_subtitle_label.text = _config.subtitle
 	_subtitle_label.add_theme_font_size_override("font_size", 13)
 	_subtitle_label.add_theme_color_override("font_color", COL_MUTED)
 	titles.add_child(_subtitle_label)
 
 	# 视角复位按钮（自由旋转接入后更有用）
 	var reset := Button.new()
-	reset.text = ModText.RESET_VIEW
+	reset.text = _config.reset_view
 	reset.custom_minimum_size = Vector2(108, 34)
 	reset.focus_mode = Control.FOCUS_NONE
 	_style_button(reset, false)
@@ -385,7 +410,7 @@ func _build_footer(parent: Control) -> void:
 	parent.add_child(row)
 
 	var hint := Label.new()
-	hint.text = ModText.FOOTER_HINT
+	hint.text = _config.footer_hint
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", COL_MUTED)
 	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -393,7 +418,7 @@ func _build_footer(parent: Control) -> void:
 	row.add_child(hint)
 
 	_revert_button = Button.new()
-	_revert_button.text = ModText.REVERT
+	_revert_button.text = _config.revert
 	_revert_button.custom_minimum_size = Vector2(112, 38)
 	_revert_button.focus_mode = Control.FOCUS_NONE
 	_revert_button.disabled = true
@@ -402,7 +427,7 @@ func _build_footer(parent: Control) -> void:
 	row.add_child(_revert_button)
 
 	var close_button := Button.new()
-	close_button.text = ModText.CLOSE
+	close_button.text = _config.close
 	close_button.custom_minimum_size = Vector2(112, 38)
 	close_button.focus_mode = Control.FOCUS_NONE
 	_style_button(close_button, false)
@@ -410,7 +435,7 @@ func _build_footer(parent: Control) -> void:
 	row.add_child(close_button)
 
 	_apply_button = Button.new()
-	_apply_button.text = ModText.APPLY
+	_apply_button.text = _config.apply
 	_apply_button.custom_minimum_size = Vector2(148, 38)
 	_apply_button.focus_mode = Control.FOCUS_NONE
 	_apply_button.disabled = true
@@ -458,14 +483,14 @@ func _rebuild_all() -> void:
 	_notice.visible = false
 	var weapon = _current_weapon()
 	if not weapon or not weapon.attachment_manager:
-		_title_label.text = ModText.NO_WEAPON
-		_subtitle_label.text = ModText.NO_WEAPON_HINT
+		_title_label.text = _config.no_weapon
+		_subtitle_label.text = _config.no_weapon_hint
 		_clear_chips()
 		_detail_panel.visible = false
 		return
 
-	_title_label.text = weapon.config.weapon_name if weapon.config else ModText.TITLE
-	_subtitle_label.text = ModText.SUBTITLE
+	_title_label.text = weapon.config.weapon_name if weapon.config else _config.title
+	_subtitle_label.text = _config.subtitle
 
 	# 预览按草稿重建；槽位清单也取自预览——因为可用槽位本身取决于装了什么
 	# （机匣盖带出 OpticRail、护木带出 Underbarrel）
@@ -478,7 +503,9 @@ func _rebuild_all() -> void:
 	if _active_slot != "" and _slot_chips.has(_active_slot):
 		_show_slot_detail(_active_slot)
 	else:
+		_active_slot = ""
 		_detail_panel.visible = false
+		_refresh_chip_focus()
 
 
 func _clear_chips() -> void:
@@ -510,14 +537,15 @@ func _build_chips(weapon) -> void:
 		var chip := _make_chip(key, _slot_groups[key], weapon)
 		_chip_layer.add_child(chip)
 		_slot_chips[key] = chip
+	_refresh_chip_focus()
 
 	_layout_chips.call_deferred()
 
 
 func _make_chip(group_key: String, slot_names: Array, weapon) -> PanelContainer:
 	var chip := PanelContainer.new()
-	chip.custom_minimum_size = CHIP_SIZE
-	chip.size = CHIP_SIZE
+	chip.custom_minimum_size = _config.chip_size
+	chip.size = _config.chip_size
 	chip.mouse_filter = Control.MOUSE_FILTER_STOP
 	_style_chip(chip, group_key == _active_slot)
 
@@ -536,7 +564,7 @@ func _make_chip(group_key: String, slot_names: Array, weapon) -> PanelContainer:
 	var is_core: bool = slot_names.size() == 1 and slot != null and slot.is_core()
 	var name_label := Label.new()
 	var display_name := _group_display_name(group_key, slot_names)
-	name_label.text = "%s %s" % [display_name, ModText.CORE_TAG] if is_core else display_name
+	name_label.text = "%s %s" % [display_name, _config.core_tag] if is_core else display_name
 	name_label.add_theme_font_size_override("font_size", 13)
 	name_label.add_theme_color_override("font_color", COL_MUTED)
 	vbox.add_child(name_label)
@@ -551,14 +579,14 @@ func _make_chip(group_key: String, slot_names: Array, weapon) -> PanelContainer:
 	var missing_core: bool = is_core and installed == null
 	var value_label := Label.new()
 	if group_key == SIDE_RAIL_GROUP:
-		value_label.text = ModText.SIDE_RAIL_STATUS % installed_count
+		value_label.text = _config.side_rail_status % installed_count
 	else:
-		value_label.text = installed.config.attachment_name if (installed and installed.config) else ModText.SLOT_EMPTY
+		value_label.text = installed.config.attachment_name if (installed and installed.config) else _config.slot_empty
 	value_label.add_theme_font_size_override("font_size", 14)
 	var value_col := COL_TEXT if installed else COL_MUTED.darkened(0.15)
 	if missing_core:
 		value_col = COL_DANGER
-		value_label.text = ModText.CORE_MISSING
+		value_label.text = _config.core_missing
 	value_label.add_theme_color_override("font_color", value_col)
 	value_label.clip_text = true
 	vbox.add_child(value_label)
@@ -571,6 +599,24 @@ func _make_chip(group_key: String, slot_names: Array, weapon) -> PanelContainer:
 	return chip
 
 
+## 更新卡片焦点状态：名称始终可见，未选中项只降低对比度，不移除节点。
+func _refresh_chip_focus() -> void:
+	var has_active := _active_slot != ""
+	for key in _slot_chips:
+		var chip: PanelContainer = _slot_chips[key]
+		var focused: bool = not has_active or String(key) == _active_slot
+		_style_chip(chip, focused and key == _active_slot)
+		var target_modulate := Color.WHITE if focused else Color(0.62, 0.67, 0.74, _config.unfocused_chip_alpha)
+		var target_scale := Vector2.ONE if focused else Vector2(_config.unfocused_chip_scale, _config.unfocused_chip_scale)
+		var previous_tween = chip.get_meta("_focus_tween") if chip.has_meta("_focus_tween") else null
+		if previous_tween is Tween and previous_tween.is_running():
+			previous_tween.kill()
+		var tween := chip.create_tween().set_parallel()
+		tween.tween_property(chip, "self_modulate", target_modulate, _config.chip_focus_duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tween.tween_property(chip, "scale", target_scale, _config.chip_focus_duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		chip.set_meta("_focus_tween", tween)
+
+
 func _is_side_rail_slot(slot: AttachmentSlot) -> bool:
 	return slot.slot_type == AttachmentSlot.SlotType.SIDE_RAIL_LEFT \
 			or slot.slot_type == AttachmentSlot.SlotType.SIDE_RAIL_RIGHT
@@ -578,7 +624,7 @@ func _is_side_rail_slot(slot: AttachmentSlot) -> bool:
 
 func _group_display_name(group_key: String, slot_names: Array) -> String:
 	if group_key == SIDE_RAIL_GROUP:
-		return ModText.SIDE_RAIL
+		return _config.side_rail
 	return slot_names[0] if not slot_names.is_empty() else group_key
 
 
@@ -602,12 +648,12 @@ func _layout_chips() -> void:
 			direction = Vector2.RIGHT
 		direction = direction.normalized()
 		var offset := Vector2(
-			direction.x * (CHIP_SIZE.x * 0.5 + 24.0),
-			direction.y * (CHIP_SIZE.y * 0.5 + 24.0)
+			direction.x * (_config.chip_size.x * 0.5 + _config.chip_anchor_gap),
+			direction.y * (_config.chip_size.y * 0.5 + _config.chip_anchor_gap)
 		)
-		var position := anchor + offset - CHIP_SIZE * 0.5
-		position.x = clampf(position.x, 8.0, maxf(stage_size.x - CHIP_SIZE.x - 8.0, 8.0))
-		position.y = clampf(position.y, 8.0, maxf(stage_size.y - CHIP_SIZE.y - 8.0, 8.0))
+		var position := anchor + offset - _config.chip_size * 0.5
+		position.x = clampf(position.x, _config.stage_margin, maxf(stage_size.x - _config.chip_size.x - _config.stage_margin, _config.stage_margin))
+		position.y = clampf(position.y, _config.stage_margin, maxf(stage_size.y - _config.chip_size.y - _config.stage_margin, _config.stage_margin))
 		placements.append({ "key": key, "position": position, "anchor": anchor })
 
 	_resolve_chip_overlaps(placements, stage_size)
@@ -622,30 +668,33 @@ func _layout_chips() -> void:
 
 
 func _animate_chip_to(chip: PanelContainer, target: Vector2, anchor: Vector2) -> void:
-	var previous_tween = chip.get_meta("_chip_tween") if chip.has_meta("_chip_tween") else null
-	if previous_tween is Tween and previous_tween.is_running():
-		previous_tween.kill()
 	var previous_target = chip.get_meta("_chip_target") if chip.has_meta("_chip_target") else null
 	var is_new := previous_target == null
 	if not is_new and (previous_target as Vector2).distance_to(target) < 0.75:
-		chip.position = target
+		# 目标没有变化时不要中断正在进行的淡入/缩放动画。
 		return
+	var previous_tween = chip.get_meta("_chip_tween") if chip.has_meta("_chip_tween") else null
+	if previous_tween is Tween and previous_tween.is_running():
+		previous_tween.kill()
 
-	chip.pivot_offset = CHIP_SIZE * 0.5
+	chip.pivot_offset = _config.chip_size * 0.5
 	var start := target
 	if is_new:
 		var direction := target - anchor
 		if direction.length_squared() < 1.0:
 			direction = Vector2.RIGHT
-		start = target + direction.normalized() * 14.0
+		start = target + direction.normalized() * _config.chip_anchor_gap * 0.27
 		chip.position = start
 		chip.modulate = Color(1.0, 1.0, 1.0, 0.0)
 		chip.scale = Vector2(0.92, 0.92)
 
-	var duration := 0.22 if is_new else 0.14
+	var duration := _config.chip_appearance_duration if is_new else _config.chip_move_duration
 	var tween := chip.create_tween().set_parallel()
 	tween.tween_property(chip, "position", target, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	if is_new:
+	# 相机取景过渡会让目标位置连续变化；若因此打断首次动画，
+	# 仍要把卡片从透明/缩小状态恢复到正常显示。
+	var needs_appearance := is_new or chip.modulate.a < 0.99 or chip.scale.distance_to(Vector2.ONE) > 0.01
+	if needs_appearance:
 		tween.tween_property(chip, "modulate:a", 1.0, duration).set_trans(Tween.TRANS_CUBIC)
 		tween.tween_property(chip, "scale", Vector2.ONE, duration).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	chip.set_meta("_chip_tween", tween)
@@ -657,10 +706,10 @@ func _resolve_chip_overlaps(placements: Array, stage_size: Vector2) -> void:
 	for _pass in 4:
 		for i in placements.size():
 			var current: Dictionary = placements[i]
-			var current_rect := Rect2(current["position"], CHIP_SIZE)
+			var current_rect := Rect2(current["position"], _config.chip_size)
 			for j in i:
 				var other: Dictionary = placements[j]
-				var other_rect := Rect2(other["position"], CHIP_SIZE)
+				var other_rect := Rect2(other["position"], _config.chip_size)
 				if not current_rect.intersects(other_rect):
 					continue
 				var overlap_x := minf(current_rect.end.x, other_rect.end.x) - maxf(current_rect.position.x, other_rect.position.x)
@@ -668,14 +717,14 @@ func _resolve_chip_overlaps(placements: Array, stage_size: Vector2) -> void:
 				var current_pos: Vector2 = current["position"]
 				if overlap_y <= overlap_x:
 					var direction_y := 1.0 if current_rect.get_center().y >= other_rect.get_center().y else -1.0
-					current_pos.y += direction_y * (overlap_y + CHIP_GAP)
+					current_pos.y += direction_y * (overlap_y + _config.chip_gap)
 				else:
 					var direction_x := 1.0 if current_rect.get_center().x >= other_rect.get_center().x else -1.0
-					current_pos.x += direction_x * (overlap_x + CHIP_GAP)
-				current_pos.x = clampf(current_pos.x, 8.0, maxf(stage_size.x - CHIP_SIZE.x - 8.0, 8.0))
-				current_pos.y = clampf(current_pos.y, 8.0, maxf(stage_size.y - CHIP_SIZE.y - 8.0, 8.0))
+					current_pos.x += direction_x * (overlap_x + _config.chip_gap)
+				current_pos.x = clampf(current_pos.x, _config.stage_margin, maxf(stage_size.x - _config.chip_size.x - _config.stage_margin, _config.stage_margin))
+				current_pos.y = clampf(current_pos.y, _config.stage_margin, maxf(stage_size.y - _config.chip_size.y - _config.stage_margin, _config.stage_margin))
 				current["position"] = current_pos
-				current_rect = Rect2(current_pos, CHIP_SIZE)
+				current_rect = Rect2(current_pos, _config.chip_size)
 
 
 func _project_group(group_key: String, display_size: Vector2, fallback: Vector2) -> Dictionary:
@@ -738,8 +787,7 @@ func _get_card_edge_target(chip: PanelContainer, anchor: Vector2) -> Vector2:
 
 func _show_slot_detail(slot_name: String) -> void:
 	_active_slot = slot_name
-	for key in _slot_chips:
-		_style_chip(_slot_chips[key], key == slot_name)
+	_refresh_chip_focus()
 
 	# 槽位取自预览武器（草稿状态），因为部分槽位由已装配件带出
 	var preview_weapon = _preview.get_weapon()
@@ -762,10 +810,20 @@ func _show_slot_detail(slot_name: String) -> void:
 		if slot_names.size() > 1:
 			_add_slot_heading(_slot_side_display_name(slot), slot.is_core())
 		option_count += _add_slot_options(slot)
-	_detail_sub.text = ModText.OPTION_COUNT % option_count
+	_detail_sub.text = _config.option_count % option_count
 
 	_detail_panel.visible = true
 	_position_detail_panel()
+
+
+func _clear_slot_selection() -> void:
+	if _active_slot == "" and (not _detail_panel or not _detail_panel.visible):
+		return
+	_active_slot = ""
+	if _detail_panel:
+		_detail_panel.visible = false
+	_refresh_chip_focus()
+	_update_callouts()
 
 
 ## 详情面板跟随自由布局中的卡片移动，避免配件卡片旋转后面板脱节。
@@ -777,8 +835,8 @@ func _position_detail_panel() -> void:
 		return
 	var side: int = chip.get_meta("side") if chip.has_meta("side") else 1
 	var target := Vector2(
-		CHIP_SIZE.x + 28.0 if side < 0 else _stage.size.x - CHIP_SIZE.x - 368.0,
-		clampf(chip.position.y - 40.0, 0.0, maxf(_stage.size.y - 380.0, 0.0))
+		_config.chip_size.x + _config.detail_panel_offset if side < 0 else _stage.size.x - _config.chip_size.x - _config.detail_panel_width,
+		clampf(chip.position.y - 40.0, 0.0, maxf(_stage.size.y - _config.detail_panel_height, 0.0))
 	)
 	var previous_target = _detail_panel.get_meta("_detail_target") if _detail_panel.has_meta("_detail_target") else null
 	if previous_target is Vector2 and previous_target.distance_to(target) < 0.75:
@@ -791,13 +849,13 @@ func _position_detail_panel() -> void:
 		_detail_panel.position = target
 		return
 	var tween := _detail_panel.create_tween()
-	tween.tween_property(_detail_panel, "position", target, 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_detail_panel, "position", target, _config.detail_panel_move_duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_detail_panel.set_meta("_detail_tween", tween)
 
 
 func _add_slot_heading(text: String, core: bool) -> void:
 	var heading := Label.new()
-	heading.text = "%s %s" % [text, ModText.CORE_TAG] if core else text
+	heading.text = "%s %s" % [text, _config.core_tag] if core else text
 	heading.add_theme_font_size_override("font_size", 13)
 	heading.add_theme_color_override("font_color", COL_ACCENT)
 	_detail_rows.add_child(heading)
@@ -805,9 +863,9 @@ func _add_slot_heading(text: String, core: bool) -> void:
 
 func _slot_side_display_name(slot: AttachmentSlot) -> String:
 	if slot.slot_type == AttachmentSlot.SlotType.SIDE_RAIL_LEFT:
-		return ModText.SIDE_RAIL_LEFT
+		return _config.side_rail_left
 	if slot.slot_type == AttachmentSlot.SlotType.SIDE_RAIL_RIGHT:
-		return ModText.SIDE_RAIL_RIGHT
+		return _config.side_rail_right
 	return slot.get_slot_key()
 
 
@@ -820,7 +878,7 @@ func _add_slot_options(slot: AttachmentSlot) -> int:
 		# 核心配件允许在草稿中卸下；真正应用时由 _missing_core_slots() 拦截。
 		if slot.is_core():
 			var core_hint := Label.new()
-			core_hint.text = ModText.CORE_HINT
+			core_hint.text = _config.core_hint
 			core_hint.add_theme_font_size_override("font_size", 12)
 			core_hint.add_theme_color_override("font_color", COL_MUTED)
 			_detail_rows.add_child(core_hint)
@@ -830,7 +888,7 @@ func _add_slot_options(slot: AttachmentSlot) -> int:
 
 	if options.is_empty():
 		var empty := Label.new()
-		empty.text = ModText.LIST_EMPTY
+		empty.text = _config.list_empty
 		empty.add_theme_font_size_override("font_size", 13)
 		empty.add_theme_color_override("font_color", COL_MUTED)
 		_detail_rows.add_child(empty)
@@ -876,11 +934,11 @@ func _add_option_row(cfg: AttachmentConfig, current: AttachmentConfig, slot_name
 
 	var action := Button.new()
 	if installed:
-		action.text = ModText.INSTALLED
+		action.text = _config.installed
 	elif current != null:
-		action.text = ModText.REPLACE
+		action.text = _config.replace
 	else:
-		action.text = ModText.INSTALL
+		action.text = _config.install
 	action.custom_minimum_size = Vector2(78, 32)
 	action.focus_mode = Control.FOCUS_NONE
 	action.disabled = installed
@@ -897,14 +955,14 @@ func _add_detach_row(slot_name: String) -> void:
 	var hbox := HBoxContainer.new()
 	row.add_child(hbox)
 	var label := Label.new()
-	label.text = ModText.DETACH
+	label.text = _config.detach
 	label.add_theme_font_size_override("font_size", 13)
 	label.add_theme_color_override("font_color", COL_DANGER)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hbox.add_child(label)
 	var button := Button.new()
-	button.text = ModText.DETACH_SHORT
+	button.text = _config.detach_short
 	button.custom_minimum_size = Vector2(78, 32)
 	button.focus_mode = Control.FOCUS_NONE
 	_style_button(button, false)
@@ -920,7 +978,7 @@ func _add_rail_offset_row(slot_name: String, cfg: AttachmentConfig) -> void:
 	var header := HBoxContainer.new()
 	section.add_child(header)
 	var label := Label.new()
-	label.text = ModText.RAIL_POSITION
+	label.text = _config.rail_position
 	label.add_theme_font_size_override("font_size", 12)
 	label.add_theme_color_override("font_color", COL_MUTED)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -933,12 +991,12 @@ func _add_rail_offset_row(slot_name: String, cfg: AttachmentConfig) -> void:
 	var slider := HSlider.new()
 	slider.min_value = cfg.rail_offset_min
 	slider.max_value = cfg.rail_offset_max
-	slider.step = 0.001
+	slider.step = _config.rail_slider_step
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var offset := clampf(float(_draft_rail_offsets.get(slot_name, cfg.rail_offset)), slider.min_value, slider.max_value)
 	slider.value = offset
 	value_label.text = _format_rail_offset(offset)
-	slider.tooltip_text = ModText.RAIL_POSITION_HINT
+	slider.tooltip_text = _config.rail_position_hint
 	slider.value_changed.connect(func(value: float):
 		value_label.text = _format_rail_offset(value)
 		_set_draft_rail_offset(slot_name, value)
@@ -1007,7 +1065,7 @@ func _refresh_apply_state() -> void:
 	_apply_button.disabled = blocked or not _dirty
 	_revert_button.disabled = not _dirty
 	if blocked:
-		_notice.text = ModText.CORE_BLOCKED % ", ".join(missing)
+		_notice.text = _config.core_blocked % ", ".join(missing)
 		_notice.visible = true
 	else:
 		_notice.visible = false
@@ -1071,12 +1129,13 @@ func _refresh_stats() -> void:
 		return
 	var cfg: WeaponConfig = weapon.config
 	var am = weapon.attachment_manager
+	var snapshot := weapon.get_stats_snapshot()
 	var stats := [
-		[ModText.STAT_SPREAD_HIP, weapon.get_current_spread(false), 6.0, true],
-		[ModText.STAT_SPREAD_ADS, weapon.get_current_spread(true), 1.5, true],
-		[ModText.STAT_RECOIL_V, cfg.recoil_vertical + (am.get_total_recoil_vertical_modifier() if am else 0.0), 4.0, true],
-		[ModText.STAT_RECOIL_H, cfg.recoil_horizontal + (am.get_total_recoil_horizontal_modifier() if am else 0.0), 2.0, true],
-		[ModText.STAT_WEIGHT, cfg.weight + (am.get_total_attachment_weight() if am else 0.0), 8.0, true],
+		[_config.stat_spread_hip, weapon.get_current_spread(false), 6.0, true],
+		[_config.stat_spread_ads, weapon.get_current_spread(true), 1.5, true],
+		[_config.stat_recoil_v, float(snapshot.get("recoil_v", 0.0)), 180.0, true],
+		[_config.stat_recoil_h, float(snapshot.get("recoil_h", 0.0)), 90.0, true],
+		[_config.stat_weight, cfg.weight + (am.get_total_attachment_weight() if am else 0.0), 8.0, true],
 	]
 	for entry in stats:
 		_upsert_stat_bar(entry[0], entry[1], entry[2], entry[3])
@@ -1122,20 +1181,20 @@ func _upsert_stat_bar(label_text: String, value: float, max_value: float, lower_
 	var fill := COL_ACCENT if (ratio < 0.7) == lower_is_better else COL_DANGER
 	bar.add_theme_stylebox_override("fill", _box(fill, fill, 2, 0))
 	var tween := create_tween()
-	tween.tween_property(bar, "value", ratio, 0.25).set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(bar, "value", ratio, _config.stat_bar_duration).set_trans(Tween.TRANS_CUBIC)
 
 
 func _describe_modifiers(cfg: AttachmentConfig) -> String:
 	var parts: PackedStringArray = []
 	if not is_zero_approx(cfg.hipfire_spread_modifier):
-		parts.append("腰射 %+.2f" % cfg.hipfire_spread_modifier)
+		parts.append("%s %+.2f" % [_config.modifier_hipfire, cfg.hipfire_spread_modifier])
 	if not is_zero_approx(cfg.ads_spread_modifier):
-		parts.append("机瞄 %+.2f" % cfg.ads_spread_modifier)
+		parts.append("%s %+.2f" % [_config.modifier_ads, cfg.ads_spread_modifier])
 	if not is_zero_approx(cfg.weight_kg):
-		parts.append("重量 %+.2fkg" % cfg.weight_kg)
+		parts.append("%s %+.2fkg" % [_config.modifier_weight, cfg.weight_kg])
 	if parts.is_empty():
-		return ModText.NO_MODIFIER
-	return " · ".join(parts)
+		return _config.no_modifier
+	return _config.modifier_separator.join(parts)
 
 
 # ── 样式 ────────────────────────────────────────────────────

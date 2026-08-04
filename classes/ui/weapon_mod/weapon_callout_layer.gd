@@ -16,6 +16,7 @@ const NODE_RING_RADIUS := 9.0
 var line_color := Color(0.61, 0.64, 0.68, 0.55)
 var line_active_color := Color(0.55, 0.72, 0.90, 1.0)
 var bracket_color := Color(0.55, 0.72, 0.90, 0.40)
+var mod_config: WeaponModConfig
 
 ## 每项：{ anchor: Vector2, target: Vector2, active: bool, side: int(-1 左 / 1 右) }
 var callouts: Array = []
@@ -54,8 +55,8 @@ func _draw() -> void:
 
 ## 四角取景括号，像瞄具/技术图纸的裁切标记
 func _draw_frame_brackets() -> void:
-	var inset := 10.0
-	var arm := 26.0
+	var inset := mod_config.callout_frame_inset if mod_config else 10.0
+	var arm := mod_config.callout_frame_arm if mod_config else 26.0
 	var w := size.x - inset
 	var h := size.y - inset
 	var corners := [
@@ -77,40 +78,44 @@ func _draw_callout(c: Dictionary) -> void:
 	var col := line_active_color if active else line_color
 	var width := 2.0 if active else 1.0
 
-	# 根据挂载点到卡片的相对位置，选择曲线的起始/结束切线方向。
+	# 根据挂载点到卡片的相对位置，选择 45 度折线路径方向。
 	# 卡片现在可以出现在武器四周，不能再假定只有左右两个连接边。
 	var delta := target - anchor
-	var horizontal := absf(delta.x) >= absf(delta.y)
+	var horizontal_bias := mod_config.callout_horizontal_bias if mod_config else 32.0
+	var horizontal := absf(delta.x) >= absf(delta.y) + horizontal_bias
 	var route_dir := Vector2(signf(delta.x), 0.0) if horizontal else Vector2(0.0, signf(delta.y))
 	if route_dir == Vector2.ZERO:
 		route_dir = Vector2.RIGHT
 
 	# 末端短连接段：从卡片边缘朝挂载点伸出一小段，引线接在它末端。
-	var stub_len := 18.0
+	var stub_len := mod_config.callout_stub_length if mod_config else 24.0
 	var stub_end := target - route_dir * stub_len
 	draw_line(target, stub_end, col, width)
 
-	# 曲线两端都沿着卡片方向出入，中间自然过渡，避免 90 度折点。
-	var travel := absf(delta.x) if horizontal else absf(delta.y)
-	var pull := clampf(travel * 0.38, 24.0, 120.0)
-	var p0 := anchor
-	var p1 := anchor + route_dir * pull
-	var p2 := stub_end - route_dir * pull
-	var p3 := stub_end
-	var points := PackedVector2Array()
-	for i in range(25):
-		var t := float(i) / 24.0
-		points.append(_bezier(p0, p1, p2, p3, t))
+	# 中间使用一段精确 45 度的斜线，两侧保留水平/垂直段；
+	# 这样连接方向清楚，也不会出现贝塞尔曲线贴不到卡片的情况。
+	var main_distance := absf(stub_end.x - anchor.x) if horizontal else absf(stub_end.y - anchor.y)
+	var cross_distance := absf(stub_end.y - anchor.y) if horizontal else absf(stub_end.x - anchor.x)
+	var cross_dir := Vector2(0.0, signf(stub_end.y - anchor.y)) if horizontal else Vector2(signf(stub_end.x - anchor.x), 0.0)
+	var points := PackedVector2Array([anchor])
+	var min_straight := mod_config.callout_min_straight_length if mod_config else 10.0
+	if cross_distance > 2.0 and main_distance >= cross_distance:
+		var straight_total := maxf(main_distance - cross_distance, 0.0)
+		var before_diagonal := maxf(straight_total * 0.5, min_straight)
+		before_diagonal = minf(before_diagonal, straight_total)
+		var lead := anchor + route_dir * before_diagonal
+		var diagonal_end := lead + route_dir * cross_distance + cross_dir * cross_distance
+		points.append(lead)
+		points.append(diagonal_end)
+	else:
+		points.append(anchor + route_dir * minf(main_distance * 0.5, 24.0))
+	points.append(stub_end)
 	draw_polyline(points, col, width, true)
 
 	# 挂载点节点：实心点 + 外环（选中时外环随呼吸放大）
-	draw_circle(anchor, NODE_RADIUS, col)
-	var ring := NODE_RING_RADIUS
+	var node_radius := mod_config.callout_node_radius if mod_config else NODE_RADIUS
+	var ring := mod_config.callout_node_ring_radius if mod_config else NODE_RING_RADIUS
+	draw_circle(anchor, node_radius, col)
 	if active:
 		ring += sin(pulse) * 2.5
 	draw_arc(anchor, ring, 0.0, TAU, 28, col, width, true)
-
-
-static func _bezier(p0: Vector2, p1: Vector2, p2: Vector2, p3: Vector2, t: float) -> Vector2:
-	var u := 1.0 - t
-	return u * u * u * p0 + 3.0 * u * u * t * p1 + 3.0 * u * t * t * p2 + t * t * t * p3

@@ -21,6 +21,7 @@ var _frame_center: Vector3 = Vector3.ZERO
 var _view_axis: Vector3 = Vector3.RIGHT  # 相机站位方向（与枪身长轴垂直）
 var _frame_tween: Tween
 var _has_frame := false
+var mod_config: WeaponModConfig
 
 
 func _init() -> void:
@@ -169,11 +170,12 @@ func _frame_weapon(animate: bool = true) -> void:
 	if _frame_tween and _frame_tween.is_running():
 		_frame_tween.kill()
 	_frame_tween = create_tween().set_parallel()
+	var duration := mod_config.camera_transition_duration if mod_config else 0.28
 	_frame_tween.tween_method(
-		Callable(self, "_set_frame_center"), _frame_center, target_center, 0.28
+		Callable(self, "_set_frame_center"), _frame_center, target_center, duration
 	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_frame_tween.tween_method(
-		Callable(self, "_set_frame_distance"), _frame_distance, target_distance, 0.28
+		Callable(self, "_set_frame_distance"), _frame_distance, target_distance, duration
 	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 

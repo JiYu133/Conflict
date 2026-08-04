@@ -34,12 +34,12 @@
 
 配件的视觉对齐不在此配置里控制：在配件场景内放一个名为 `SnapPoint` 的 `Marker3D` 即启用精确对齐，没有则回退为原点对齐。详见 `AttachmentManager.md`。
 
-### 数值修正
-`hipfire_spread_modifier` / `ads_spread_modifier` / `recoil_vertical_modifier` / `recoil_horizontal_modifier` / `recoil_recovery_modifier` / `ads_speed_modifier` / `weight_kg` / `center_of_mass_local` / `length_modifier` / `damage_modifier`
+### 常规参数与物理参数
+`hipfire_spread_modifier` / `ads_spread_modifier` / `ads_speed_modifier` / `weight_kg` / `center_of_mass_local` / `length_modifier` / `damage_modifier`
 
-`recoil_*_modifier` 字段仅作为旧数据兼容保留；新物理后座系统不读取它们。
+后座不使用固定角度修正。`recoil_vertical_modifier`、`recoil_horizontal_modifier`、`recoil_recovery_modifier` 仅作为旧资源兼容字段保存，不显示在检查器中，也不参与运行时计算。后座效果由 `RecoilPhysicsModel` 根据质量、质心、惯量、枪口燃气、握把支撑和枪托接触点实时推导。
 
-均为绝对量叠加，负值 = 减少，正值 = 增加。
+散布和瞄准速度字段为绝对量叠加，负值 = 减少，正值 = 增加；重量、质心及子类物理参数按物理模型解释。
 
 ### 配件子类
 

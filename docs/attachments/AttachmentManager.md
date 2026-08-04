@@ -43,7 +43,9 @@
 
 ## 数值查询（读缓存，O(1)）
 
-`get_total_spread_modifier(is_ads)` / `get_total_recoil_vertical_modifier()` / `get_total_recoil_horizontal_modifier()` / `get_total_recoil_recovery_modifier()` / `get_total_ads_speed_modifier()` / `get_total_attachment_weight()` / `get_total_length_modifier()` / `get_total_magazine_capacity_bonus()` / `suppresses_muzzle_flash()` / `suppresses_sound()` / `get_magnification()` / `get_fov_override()`
+`get_total_spread_modifier(is_ads)` / `get_total_ads_speed_modifier()` / `get_total_attachment_weight()` / `get_total_length_modifier()` / `get_total_magazine_capacity_bonus()` / `suppresses_muzzle_flash()` / `suppresses_sound()` / `get_magnification()` / `get_fov_override()`
+
+后座不再通过 AttachmentManager 汇总角度修正。`RecoilPhysicsModel` 直接读取当前配件实例的重量、质心、枪口燃气参数、握把支撑和枪托肩部接触点，重建真实物理结果。
 
 ## 对齐方式（SnapPoint）
 

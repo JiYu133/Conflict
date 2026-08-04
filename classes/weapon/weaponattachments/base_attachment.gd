@@ -44,18 +44,6 @@ func get_spread_modifier(is_ads: bool) -> float:
 		return config.ads_spread_modifier
 	return config.hipfire_spread_modifier
 
-## 返回对垂直后座的修正（度）
-func get_recoil_vertical_modifier() -> float:
-	return config.recoil_vertical_modifier
-
-## 返回对水平后座的修正（度）
-func get_recoil_horizontal_modifier() -> float:
-	return config.recoil_horizontal_modifier
-
-## 返回后座回正速度的修正
-func get_recoil_recovery_modifier() -> float:
-	return config.recoil_recovery_modifier
-
 ## 返回瞄准速度的修正
 func get_ads_speed_modifier() -> float:
 	return config.ads_speed_modifier

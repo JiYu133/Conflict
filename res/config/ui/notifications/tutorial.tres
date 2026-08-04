@@ -62,6 +62,7 @@ accent_color = Color(0.7882353, 0, 0, 1)
 script = ExtResource("3_w8h6i")
 text = "滚动滚轮可以精细调整你的高度
 但长期处于半蹲会消耗耐力"
+duration = 6.0
 block_next = true
 accent_color = Color(0.7882353, 0.69803923, 0, 1)
 metadata/_custom_type_script = "uid://cam8vgw06i5w6"
@@ -83,69 +84,32 @@ accent_color = Color(0.7882353, 0, 0, 1)
 
 [sub_resource type="Resource" id="Resource_4e16f"]
 script = ExtResource("3_w8h6i")
-text = "以下内容仅为开发阶段使用
-正式版会移除"
-duration = 18.0
-
-[sub_resource type="Resource" id="Resource_e6m45"]
-script = ExtResource("3_w8h6i")
-text = "按下F进入自由视角"
-display_order = 1
-duration = 3.0
-block_next = true
-
-[sub_resource type="Resource" id="Resource_n261e"]
-script = ExtResource("3_w8h6i")
-text = "在自由视角下
-你可以随意移动你的视角"
-display_order = 1
-duration = 3.0
-block_next = true
-
-[sub_resource type="Resource" id="Resource_gtpt7"]
-script = ExtResource("3_w8h6i")
-text = "使用Q/E调整自由摄像机的高度"
-display_order = 1
-duration = 3.0
-block_next = true
-
-[sub_resource type="Resource" id="Resource_wynk3"]
-script = ExtResource("3_w8h6i")
-text = "按下Shift可以加速自由相机速度"
-duration = 3.0
+text = "按下ESC可以暂停游戏
+设置界面内有更多按键提示"
+duration = 6.0
 block_next = true
 
 [sub_resource type="Resource" id="Resource_8lp8y"]
 script = ExtResource("3_w8h6i")
-text = "自由视角下对准玩家部位，你会看见瞄准的部位名称和情况"
+text = "按F进入自由视角
+自由视角下对准玩家部位，你会看见瞄准的部位名称和情况"
 duration = 6.0
 block_next = true
 
 [sub_resource type="Resource" id="Resource_b314j"]
 script = ExtResource("3_w8h6i")
-text = "按下左键以进行模拟射击"
+text = "按下左键以进行模拟射击
+自由视角功能会在正式版移除，此处仅为测试使用"
 metadata/_custom_type_script = "uid://cam8vgw06i5w6"
-
-[sub_resource type="Resource" id="Resource_h_key"]
-script = ExtResource("3_w8h6i")
-text = "按下H切换医疗数据显示"
-duration = 3.0
-block_next = true
-
-[sub_resource type="Resource" id="Resource_uaoa6"]
-script = ExtResource("3_w8h6i")
-text = "按下ESC打开设置菜单
-可在其中重新绑定键位"
-duration = 3.0
-block_next = true
 
 [sub_resource type="Resource" id="Resource_83ou0"]
 script = ExtResource("3_w8h6i")
 text = "测试版本存在Bug，如果遇到问题及时反馈
 游戏开发群号在游戏文件夹里的txt内"
+duration = 10.0
 metadata/_custom_type_script = "uid://cam8vgw06i5w6"
 
 [resource]
 script = ExtResource("2_2sijf")
-startup_notifications = Array[ExtResource("3_w8h6i")]([SubResource("Resource_3xd07"), SubResource("Resource_muw3u"), SubResource("Resource_ntr6m"), SubResource("Resource_r7er6"), SubResource("Resource_tmv8l"), SubResource("Resource_f0l5x"), SubResource("Resource_on76t"), SubResource("Resource_hvme1"), SubResource("Resource_a24ph"), SubResource("Resource_s6j0y"), SubResource("Resource_4e16f"), SubResource("Resource_e6m45"), SubResource("Resource_n261e"), SubResource("Resource_gtpt7"), SubResource("Resource_wynk3"), SubResource("Resource_8lp8y"), SubResource("Resource_b314j"), SubResource("Resource_h_key"), SubResource("Resource_uaoa6"), SubResource("Resource_83ou0")])
+startup_notifications = Array[ExtResource("3_w8h6i")]([SubResource("Resource_3xd07"), SubResource("Resource_muw3u"), SubResource("Resource_ntr6m"), SubResource("Resource_r7er6"), SubResource("Resource_tmv8l"), SubResource("Resource_f0l5x"), SubResource("Resource_on76t"), SubResource("Resource_hvme1"), SubResource("Resource_a24ph"), SubResource("Resource_s6j0y"), SubResource("Resource_4e16f"), SubResource("Resource_8lp8y"), SubResource("Resource_b314j"), SubResource("Resource_83ou0")])
 font = ExtResource("1_4rpcs")

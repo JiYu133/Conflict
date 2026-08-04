@@ -35,9 +35,6 @@ var _slots: Dictionary = {}  # {String: AttachmentSlot}
 # 数值缓存（attachments_changed 时重建）
 var _cache_spread_ads: float = 0.0
 var _cache_spread_hip: float = 0.0
-var _cache_recoil_v: float = 0.0
-var _cache_recoil_h: float = 0.0
-var _cache_recoil_recovery: float = 0.0
 var _cache_ads_speed: float = 0.0
 var _cache_weight: float = 0.0
 var _cache_length: float = 0.0
@@ -221,9 +218,6 @@ func _rebuild_cache() -> void:
 	var atts := get_all_attachments()
 	_cache_spread_ads = 0.0
 	_cache_spread_hip = 0.0
-	_cache_recoil_v = 0.0
-	_cache_recoil_h = 0.0
-	_cache_recoil_recovery = 0.0
 	_cache_ads_speed = 0.0
 	_cache_weight = 0.0
 	_cache_length = 0.0
@@ -235,9 +229,6 @@ func _rebuild_cache() -> void:
 	for att in atts:
 		_cache_spread_ads += att.get_spread_modifier(true)
 		_cache_spread_hip += att.get_spread_modifier(false)
-		_cache_recoil_v += att.get_recoil_vertical_modifier()
-		_cache_recoil_h += att.get_recoil_horizontal_modifier()
-		_cache_recoil_recovery += att.get_recoil_recovery_modifier()
 		_cache_ads_speed += att.get_ads_speed_modifier()
 		_cache_weight += att.get_weight()
 		_cache_length += att.get_length_modifier()
@@ -258,15 +249,6 @@ func _rebuild_cache() -> void:
 
 func get_total_spread_modifier(is_ads: bool) -> float:
 	return _cache_spread_ads if is_ads else _cache_spread_hip
-
-func get_total_recoil_vertical_modifier() -> float:
-	return _cache_recoil_v
-
-func get_total_recoil_horizontal_modifier() -> float:
-	return _cache_recoil_h
-
-func get_total_recoil_recovery_modifier() -> float:
-	return _cache_recoil_recovery
 
 func get_total_ads_speed_modifier() -> float:
 	return _cache_ads_speed
