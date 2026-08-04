@@ -96,13 +96,11 @@ equip_attachment("Barrel", barrel_cfg)
       → attachments_changed.emit()            // 触发数值缓存重建
 ```
 
-## 数值修正
+## 常规参数与物理计算
 
-所有配件的修正值在 `attachments_changed` 时一次性汇总到缓存，各子系统（RecoilComponent、WeaponObstructionDetector 等）直接读缓存，O(1) 查询：
+散布、瞄准速度、重量、长度和功能开关等常规参数在 `attachments_changed` 时一次性汇总到缓存，供对应系统 O(1) 查询。
 
-```
-武器实际值 = 武器基础值 + Σ 所有当前配件的修正值
-```
+后座不走“基础值 + 配件修正值”路径。`RecoilPhysicsModel` 会遍历当前配件实例，根据质量、质心位置、转动惯量、枪口燃气方向/比例、握把支撑和枪托肩部接触点计算单发冲量与恢复控制参数。改装改变的是物理输入，界面展示的是物理模型输出。
 
 ## Mod 开发指南
 
@@ -110,7 +108,7 @@ equip_attachment("Barrel", barrel_cfg)
 
 1. **`*.glb`**：配件模型，原点放在与上级接口的接触面中心，-Z 朝枪口方向
 2. **`*.tscn`**：配件场景，根节点挂 `BaseAttachment`（或子类）脚本；如果配件自身有可挂槽位（如带导轨的护木），在场景内加 `AttachmentSlot` 子节点
-3. **`*.tres`**：`AttachmentConfig` 资源，填写 `attachment_type`、数值修正、`attachment_scene` 路径；槽位约束写在场景 Marker3D 的 `allowed_attachment_types` 上，可多选。同类多槽位用 `preferred_slot_names` 指定左/右或具体槽名，用 `rail_offset` 指定初始导轨位置
+3. **`*.tres`**：`AttachmentConfig` 资源，填写 `attachment_type`、常规参数和对应子类的物理参数、`attachment_scene` 路径；槽位约束写在场景 Marker3D 的 `allowed_attachment_types` 上，可多选。同类多槽位用 `preferred_slot_names` 指定左/右或具体槽名，用 `rail_offset` 指定初始导轨位置
 
 无需修改任何引擎 GDScript。
 

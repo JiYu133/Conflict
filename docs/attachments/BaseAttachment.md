@@ -5,7 +5,7 @@
 
 ## 功能概述
 
-所有配件的基类。持有 `AttachmentConfig` 引用，通过统一接口向 `AttachmentManager` 提供数值修正。子类可重写各修正方法实现条件逻辑。
+所有配件的基类。持有 `AttachmentConfig` 引用，通过统一接口向 `AttachmentManager` 提供散布、重量、光学和功能数据；后座由物理模型读取配件实体参数计算。子类可重写各接口实现条件逻辑。
 
 `no_visual = true` 的配件实例不会出现在场景树中，但所有方法照常工作。
 
@@ -28,7 +28,9 @@ initialize(cfg: AttachmentConfig, weapon: BaseWeapon) -> void
 
 全部直接读 `config` 字段，子类可重写：
 
-`get_spread_modifier(is_ads)` / `get_recoil_vertical_modifier()` / `get_recoil_horizontal_modifier()` / `get_recoil_recovery_modifier()` / `get_ads_speed_modifier()` / `get_weight()` / `suppresses_muzzle_flash()` / `suppresses_sound()` / `get_length_modifier()` / `get_magnification()` / `get_fov_override()` / `set_reticle_visible(visible)`
+`get_spread_modifier(is_ads)` / `get_ads_speed_modifier()` / `get_weight()` / `suppresses_muzzle_flash()` / `suppresses_sound()` / `get_length_modifier()` / `get_magnification()` / `get_fov_override()` / `set_reticle_visible(visible)`
+
+后座相关效果不通过 `recoil_*_modifier` 接口叠加。握把、枪托、枪口装置等物理配件由 `RecoilPhysicsModel` 直接读取其质量、位置、支撑参数和燃气参数。
 
 ## 注意事项
 

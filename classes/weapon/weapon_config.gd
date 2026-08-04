@@ -37,14 +37,15 @@ extends Resource
 @export var fire_modes: Array[String] = ["safe", "semi", "auto"]
 @export var default_fire_mode: String = "semi"
 
-# 后座力（机匣基准值，配件修正叠加在此之上）────────────────
-@export_group("后座")
-@export var recoil_vertical: float = 2.0
-@export var recoil_horizontal: float = 0.5
-@export var recoil_recovery_speed: float = 5.0
-@export var kick_pitch_deg: float = 0.8
-@export var kick_yaw_deg: float = 0.12
-@export var kick_yaw_random_deg: float = 0.35
+# 后座旧字段（兼容）──────────────────────────────────────────
+## Deprecated: retained only so older weapon resources remain loadable.
+## RecoilPhysicsModel derives recoil from physical receiver/attachment data.
+@export_storage var recoil_vertical: float = 2.0
+@export_storage var recoil_horizontal: float = 0.5
+@export_storage var recoil_recovery_speed: float = 5.0
+@export_storage var kick_pitch_deg: float = 0.8
+@export_storage var kick_yaw_deg: float = 0.12
+@export_storage var kick_yaw_random_deg: float = 0.35
 
 # 散布（机匣基准值）──────────────────────────────────────
 @export_group("散布")

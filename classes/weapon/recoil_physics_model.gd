@@ -64,13 +64,23 @@ func rebuild(weapon_cfg: WeaponConfig, am: AttachmentManager) -> void:
 		shoulder_contact = Vector3(0, -0.04, 0.35)
 
 	if _attachment_manager:
-		for att in _attachment_manager.get_all_attachments():
+		var attachments := _attachment_manager.get_all_attachments()
+		for att in attachments:
 			var mass := maxf(att.config.weight_kg, 0.0)
 			var pos := _get_attachment_local(att, att.config.center_of_mass_local)
 			mass_parts.append({"mass": mass, "pos": pos})
 			total_mass += mass
 			center_of_mass += pos * mass
-			_collect_special_attachment(att, pos)
+
+		# Resolve the final shoulder contact before evaluating grip lever arms.
+		# This keeps the physical result independent of slot scan order.
+		for att in attachments:
+			if att.config is StockConfig:
+				var stock_cfg := att.config as StockConfig
+				shoulder_contact = _get_attachment_local(att, stock_cfg.shoulder_contact_local)
+
+		for att in attachments:
+			_collect_special_attachment(att)
 
 	var barrel_attachment := _find_barrel_attachment()
 	if barrel_attachment and _weapon_config:
@@ -149,11 +159,13 @@ func _get_attachment_local(att: BaseAttachment, offset: Vector3) -> Vector3:
 	if _attachment_manager and _attachment_manager.parent_weapon:
 		var weapon := _attachment_manager.parent_weapon
 		if weapon.is_inside_tree() and att.is_inside_tree():
-			return weapon.global_transform.affine_inverse() * att.global_position + offset
-	return att.position + offset
+			# Transform the configured local COM offset through the attachment's
+			# actual orientation before converting it into weapon-local space.
+			return weapon.global_transform.affine_inverse() * (att.global_transform * offset)
+	return att.transform * offset
 
 
-func _collect_special_attachment(att: BaseAttachment, pos: Vector3) -> void:
+func _collect_special_attachment(att: BaseAttachment) -> void:
 	if att.config is MuzzleDeviceConfig:
 		var muzzle_cfg := att.config as MuzzleDeviceConfig
 		gas_impulse_vector = muzzle_cfg.gas_impulse_vector

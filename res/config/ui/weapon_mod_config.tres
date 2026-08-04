@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="WeaponModConfig" format=3 uid="uid://teebu6bteleg"]
+
+[ext_resource type="Script" uid="uid://ca8pmr613xl8r" path="res://classes/ui/weapon_mod/weapon_mod_config.gd" id="1_weapon_mod_config"]
+
+[resource]
+script = ExtResource("1_weapon_mod_config")
+chip_anchor_gap = 210.0
+callout_stub_length = 50.0
