@@ -52,7 +52,7 @@
 将 `is_alive` 设为 `true`，禁用布娃娃系统。若玩家已存活则直接返回。
 
 ### `set_controllable(enabled: bool) -> void`
-设置 `controllable` 标志并记录日志。
+设置 `controllable` 标志并记录日志。切换为 `false` 时会立即调用 `movement_controller.clear_locomotion_state()`，结束冲刺/奔跑并清除步态、Shift 长按和起步爆发等瞬时移动状态，避免菜单或自由视角接管后恢复出旧输入。
 
 ### `reload_model() -> void`
 热重载模型，重新调用 `model_manager.load_model()`，供 Mod 运行时使用。
