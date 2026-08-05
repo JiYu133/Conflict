@@ -37,6 +37,12 @@ func setup(fx: WeaponFXConfig) -> void:
 
 	# 弹壳很小很轻，用连续碰撞检测防止高速穿过地面
 	continuous_cd = true
+	# 阻尼：没有阻尼时黄铜壳落地后会一直原地打转（角速度无处衰减）。
+	# 角阻尼给得比线阻尼大，让它落地后快速停转但仍能滚一小段。
+	angular_damp = 4.5
+	linear_damp = 0.35
+	# 静止后允许进入睡眠，避免几十枚弹壳持续占用物理计算
+	can_sleep = true
 	contact_monitor = true
 	max_contacts_reported = 2
 	# 与玩家/命中判定层分开：弹壳只和环境（layer 1）交互，
