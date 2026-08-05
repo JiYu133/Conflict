@@ -67,11 +67,14 @@ func _ready() -> void:
 func spawn(
 	origin: Vector3,
 	direction: Vector3,
-	config: WeaponConfig,
+	config: BarrelConfig,
 	source: Node,
 	exclude: Array[RID],
 	world: World3D
 ) -> void:
+	if not config:
+		GlobalLogger.warn("Ballistics", "spawn() 缺少 BarrelConfig（未装枪管？），弹丸未生成")
+		return
 	if not world:
 		GlobalLogger.warn("Ballistics", "spawn() without World3D, bullet dropped")
 		return

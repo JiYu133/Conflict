@@ -18,12 +18,15 @@ extends RefCounted
 static func fire_hitscan(
 	origin: Vector3,
 	target_dir: Vector3,
-	config: WeaponConfig,
+	config: BarrelConfig,
 	source: Node,
 	world: World3D,
 	exclude: Array[RID] = []
 ) -> void:
 	# 弹道参数
+	if not config:
+		GlobalLogger.warn("Projectile", "fire_hitscan() 缺少 BarrelConfig（未装枪管？），未开火")
+		return
 	var mass_kg: float = config.bullet_mass_g / 1000.0
 	var velocity: float = config.muzzle_velocity
 	var energy: float = Ballistics.kinetic_energy(mass_kg, velocity)
