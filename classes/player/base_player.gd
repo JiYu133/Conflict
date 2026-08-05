@@ -5,6 +5,7 @@ const SETTINGS_SERVICE_SCRIPT := preload("res://classes/ui/settings/settings_ser
 const SETTINGS_MENU_SCRIPT := preload("res://classes/ui/settings/settings_menu.gd")
 const PAUSE_MENU_SCRIPT := preload("res://classes/ui/pause_menu.gd")
 const WEAPON_MOD_MENU_SCRIPT := preload("res://classes/ui/weapon_mod/weapon_mod_menu.gd")
+const AMMO_HUD_SCRIPT := preload("res://classes/ui/weapon_ammo_hud.gd")
 
 # 在定义玩家对象时绑定给玩家的脚本 同时也要绑定玩家配置文件
 
@@ -143,6 +144,10 @@ func _initialize_subsystems() -> void:
 
 	screen_effects = _create_subsystem(PlayerScreenEffects.new(), "ScreenEffects")
 	screen_effects.initialize(self)
+
+	# 弹药 HUD（右下角）：显示膛内状态、弹匣余弹 / 备弹、射击模式
+	var ammo_hud := _create_subsystem(AMMO_HUD_SCRIPT.new(), "WeaponAmmoHUD")
+	ammo_hud.initialize(self)
 
 	# 战斗通知桥接：连接 HealthSystem 信号到右上角通知栏
 	var _combat_notif := _create_subsystem(CombatNotificationBridge.new(), "CombatNotifBridge")
@@ -328,9 +333,21 @@ func _input(event: InputEvent) -> void:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot_explosion()
 			KEY_R:
-				# 调试复活（仅 debug 构建）：死亡状态下按 R 原地复活并清除全部伤情。
+				# 调试重置（仅 debug 构建）：
+				#   死亡时 → 原地复活并清除全部伤情
+				#   存活时 → 补满弹药（正式换弹实装前的临时手段）
 				if not is_alive:
 					revive()
+					_debug_refill_ammo()
+				else:
+					_debug_refill_ammo()
+
+
+## 调试用弹药重置：补满当前武器全部弹匣并上膛
+func _debug_refill_ammo() -> void:
+	var weapon = weapon_manager.current_weapon if weapon_manager else null
+	if weapon and weapon.ammo_component:
+		weapon.ammo_component.refill_all()
 
 
 func _on_started_sprinting() -> void:

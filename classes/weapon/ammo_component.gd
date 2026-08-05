@@ -174,6 +174,18 @@ func apply_magazine_attachments(am: AttachmentManager) -> void:
 
 ## 弹匣配件装卸后调用，用新弹匣参数重建弹匣池
 ## 保留当前膛内弹状态，重建备弹数量和容量
+## 补满所有弹匣并上膛（调试重置用；正式流程请走换弹）
+func refill_all() -> void:
+	for mag in magazines:
+		for i in range(mag.size()):
+			mag[i] = null   # null = 标准弹，与 reconfigure() 的填充方式一致
+	current_magazine = 0
+	chambered_round = true
+	_next_round_ready = false
+	ammo_count_changed.emit(get_current_magazine_count(), get_reserve_count())
+	GlobalLogger.debug("AmmoComponent", "弹药已重置：全部弹匣补满并上膛")
+
+
 func reconfigure(mag_cfg: MagazineConfig) -> void:
 	_has_last_round_hold_open = mag_cfg.has_last_round_hold_open
 	var new_cap    := mag_cfg.magazine_capacity

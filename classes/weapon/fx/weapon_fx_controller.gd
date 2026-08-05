@@ -82,11 +82,24 @@ func _on_ejection(eject_pos: Vector3, eject_vel: Vector3) -> void:
 	_track_shell(shell)
 
 
-## 限制同时存在的弹壳数量，超出上限回收最早的
+## 限制同时存在的弹壳数量，超出上限回收最早的。
+## 弹壳到寿命会自行 queue_free()，列表里因此会留下已释放的引用；
+## 直接 pop_front() 赋给 ShellCasing 类型变量会抛
+## "Trying to assign invalid previously freed instance"，所以先清理再回收。
 func _track_shell(shell: ShellCasing) -> void:
 	_live_shells.append(shell)
-	while _live_shells.size() > maxi(_fx.shell_max_count, 1):
-		var oldest: ShellCasing = _live_shells.pop_front()
+
+	# 剔除已自然销毁的条目（用无类型变量接收，避免赋值期即报错）
+	var alive: Array[ShellCasing] = []
+	for entry in _live_shells:
+		if is_instance_valid(entry):
+			alive.append(entry)
+	_live_shells = alive
+
+	var cap := maxi(_fx.shell_max_count, 1)
+	while _live_shells.size() > cap:
+		var oldest := _live_shells[0]
+		_live_shells.remove_at(0)
 		if is_instance_valid(oldest):
 			oldest.queue_free()
 
