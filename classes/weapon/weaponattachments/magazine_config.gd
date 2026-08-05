@@ -23,3 +23,13 @@ extends AttachmentConfig
 @export var reload_time: float = 2.5
 ## 空仓换弹时间（s）—— 膛内无弹时，换弹匣后需要拉机柄推弹入膛
 @export var reload_empty_time: float = 4.0
+
+@export_subgroup("分段时长 / Staged")
+## 分段换弹时长（秒）。三段全为 0 时回退到上面的整段计时。
+## 分段的意义：动画与音效按阶段挂接，且后续可实现「换弹中途被打断」。
+## 拔出旧弹匣
+@export var stage_mag_out_time: float = 0.55
+## 插入新弹匣
+@export var stage_mag_in_time: float = 0.75
+## 拉机柄上膛（仅空仓换弹经历此阶段）
+@export var stage_charge_time: float = 0.45
