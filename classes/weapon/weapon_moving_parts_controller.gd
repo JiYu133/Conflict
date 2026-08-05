@@ -36,6 +36,11 @@ var _ch_rest_pos: Vector3
 var _anim_player: AnimationPlayer
 var _use_anim: bool = false
 
+## 是否允许 bolt_cycle 动画接管枪机运动。
+## 默认 false：刚体运动用程序动画，保证物理参数（枪机质量/复进簧/导气延时）
+## 能实时改变运动速度。仅在确有多部件联动需求时才由美术显式打开。
+@export var use_animation_override: bool = false
+
 
 ## 初始化：查找可动部件节点，订阅 bolt_moving 信号
 func initialize(weapon: BaseWeapon) -> void:
@@ -49,8 +54,16 @@ func initialize(weapon: BaseWeapon) -> void:
 	# 延迟一帧能保证拿到正确的静息值
 	call_deferred("_record_rest_positions")
 
-	if _anim_player and _anim_player.has_animation(ANIM_BOLT_CYCLE):
+	# 刚体运动一律走程序动画（JiYu 指示：刚体运动的动画用程序动画，不用 AnimationPlayer）。
+	# 枪机行程由 bolt_mass / 复进簧刚度 / 导气延时实时驱动，动画曲线做不到这点：
+	# 换重枪机或强复进簧后，位移速度必须跟着变。
+	# ANIM_BOLT_CYCLE 仅在美术显式要求多部件联动时作为覆盖手段保留。
+	if _anim_player and _anim_player.has_animation(ANIM_BOLT_CYCLE) and use_animation_override:
 		_use_anim = true
+		GlobalLogger.warn(
+			"MovingParts",
+			"检测到 bolt_cycle 动画且已开启覆盖：枪机将由动画驱动，物理参数不再影响其速度"
+		)
 
 	weapon.bolt_moving.connect(_on_bolt_moving)
 

@@ -42,6 +42,13 @@ signal ammo_depleted()
 signal reload_started()
 ## 开始换弹
 signal reload_finished()
+## 换弹阶段开始（stage 见 BaseWeapon.ReloadStage，duration 为该段时长）。
+## 动画/音效接口：监听此信号播放对应片段即可，无需关心换弹内部流程。
+signal reload_stage_started(stage: int, duration: float)
+## 换弹阶段结束
+signal reload_stage_finished(stage: int)
+## 换弹被打断，参数为已完成的阶段列表（下次换弹会跳过这些阶段）
+signal reload_interrupted(completed_stages: Array)
 ## 换弹完成
 signal ejection(case_position: Vector3, case_velocity: Vector3)
 ## 抛壳，参数：弹壳弹出位置、弹壳初速度
@@ -70,6 +77,10 @@ var bolt_position: float = 0.0
 ## 枪机位置：0.0 = 前方闭锁位，1.0 = 后方全开位
 
 var trigger_held: bool = false                 # 扳机是否被按住（连发时需要）
+## 当前这组点射还剩几发未打（不含已击发的首发）
+var _burst_remaining: int = 0
+## 本轮换弹中已完成的阶段（被打断后保留，下次换弹跳过；完整走完后清空）
+var _reload_done_stages: Array = []
 var is_reloading: bool = false                 # 是否正在换弹
 
 
@@ -89,6 +100,8 @@ var recoil_component: RecoilComponent
 var ejection_component: EjectionComponent
 ## 抛壳组件：弹壳抛出位置和速度
 var malfunction_component: MalfunctionComponent
+var fx_controller: WeaponFXController
+## 开火表现控制器：抛壳刚体、枪口焰、枪口动态光照
 ## 故障/排障组件：聚合物理故障状态，协调排障流程
 var attachment_manager: AttachmentManager
 ## 配件管理器：负责挂载瞄具/握把/枪口等
@@ -131,6 +144,11 @@ func _initialize_components() -> void:
 	malfunction_component.name = "MalfunctionComponent"
 	add_child(malfunction_component)
 
+	# 开火表现（抛壳/枪口焰/枪口光照）：订阅 ejection 与 fired 信号
+	fx_controller = WeaponFXController.new()
+	fx_controller.name = "FXController"
+	add_child(fx_controller)
+
 	# 配件管理器：会在 _setup_from_config 之后初始化（需要先有 config）
 	attachment_manager = AttachmentManager.new()
 	attachment_manager.name = "AttachmentManager"
@@ -146,11 +164,13 @@ func _setup_from_config() -> void:
 	recoil_component.initialize(config, attachment_manager)
 	ejection_component.initialize(config)
 	malfunction_component.initialize(config, bolt_component, ejection_component, ammo_component)
+	fx_controller.initialize(self, config.fx_config)
 
 ## 连接子组件的信号到本类的回调
 ## 这样 BaseWeapon 成为信号总线的中心控制器
 func _connect_internal_signals() -> void:
 	fire_control.trigger_pulled.connect(_on_trigger_pulled)
+	fire_control.burst_started.connect(_on_burst_started)
 	fire_control.trigger_released.connect(_on_trigger_released)
 	bolt_component.cycle_completed.connect(_on_cycle_completed)
 	bolt_component.bolt_reached_rear.connect(_on_bolt_reached_rear)
@@ -211,13 +231,27 @@ func reload() -> void:
 
 	# 换弹时间从已装弹匣配件读取，未装弹匣时使用安全默认值
 	var mag_cfg := _get_attachment_config_of_type(MagazineConfig) as MagazineConfig
-	var reload_t  := mag_cfg.reload_time       if mag_cfg else 4.0
-	var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
-	var duration := reload_t if ammo_component.has_chambered_round() else reload_et
-	await get_tree().create_timer(duration).timeout
-	# 武器可能在换弹计时期间被卸下/释放，await 恢复后必须确认自身仍有效
-	if not is_instance_valid(self):
-		return
+	var tactical := ammo_component.has_chambered_round()
+
+	# 分段换弹：拔弹匣 → 插弹匣 →（空仓时）拉机柄。
+	# 每段开始时发 reload_stage_started，动画/音效按阶段挂接即可；
+	# 弹匣配件未提供分段时长时回退到整段计时，行为与旧版一致。
+	#
+	# 断点续做：已完成的阶段记录在 _reload_done_stages 中。换弹被打断后
+	# 再次按 R 会跳过做完的阶段——弹匣已经拔出来了就不必再拔一次。
+	var staged := _staged_reload_times(mag_cfg, tactical)
+	if staged.is_empty():
+		var reload_t  := mag_cfg.reload_time       if mag_cfg else 4.0
+		var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
+		if not await _run_reload_stage(ReloadStage.WHOLE, reload_t if tactical else reload_et):
+			return
+	else:
+		for entry in staged:
+			var stage: ReloadStage = entry["stage"]
+			if _reload_done_stages.has(stage):
+				continue  # 该阶段此前已完成，跳过
+			if not await _run_reload_stage(stage, entry["time"]):
+				return
 
 	if ammo_component.has_chambered_round():
 		# 战术换弹：膛内有弹 → 只换弹匣，不动枪机
@@ -242,7 +276,58 @@ func reload() -> void:
 		ammo_component.chamber_round()
 
 	is_reloading = false
+	_reload_done_stages.clear()   # 本次换弹完整走完，进度归零
 	reload_finished.emit()
+
+
+## 中断当前换弹。已完成的阶段会被保留，下次换弹从断点继续。
+## 供后续"换弹中被打断"的玩法逻辑调用（受击 / 切枪 / 冲刺等）。
+func interrupt_reload() -> void:
+	if not is_reloading:
+		return
+	is_reloading = false
+	reload_interrupted.emit(_reload_done_stages.duplicate())
+	GlobalLogger.debug("BaseWeapon", "换弹被打断，已完成阶段: %s" % str(_reload_done_stages))
+
+
+## 换弹阶段。WHOLE 为无分段配置时的回退（等价旧版单段等待）。
+enum ReloadStage { WHOLE, MAG_OUT, MAG_IN, CHARGE }
+
+
+## 组装分段时长表；三段全为 0 视为"未配置分段"，返回空数组走回退路径。
+## tactical = 膛内有弹（战术换弹），无需拉机柄。
+func _staged_reload_times(mag_cfg: MagazineConfig, tactical: bool) -> Array:
+	if not mag_cfg:
+		return []
+	var out := mag_cfg.stage_mag_out_time
+	var into := mag_cfg.stage_mag_in_time
+	var charge := 0.0 if tactical else mag_cfg.stage_charge_time
+	if out <= 0.0 and into <= 0.0 and charge <= 0.0:
+		return []
+	var stages: Array = []
+	if out > 0.0:
+		stages.append({ "stage": ReloadStage.MAG_OUT, "time": out })
+	if into > 0.0:
+		stages.append({ "stage": ReloadStage.MAG_IN, "time": into })
+	if charge > 0.0:
+		stages.append({ "stage": ReloadStage.CHARGE, "time": charge })
+	return stages
+
+
+## 执行单个换弹阶段。返回 false 表示武器在等待期间失效，调用方应立即中止。
+func _run_reload_stage(stage: ReloadStage, duration: float) -> bool:
+	reload_stage_started.emit(stage, duration)
+	await get_tree().create_timer(duration).timeout
+	# 武器可能在换弹计时期间被卸下/释放
+	if not is_instance_valid(self):
+		return false
+	# 中途被 interrupt_reload() 打断：不记录本阶段，也不继续后续阶段
+	if not is_reloading:
+		return false
+	_reload_done_stages.append(stage)
+	reload_stage_finished.emit(stage)
+	return true
+
 
 ## 切换射击模式
 ## 按 config.fire_modes 列表的顺序循环
@@ -342,7 +427,16 @@ func _update_cycle(delta: float) -> void:
 			bolt_moving.emit(bolt_position)
 			if bolt_position >= 1.0:
 				bolt_position = 1.0
+				# 必须先离开 moving_back 再发信号：_on_bolt_reached_rear() 里有
+				# await（等 5ms 再复进），期间 _update_cycle 仍在跑，
+				# 若相位不变则下一帧 bolt_position 又 >= 1.0，会重复抛壳。
+				# 表现为每次射击弹出 2~3 枚弹壳（帧率越高越多）。
+				cycle_phase = "at_rear"
 				bolt_component.bolt_reached_rear.emit()
+
+		"at_rear":
+			# 到位等待：由 _on_bolt_reached_rear() 的延时回调切到 moving_forward
+			pass
 
 		"moving_forward":
 			# 枪机复进阶段：复进簧推着枪机向前回位
@@ -412,8 +506,21 @@ func _handle_cycle_complete() -> void:
 		bolt_hold_open.emit()
 		return
 
-	if current_fire_mode == "auto" and trigger_held and ammo_component.has_ammo():
+	if not ammo_component.has_ammo():
+		return
+
+	if current_fire_mode == "auto" and trigger_held:
 		_fire_one_round()
+	elif current_fire_mode == "burst" and _burst_remaining > 0:
+		# 点射：不看 trigger_held，一组打满为止（断续器行为）
+		_burst_remaining -= 1
+		_fire_one_round()
+
+## 一组点射开始：装填本组剩余发数（首发由 trigger_pulled 直接打出，故 -1）
+func _on_burst_started() -> void:
+	var count: int = config.burst_count if config else 3
+	_burst_remaining = maxi(count - 1, 0)
+
 
 ## 单次开火
 ##
@@ -498,16 +605,24 @@ func _spawn_projectile() -> void:
 		aim_origin = _get_muzzle_position()
 		aim_dir = -global_basis.z
 
+	# 弹道参数（初速/弹头质量/弹道系数）已迁移到枪管配件，
+	# 从已装 BarrelConfig 读取；没装枪管时不应该走到这里（_check_required_attachments 已拦），
+	# 仍做空值保护以防被其他路径调用。
+	var barrel := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
+	if not barrel:
+		GlobalLogger.warn("BaseWeapon", "[%s] 未装枪管，无法计算弹道" % config.weapon_name)
+		return
+
 	if config and config.use_ballistic_simulation:
 		# 瞄准收敛：先用准星射线找到玩家实际瞄准的点，
 		# 弹丸再从枪口朝该点飞行，消除枪口/准星视差
 		var aim_point := _resolve_aim_point(aim_origin, aim_dir, world, exclusions)
 		var muzzle := _get_muzzle_position()
 		BallisticProjectileSystem.get_or_create(get_tree()).spawn(
-			muzzle, aim_point - muzzle, config, self, exclusions, world
+			muzzle, aim_point - muzzle, barrel, self, exclusions, world
 		)
 	else:
-		Projectile.fire_hitscan(aim_origin, aim_dir, config, self, world, exclusions)
+		Projectile.fire_hitscan(aim_origin, aim_dir, barrel, self, world, exclusions)
 
 
 ## 枪口世界坐标（武器局部 -Z 方向延伸 weapon_length）
