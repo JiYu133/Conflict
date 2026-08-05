@@ -79,6 +79,10 @@ extends Resource
 # 视觉效果 ────────────────────────────────────────────────
 @export_group("视觉效果")
 @export var weapon_scene: PackedScene
+## 开火表现配置（抛壳 / 枪口焰 / 枪口光照）。
+## 留空则使用 WeaponFXConfig 默认值：抛壳照常工作（占位模型），
+## 枪口焰因无素材而静默跳过，待美术补上贴图后填入 .tres 即可。
+@export var fx_config: WeaponFXConfig
 @export var weapon_length: float = 0.75
 @export var ads_time: float = 0.25
 @export var ads_center_offset: Vector3 = Vector3(0.0, -0.1, -0.05)
