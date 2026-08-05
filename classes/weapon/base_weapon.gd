@@ -42,6 +42,11 @@ signal ammo_depleted()
 signal reload_started()
 ## 开始换弹
 signal reload_finished()
+## 换弹阶段开始（stage 见 BaseWeapon.ReloadStage，duration 为该段时长）。
+## 动画/音效接口：监听此信号播放对应片段即可，无需关心换弹内部流程。
+signal reload_stage_started(stage: int, duration: float)
+## 换弹阶段结束
+signal reload_stage_finished(stage: int)
 ## 换弹完成
 signal ejection(case_position: Vector3, case_velocity: Vector3)
 ## 抛壳，参数：弹壳弹出位置、弹壳初速度
@@ -219,13 +224,21 @@ func reload() -> void:
 
 	# 换弹时间从已装弹匣配件读取，未装弹匣时使用安全默认值
 	var mag_cfg := _get_attachment_config_of_type(MagazineConfig) as MagazineConfig
-	var reload_t  := mag_cfg.reload_time       if mag_cfg else 4.0
-	var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
-	var duration := reload_t if ammo_component.has_chambered_round() else reload_et
-	await get_tree().create_timer(duration).timeout
-	# 武器可能在换弹计时期间被卸下/释放，await 恢复后必须确认自身仍有效
-	if not is_instance_valid(self):
-		return
+	var tactical := ammo_component.has_chambered_round()
+
+	# 分段换弹：拔弹匣 → 插弹匣 →（空仓时）拉机柄。
+	# 每段开始时发 reload_stage_started，动画/音效按阶段挂接即可；
+	# 弹匣配件未提供分段时长时回退到整段计时，行为与旧版一致。
+	var staged := _staged_reload_times(mag_cfg, tactical)
+	if staged.is_empty():
+		var reload_t  := mag_cfg.reload_time       if mag_cfg else 4.0
+		var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
+		if not await _run_reload_stage(ReloadStage.WHOLE, reload_t if tactical else reload_et):
+			return
+	else:
+		for entry in staged:
+			if not await _run_reload_stage(entry["stage"], entry["time"]):
+				return
 
 	if ammo_component.has_chambered_round():
 		# 战术换弹：膛内有弹 → 只换弹匣，不动枪机
@@ -251,6 +264,42 @@ func reload() -> void:
 
 	is_reloading = false
 	reload_finished.emit()
+
+
+## 换弹阶段。WHOLE 为无分段配置时的回退（等价旧版单段等待）。
+enum ReloadStage { WHOLE, MAG_OUT, MAG_IN, CHARGE }
+
+
+## 组装分段时长表；三段全为 0 视为"未配置分段"，返回空数组走回退路径。
+## tactical = 膛内有弹（战术换弹），无需拉机柄。
+func _staged_reload_times(mag_cfg: MagazineConfig, tactical: bool) -> Array:
+	if not mag_cfg:
+		return []
+	var out := mag_cfg.stage_mag_out_time
+	var into := mag_cfg.stage_mag_in_time
+	var charge := 0.0 if tactical else mag_cfg.stage_charge_time
+	if out <= 0.0 and into <= 0.0 and charge <= 0.0:
+		return []
+	var stages: Array = []
+	if out > 0.0:
+		stages.append({ "stage": ReloadStage.MAG_OUT, "time": out })
+	if into > 0.0:
+		stages.append({ "stage": ReloadStage.MAG_IN, "time": into })
+	if charge > 0.0:
+		stages.append({ "stage": ReloadStage.CHARGE, "time": charge })
+	return stages
+
+
+## 执行单个换弹阶段。返回 false 表示武器在等待期间失效，调用方应立即中止。
+func _run_reload_stage(stage: ReloadStage, duration: float) -> bool:
+	reload_stage_started.emit(stage, duration)
+	await get_tree().create_timer(duration).timeout
+	# 武器可能在换弹计时期间被卸下/释放
+	if not is_instance_valid(self):
+		return false
+	reload_stage_finished.emit(stage)
+	return true
+
 
 ## 切换射击模式
 ## 按 config.fire_modes 列表的顺序循环

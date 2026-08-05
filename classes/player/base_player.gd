@@ -339,9 +339,14 @@ func _input(event: InputEvent) -> void:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot_explosion()
 			KEY_R:
-				# R 暂作调试补弹：补满全部弹匣并上膛。
-				# 正式换弹（reload）实装后这里会让位给换弹逻辑。
-				_debug_refill_ammo()
+				# R = 换弹（已走正式分段换弹流程）。
+				# 备弹耗尽时补满，方便持续测试；正式流程上线后删掉这个兜底即可。
+				if weapon_manager and weapon_manager.current_weapon:
+					var ammo = weapon_manager.current_weapon.ammo_component
+					if ammo and ammo.get_reserve_count() <= 0:
+						_debug_refill_ammo()
+					else:
+						weapon_manager.reload()
 
 
 ## 调试用弹药重置：补满当前武器全部弹匣并上膛

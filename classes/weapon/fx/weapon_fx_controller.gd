@@ -29,13 +29,33 @@ var _live_shells: Array[ShellCasing] = []
 func initialize(weapon: BaseWeapon, fx: WeaponFXConfig) -> void:
 	_weapon = weapon
 	_fx = fx if fx else WeaponFXConfig.new()
-	_muzzle_point = weapon.find_child(MUZZLE_NODE_NAME, true, false) as Node3D
-	_ejection_point = weapon.find_child(EJECTION_NODE_NAME, true, false) as Node3D
+	_resolve_markers()
+	# 抛壳窗与枪口挂点通常定义在配件场景里（抛壳窗在机匣/机匣盖，枪口在枪管），
+	# 而配件是在武器初始化之后才装上的——因此必须在配件变动后重新查找，
+	# 否则永远只找得到机匣本体上的挂点（或找不到，退化成硬编码偏移）。
+	if weapon.attachment_manager:
+		weapon.attachment_manager.attachments_changed.connect(_resolve_markers)
 
 	if not weapon.ejection.is_connected(_on_ejection):
 		weapon.ejection.connect(_on_ejection)
 	if not weapon.fired.is_connected(_on_fired):
 		weapon.fired.connect(_on_fired)
+
+
+## 递归查找挂点。find_child(recursive) 会一并搜索已装配件的场景，
+## 因此挂点既可以放在机匣本体，也可以放在配件里（推荐后者：
+## 抛壳窗属于机匣/机匣盖，枪口属于枪管，换件后位置自然跟着变）。
+func _resolve_markers() -> void:
+	if not is_instance_valid(_weapon):
+		return
+	_muzzle_point = _weapon.find_child(MUZZLE_NODE_NAME, true, false) as Node3D
+	_ejection_point = _weapon.find_child(EJECTION_NODE_NAME, true, false) as Node3D
+	if not _ejection_point:
+		GlobalLogger.debug(
+			"WeaponFX",
+			"未找到 %s 挂点，抛壳将使用 EjectionComponent 的硬编码偏移（位置可能不准）"
+				% EJECTION_NODE_NAME
+		)
 
 
 # ── 抛壳（P0）────────────────────────────────────────────────
