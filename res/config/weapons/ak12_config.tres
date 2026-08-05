@@ -23,6 +23,7 @@ weapon_name = "AK-12"
 logic_enabled = true
 cycle_rate = 700.0
 fire_modes = Array[String](["safe", "semi", "burst", "auto"])
+burst_count = 2
 hipfire_spread = 2.8
 ads_spread = 0.09
 weight = 3.8
