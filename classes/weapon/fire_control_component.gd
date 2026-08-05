@@ -55,7 +55,17 @@ func press_trigger(mode: String) -> void:
 		"auto":
 			# 全自动：每次调用都触发，上游通过 trigger_held 控制续火
 			trigger_pulled.emit()
-		# burst（三发点射）未实现，后续扩展时在这里加分支
+		"burst":
+			# 点射：与半自动一样需要扳机复位，但复位后由上游
+			# _handle_cycle_complete() 自动续打满 burst_count 发。
+			# 扣一次扳机 = 一组点射，中途松扳机不打断（真枪的断续器行为）。
+			if _trigger_reset:
+				burst_started.emit()
+				trigger_pulled.emit()
+				_trigger_reset = false
+
+## 一组点射开始（上游据此重置已发射计数）
+signal burst_started()
 
 ## 松开扳机 → 扳机复位
 func release_trigger() -> void:

@@ -39,6 +39,9 @@ var current_magazine: int = 0
 var chambered_round: bool = false
 var _next_round_ready: bool = false
 var _has_last_round_hold_open: bool = true  # 由 MagazineConfig 写入，默认允许
+## 单个弹匣容量（由 MagazineConfig 写入）。打空后数组为空，
+## 补弹时无法从数据反推容量，必须单独记住。
+var _capacity: int = 30
 
 
 # ============================================================
@@ -174,9 +177,26 @@ func apply_magazine_attachments(am: AttachmentManager) -> void:
 
 ## 弹匣配件装卸后调用，用新弹匣参数重建弹匣池
 ## 保留当前膛内弹状态，重建备弹数量和容量
+## 补满所有弹匣并上膛（调试重置用；正式流程请走换弹）
+## 子弹是数组的"元素"，打空的弹匣 size() == 0——
+## 因此必须按容量重新填充，只遍历现有元素赋值是补不回来的。
+func refill_all() -> void:
+	var cap: int = maxi(_capacity, 1)
+	for mag in magazines:
+		mag.clear()
+		for _i in range(cap):
+			mag.append(null)   # null = 标准弹，与 reconfigure() 的填充方式一致
+	current_magazine = 0
+	chambered_round = true
+	_next_round_ready = false
+	ammo_count_changed.emit(get_current_magazine_count(), get_reserve_count())
+	GlobalLogger.debug("AmmoComponent", "弹药已重置：%d 个弹匣各 %d 发并已上膛" % [magazines.size(), cap])
+
+
 func reconfigure(mag_cfg: MagazineConfig) -> void:
 	_has_last_round_hold_open = mag_cfg.has_last_round_hold_open
 	var new_cap    := mag_cfg.magazine_capacity
+	_capacity = new_cap
 	var new_reserve := mag_cfg.reserve_magazines
 	var total_mags  := new_reserve + 1
 
@@ -196,6 +216,7 @@ func reconfigure(mag_cfg: MagazineConfig) -> void:
 ## 注意：缩容会删除弹匣尾部子弹，这是换装容量变小的预期行为
 func recalculate_capacity(base_cap: int, bonus: int) -> void:
 	var target := base_cap + bonus
+	_capacity = target
 	for i in magazines.size():
 		var mag: Array = magazines[i]
 		var diff := target - mag.size()
