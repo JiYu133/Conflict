@@ -350,7 +350,16 @@ func _update_cycle(delta: float) -> void:
 			bolt_moving.emit(bolt_position)
 			if bolt_position >= 1.0:
 				bolt_position = 1.0
+				# 必须先离开 moving_back 再发信号：_on_bolt_reached_rear() 里有
+				# await（等 5ms 再复进），期间 _update_cycle 仍在跑，
+				# 若相位不变则下一帧 bolt_position 又 >= 1.0，会重复抛壳。
+				# 表现为每次射击弹出 2~3 枚弹壳（帧率越高越多）。
+				cycle_phase = "at_rear"
 				bolt_component.bolt_reached_rear.emit()
+
+		"at_rear":
+			# 到位等待：由 _on_bolt_reached_rear() 的延时回调切到 moving_forward
+			pass
 
 		"moving_forward":
 			# 枪机复进阶段：复进簧推着枪机向前回位
