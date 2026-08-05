@@ -20,6 +20,7 @@
 [resource]
 script = ExtResource("1_cfg")
 weapon_name = "AK-12"
+logic_enabled = true
 cycle_rate = 700.0
 fire_modes = Array[String](["safe", "semi", "burst", "auto"])
 hipfire_spread = 2.8
