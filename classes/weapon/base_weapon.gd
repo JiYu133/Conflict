@@ -47,6 +47,8 @@ signal reload_finished()
 signal reload_stage_started(stage: int, duration: float)
 ## 换弹阶段结束
 signal reload_stage_finished(stage: int)
+## 换弹被打断，参数为已完成的阶段列表（下次换弹会跳过这些阶段）
+signal reload_interrupted(completed_stages: Array)
 ## 换弹完成
 signal ejection(case_position: Vector3, case_velocity: Vector3)
 ## 抛壳，参数：弹壳弹出位置、弹壳初速度
@@ -75,6 +77,10 @@ var bolt_position: float = 0.0
 ## 枪机位置：0.0 = 前方闭锁位，1.0 = 后方全开位
 
 var trigger_held: bool = false                 # 扳机是否被按住（连发时需要）
+## 当前这组点射还剩几发未打（不含已击发的首发）
+var _burst_remaining: int = 0
+## 本轮换弹中已完成的阶段（被打断后保留，下次换弹跳过；完整走完后清空）
+var _reload_done_stages: Array = []
 var is_reloading: bool = false                 # 是否正在换弹
 
 
@@ -164,6 +170,7 @@ func _setup_from_config() -> void:
 ## 这样 BaseWeapon 成为信号总线的中心控制器
 func _connect_internal_signals() -> void:
 	fire_control.trigger_pulled.connect(_on_trigger_pulled)
+	fire_control.burst_started.connect(_on_burst_started)
 	fire_control.trigger_released.connect(_on_trigger_released)
 	bolt_component.cycle_completed.connect(_on_cycle_completed)
 	bolt_component.bolt_reached_rear.connect(_on_bolt_reached_rear)
@@ -229,6 +236,9 @@ func reload() -> void:
 	# 分段换弹：拔弹匣 → 插弹匣 →（空仓时）拉机柄。
 	# 每段开始时发 reload_stage_started，动画/音效按阶段挂接即可；
 	# 弹匣配件未提供分段时长时回退到整段计时，行为与旧版一致。
+	#
+	# 断点续做：已完成的阶段记录在 _reload_done_stages 中。换弹被打断后
+	# 再次按 R 会跳过做完的阶段——弹匣已经拔出来了就不必再拔一次。
 	var staged := _staged_reload_times(mag_cfg, tactical)
 	if staged.is_empty():
 		var reload_t  := mag_cfg.reload_time       if mag_cfg else 4.0
@@ -237,7 +247,10 @@ func reload() -> void:
 			return
 	else:
 		for entry in staged:
-			if not await _run_reload_stage(entry["stage"], entry["time"]):
+			var stage: ReloadStage = entry["stage"]
+			if _reload_done_stages.has(stage):
+				continue  # 该阶段此前已完成，跳过
+			if not await _run_reload_stage(stage, entry["time"]):
 				return
 
 	if ammo_component.has_chambered_round():
@@ -263,7 +276,18 @@ func reload() -> void:
 		ammo_component.chamber_round()
 
 	is_reloading = false
+	_reload_done_stages.clear()   # 本次换弹完整走完，进度归零
 	reload_finished.emit()
+
+
+## 中断当前换弹。已完成的阶段会被保留，下次换弹从断点继续。
+## 供后续"换弹中被打断"的玩法逻辑调用（受击 / 切枪 / 冲刺等）。
+func interrupt_reload() -> void:
+	if not is_reloading:
+		return
+	is_reloading = false
+	reload_interrupted.emit(_reload_done_stages.duplicate())
+	GlobalLogger.debug("BaseWeapon", "换弹被打断，已完成阶段: %s" % str(_reload_done_stages))
 
 
 ## 换弹阶段。WHOLE 为无分段配置时的回退（等价旧版单段等待）。
@@ -297,6 +321,10 @@ func _run_reload_stage(stage: ReloadStage, duration: float) -> bool:
 	# 武器可能在换弹计时期间被卸下/释放
 	if not is_instance_valid(self):
 		return false
+	# 中途被 interrupt_reload() 打断：不记录本阶段，也不继续后续阶段
+	if not is_reloading:
+		return false
+	_reload_done_stages.append(stage)
 	reload_stage_finished.emit(stage)
 	return true
 
@@ -478,8 +506,21 @@ func _handle_cycle_complete() -> void:
 		bolt_hold_open.emit()
 		return
 
-	if current_fire_mode == "auto" and trigger_held and ammo_component.has_ammo():
+	if not ammo_component.has_ammo():
+		return
+
+	if current_fire_mode == "auto" and trigger_held:
 		_fire_one_round()
+	elif current_fire_mode == "burst" and _burst_remaining > 0:
+		# 点射：不看 trigger_held，一组打满为止（断续器行为）
+		_burst_remaining -= 1
+		_fire_one_round()
+
+## 一组点射开始：装填本组剩余发数（首发由 trigger_pulled 直接打出，故 -1）
+func _on_burst_started() -> void:
+	var count: int = config.burst_count if config else 3
+	_burst_remaining = maxi(count - 1, 0)
+
 
 ## 单次开火
 ##
