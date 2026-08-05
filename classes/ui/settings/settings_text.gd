@@ -65,6 +65,7 @@ const ACTION_CYCLE_FIRE_MODE := "切换射击模式"
 const ACTION_CLEAR_MALFUNCTION := "排障"
 const ACTION_TOGGLE_FREE_CAM := "DEBUG：进入自由视角"
 const ACTION_WEAPON_MOD_MENU := "DEBUG：打开武器改装界面"
+const ACTION_DEBUG_REVIVE := "DEBUG：原地复活并补满弹药"
 
 const KEY_MOUSE_LEFT := "鼠标左键"
 const KEY_MOUSE_RIGHT := "鼠标右键"

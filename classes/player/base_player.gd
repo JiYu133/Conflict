@@ -308,6 +308,12 @@ func _input(event: InputEvent) -> void:
 		if free_camera_controller:
 			free_camera_controller.toggle()
 
+	# 调试复活（默认 G）：与 R 分开，把 R 留给正式换弹
+	if event.is_action_pressed("debug_revive"):
+		if not is_alive:
+			revive()
+		_debug_refill_ammo()
+
 	# 改装界面（debug 临时入口，默认 N，可在设置中改绑）
 	if event.is_action_pressed("weapon_mod_menu"):
 		if weapon_mod_menu:
@@ -333,14 +339,9 @@ func _input(event: InputEvent) -> void:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot_explosion()
 			KEY_R:
-				# 调试重置（仅 debug 构建）：
-				#   死亡时 → 原地复活并清除全部伤情
-				#   存活时 → 补满弹药（正式换弹实装前的临时手段）
-				if not is_alive:
-					revive()
-					_debug_refill_ammo()
-				else:
-					_debug_refill_ammo()
+				# R 暂作调试补弹：补满全部弹匣并上膛。
+				# 正式换弹（reload）实装后这里会让位给换弹逻辑。
+				_debug_refill_ammo()
 
 
 ## 调试用弹药重置：补满当前武器全部弹匣并上膛
