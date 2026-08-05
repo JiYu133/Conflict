@@ -89,6 +89,8 @@ var recoil_component: RecoilComponent
 var ejection_component: EjectionComponent
 ## 抛壳组件：弹壳抛出位置和速度
 var malfunction_component: MalfunctionComponent
+var fx_controller: WeaponFXController
+## 开火表现控制器：抛壳刚体、枪口焰、枪口动态光照
 ## 故障/排障组件：聚合物理故障状态，协调排障流程
 var attachment_manager: AttachmentManager
 ## 配件管理器：负责挂载瞄具/握把/枪口等
@@ -131,6 +133,11 @@ func _initialize_components() -> void:
 	malfunction_component.name = "MalfunctionComponent"
 	add_child(malfunction_component)
 
+	# 开火表现（抛壳/枪口焰/枪口光照）：订阅 ejection 与 fired 信号
+	fx_controller = WeaponFXController.new()
+	fx_controller.name = "FXController"
+	add_child(fx_controller)
+
 	# 配件管理器：会在 _setup_from_config 之后初始化（需要先有 config）
 	attachment_manager = AttachmentManager.new()
 	attachment_manager.name = "AttachmentManager"
@@ -146,6 +153,7 @@ func _setup_from_config() -> void:
 	recoil_component.initialize(config, attachment_manager)
 	ejection_component.initialize(config)
 	malfunction_component.initialize(config, bolt_component, ejection_component, ammo_component)
+	fx_controller.initialize(self, config.fx_config)
 
 ## 连接子组件的信号到本类的回调
 ## 这样 BaseWeapon 成为信号总线的中心控制器
