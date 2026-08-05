@@ -34,7 +34,14 @@ extends Resource
 
 # 击发 ────────────────────────────────────────────────────
 @export_group("击发")
+## 该武器支持的射击模式，按此顺序循环切换（V 键）。
+## 可用值：safe（保险）/ semi（半自动）/ burst（点射）/ auto（全自动）。
+## 每把枪按真实机械结构填写——只有真正带断续器的枪才该列 burst，
+## 栓动/半自动枪就只填 ["safe", "semi"]。
 @export var fire_modes: Array[String] = ["safe", "semi", "auto"]
+## 一组点射的发数（仅 fire_modes 含 burst 时有意义）。
+## AK-12 为 2 发点射；多数西方步枪为 3 发。
+@export_range(2, 5) var burst_count: int = 3
 @export var default_fire_mode: String = "semi"
 
 # 后座旧字段（兼容）──────────────────────────────────────────
@@ -79,6 +86,10 @@ extends Resource
 # 视觉效果 ────────────────────────────────────────────────
 @export_group("视觉效果")
 @export var weapon_scene: PackedScene
+## 开火表现配置（抛壳 / 枪口焰 / 枪口光照）。
+## 留空则使用 WeaponFXConfig 默认值：抛壳照常工作（占位模型），
+## 枪口焰因无素材而静默跳过，待美术补上贴图后填入 .tres 即可。
+@export var fx_config: WeaponFXConfig
 @export var weapon_length: float = 0.75
 @export var ads_time: float = 0.25
 @export var ads_center_offset: Vector3 = Vector3(0.0, -0.1, -0.05)
