@@ -506,16 +506,24 @@ func _spawn_projectile() -> void:
 		aim_origin = _get_muzzle_position()
 		aim_dir = -global_basis.z
 
+	# 弹道参数（初速/弹头质量/弹道系数）已迁移到枪管配件，
+	# 从已装 BarrelConfig 读取；没装枪管时不应该走到这里（_check_required_attachments 已拦），
+	# 仍做空值保护以防被其他路径调用。
+	var barrel := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
+	if not barrel:
+		GlobalLogger.warn("BaseWeapon", "[%s] 未装枪管，无法计算弹道" % config.weapon_name)
+		return
+
 	if config and config.use_ballistic_simulation:
 		# 瞄准收敛：先用准星射线找到玩家实际瞄准的点，
 		# 弹丸再从枪口朝该点飞行，消除枪口/准星视差
 		var aim_point := _resolve_aim_point(aim_origin, aim_dir, world, exclusions)
 		var muzzle := _get_muzzle_position()
 		BallisticProjectileSystem.get_or_create(get_tree()).spawn(
-			muzzle, aim_point - muzzle, config, self, exclusions, world
+			muzzle, aim_point - muzzle, barrel, self, exclusions, world
 		)
 	else:
-		Projectile.fire_hitscan(aim_origin, aim_dir, config, self, world, exclusions)
+		Projectile.fire_hitscan(aim_origin, aim_dir, barrel, self, world, exclusions)
 
 
 ## 枪口世界坐标（武器局部 -Z 方向延伸 weapon_length）
