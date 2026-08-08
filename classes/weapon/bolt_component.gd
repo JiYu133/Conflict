@@ -67,6 +67,25 @@ func set_muzzle_velocity(v: float) -> void:
 	bolt_speed_open = v * 0.15
 
 
+## 按武器配置的理论射速标定枪机往返速度。
+## bolt_speed_open/close 的原始比值仍由枪机物理参数决定，
+## 这里只缩放两者，使完整循环（导气延迟 + 枪机运动 + 后方停顿）
+## 接近 60 / RPM，而不是让 cycle_rate 只停留在配置文件里。
+func configure_cycle_rate(rpm: float, gas_delay: float = 0.0, rear_pause: float = 0.0) -> void:
+	if rpm <= 0.0 or bolt_speed_open <= 0.0 or bolt_speed_close <= 0.0:
+		return
+	var target_period := 60.0 / rpm
+	var movement_period := target_period - maxf(gas_delay, 0.0) - maxf(rear_pause, 0.0)
+	# 避免极高 RPM 或异常延迟导致除零；仍保持可运行的最小枪机时间。
+	movement_period = maxf(movement_period, 0.001)
+	var current_period := (1.0 / bolt_speed_open) + (1.0 / bolt_speed_close)
+	if current_period <= 0.0:
+		return
+	var speed_scale := current_period / movement_period
+	bolt_speed_open *= speed_scale
+	bolt_speed_close *= speed_scale
+
+
 func _apply_defaults() -> void:
 	bolt_speed_open  = 900.0 * 0.15
 	bolt_speed_close = 50.0 / 0.3 * 0.02
@@ -103,6 +122,13 @@ func hold_open() -> void:
 
 func release_bolt() -> void:
 	_is_held_open = false
+
+
+## 调试用：将枪机直接恢复到可击发的闭锁状态。
+## 不清除卡弹故障，故障仍需通过排障流程处理。
+func debug_force_locked() -> void:
+	_is_held_open = false
+	_is_locked = true
 
 
 # ============================================================

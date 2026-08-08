@@ -31,6 +31,7 @@ var _velocity: Vector3
 var _is_running: bool = false
 var _is_sprinting: bool = false
 var _was_on_floor: bool = true
+var _was_controllable: bool = true
 
 var _gait_phase: float = 0.0
 var _burst_timer: float = 0.0
@@ -76,7 +77,9 @@ func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
 	if not _player.controllable:
-		clear_locomotion_state()
+		if _was_controllable:
+			clear_locomotion_state()
+		_was_controllable = false
 		# 死亡或布娃娃激活时停止所有物理移动，让布娃娃自己处理物理
 		if not _player.is_alive or _player.is_ragdolled:
 			_velocity = Vector3.ZERO
@@ -95,6 +98,7 @@ func _physics_process(delta: float) -> void:
 		_player.move_and_slide()
 		_velocity = _player.velocity
 		return
+	_was_controllable = true
 
 	# ──────────────────────────────────────────────────────
 	# 1. 读取输入方向
@@ -160,7 +164,7 @@ func _physics_process(delta: float) -> void:
 			speed *= _player.health_system.get_movement_speed_multiplier()
 
 		if has_input:
-			var basis := _player.transform.basis
+			var basis := _player.global_basis
 			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()
 
 			# 3b. 方向速度上限：横向 80%、后退 70%
@@ -233,7 +237,7 @@ func _physics_process(delta: float) -> void:
 		# ──────────────────────────────────────────────────
 		# 4. 空中水平速度（保持原有空气阻力手感）
 		# ──────────────────────────────────────────────────
-		var basis := _player.transform.basis
+		var basis := _player.global_basis
 		var target_velocity := Vector3.ZERO
 		if has_input:
 			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()

@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://dtgqrshx3beik" path="res://classes/ui/top_right_notification_manager.gd" id="3_l6oqr"]
 [ext_resource type="Resource" uid="uid://ke76oc81381y" path="res://res/config/ui/notifications/tutorial.tres" id="4_f5kyo"]
 [ext_resource type="Script" uid="uid://dqt48xyctgcbr" path="res://classes/ui/medical_debug_hud.gd" id="5_d5dx0"]
+[ext_resource type="Script" path="res://classes/bot/bot_manager.gd" id="6_bot_manager"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_jq8tk"]
 size = Vector3(1.0458984, 50, 0)
@@ -80,6 +81,9 @@ shape = SubResource("ConcavePolygonShape3D_muw3u")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.627635, 0.8835354, -2.4987323)
 script = ExtResource("1_4om3i")
 player_config = ExtResource("2_kh0mb")
+
+[node name="BotManager" type="Node" parent="."]
+script = ExtResource("6_bot_manager")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=1022232431]
 

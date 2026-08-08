@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="AttachmentConfig" format=3 uid="uid://dq02diw0seir5"]
 
 [ext_resource type="Script" uid="uid://wwvoc4u8v141" path="res://classes/weapon/weaponattachments/attachment_config.gd" id="1_a"]
-[ext_resource type="PackedScene" uid="uid://cfacll7jl8asb" path="res://res/models/attachments/receiver_covers/dust_cover_standard/dust_cover_standard.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://cslx3rtq1i7k8" path="res://res/models/attachments/receiver_covers/dust_cover_standard/dust_cover_standard.tscn" id="2_scene"]
 
 [resource]
 script = ExtResource("1_a")

@@ -430,8 +430,6 @@ HUD 每 `0.1 s` 更新一次，新增：
 - 每个伤口标记内部出血等级。
 - 按部位列出器官累计损伤和骨折 ID。
 
-`classes/debug/medical_debug_menu.gd.uid` 仅为脚本资源 UID，保证 Godot 资源引用稳定，不包含运行时逻辑。
-
 ---
 
 ## PR #13 文件覆盖表
@@ -456,7 +454,6 @@ HUD 每 `0.1 s` 更新一次，新增：
 | `classes/combat/hit_resolver.gd` | [DamageInfo 与 HitResolver](#damageinfo-与-hitresolver) |
 | `classes/debug/free_camera_controller.gd` | [自由视角测试与医疗 HUD](#自由视角测试与医疗-hud) |
 | `classes/ui/medical_debug_hud.gd` | [自由视角测试与医疗 HUD](#自由视角测试与医疗-hud) |
-| `classes/debug/medical_debug_menu.gd.uid`（新增） | [自由视角测试与医疗 HUD](#自由视角测试与医疗-hud) |
 
 ---
 

@@ -1,18 +1,17 @@
-[gd_scene format=3 uid="uid://cfacll7jl8asb"]
+[gd_scene format=3 uid="uid://cslx3rtq1i7k8"]
 
-[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_base"]
-[ext_resource type="Script" uid="uid://01io7x43ey6y" path="res://classes/weapon/weaponattachments/attachment_slot.gd" id="2_slot"]
-[ext_resource type="PackedScene" uid="uid://4go5hdab5cs" path="res://res/models/attachments/receiver_covers/dust_cover_standard/dust_cover_standard.glb" id="3_mesh"]
+[ext_resource type="PackedScene" uid="uid://4go5hdab5cs" path="res://res/models/attachments/receiver_covers/dust_cover_standard/dust_cover_standard.glb" id="1_elb70"]
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="2_xthrb"]
+[ext_resource type="Script" uid="uid://01io7x43ey6y" path="res://classes/weapon/weaponattachments/attachment_slot.gd" id="3_igs57"]
 
-[node name="DustCoverStandard" type="Node3D" unique_id=417802737]
-script = ExtResource("1_base")
+[node name="dust_cover_standard" unique_id=1767213724 instance=ExtResource("1_elb70")]
+script = ExtResource("2_xthrb")
 
-[node name="Mesh" parent="." unique_id=431256435 instance=ExtResource("3_mesh")]
-
-[node name="OpticRail" type="Marker3D" parent="." unique_id=2100386774]
+[node name="OpticRail" type="Marker3D" parent="." index="1" unique_id=747018164]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.03294184, -0.11687671)
-script = ExtResource("2_slot")
+script = ExtResource("3_igs57")
 allowed_attachment_types = Array[int]([0])
 slot_name = "OpticRail"
 
-[node name="SnapPoint" type="Marker3D" parent="." unique_id=213489451]
+[node name="SnapPoint" type="Marker3D" parent="." index="2" unique_id=1728373228]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0006040931, 0, 0)

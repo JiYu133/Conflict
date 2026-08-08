@@ -5,8 +5,8 @@
 
 [resource]
 script = ExtResource("1_a")
-bullet_mass_g = 3.45
-ballistic_coefficient = 0.22
+muzzle_velocity = 890.0
+enable_spin_drift = true
 propellant_mass_g = 1.62
 gas_impulse_factor = 0.65
 attachment_name = "415mm 标准枪管组"

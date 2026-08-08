@@ -31,6 +31,9 @@ func _ready() -> void:
 	visible = false
 
 func _input(event: InputEvent) -> void:
+	var player = _health_system.get_parent() if _health_system else null
+	if player is BasePlayer and player.console_system and player.console_system.is_open():
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_H:
 			_is_visible = not _is_visible

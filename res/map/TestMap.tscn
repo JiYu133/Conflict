@@ -5,6 +5,7 @@
 [ext_resource type="Script" uid="uid://dqt48xyctgcbr" path="res://classes/ui/medical_debug_hud.gd" id="6_medical_hud"]
 [ext_resource type="Script" uid="uid://dtgqrshx3beik" path="res://classes/ui/top_right_notification_manager.gd" id="7_notification"]
 [ext_resource type="Resource" uid="uid://ke76oc81381y" path="res://res/config/ui/notifications/tutorial.tres" id="8_tutorial"]
+[ext_resource type="Script" uid="uid://vgyo4ucos8q2" path="res://classes/bot/bot_manager.gd" id="9_bot_manager"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_jq8tk"]
 size = Vector3(1.0458984, 50, 0)
@@ -22,11 +23,15 @@ sky = SubResource("Sky_0xmdt")
 tonemap_mode = 2
 glow_enabled = true
 
-[sub_resource type="PlaneMesh" id="PlaneMesh_3ysk3"]
-size = Vector2(100, 100)
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dwbtc"]
+albedo_color = Color(0.39308554, 0.3930855, 0.39308548, 1)
 
-[sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_muw3u"]
-data = PackedVector3Array(50, 0, 50, -50, 0, 50, 50, 0, -50, -50, 0, 50, -50, 0, -50, 50, 0, -50)
+[sub_resource type="BoxMesh" id="BoxMesh_6fhyq"]
+material = SubResource("StandardMaterial3D_dwbtc")
+size = Vector3(500, 1, 500)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_vlrgw"]
+size = Vector3(500, 1, 500)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cgqpe"]
 albedo_color = Color(0, 1, 1, 1)
@@ -65,21 +70,26 @@ mesh = SubResource("BoxMesh_jq8tk")
 environment = SubResource("Environment_jkswc")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1139026747]
-transform = Transform3D(-0.8660254, -0.43301278, 0.25, 0, 0.49999997, 0.86602545, -0.50000006, 0.75, -0.43301266, 0, 0, 0)
+transform = Transform3D(-0.6206377, 0.03839715, 0.78315675, 0.603994, 0.66032237, 0.44627973, -0.50000006, 0.75, -0.43301266, 0, 0, 0)
 shadow_enabled = true
 
 [node name="Ground" type="StaticBody3D" parent="." unique_id=2019596655]
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=604271978]
-mesh = SubResource("PlaneMesh_3ysk3")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ground" unique_id=1288307014]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.537249, -0.46882212, -1.7194424)
+mesh = SubResource("BoxMesh_6fhyq")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1471353796]
-shape = SubResource("ConcavePolygonShape3D_muw3u")
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=1242487935]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.537249, -0.46882212, -1.7194424)
+shape = SubResource("BoxShape3D_vlrgw")
 
 [node name="CharacterBody3D" type="CharacterBody3D" parent="." unique_id=1095234307]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.627635, 0.8835354, -2.4987323)
 script = ExtResource("1_jkswc")
 player_config = ExtResource("5_config")
+
+[node name="BotManager" type="Node" parent="." unique_id=1703700006]
+script = ExtResource("9_bot_manager")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=1022232431]
 

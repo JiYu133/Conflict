@@ -134,9 +134,12 @@ func find_node_by_names(names: Array, type: String = "") -> Node:
 
 ## 查找关键组件：骨骼系统和动画播放器
 func _find_components() -> void:
-	_skeleton = find_node_by_names([_model_lookup_config.skeleton_name])
-	_animator = find_node_by_names([_model_lookup_config.animator_name])
-	_animation_tree = find_node_by_names([_model_lookup_config.animation_tree_name])
+	_skeleton = _find_unique_component("Skeleton3D") as Skeleton3D
+	# AnimationPlayer is a type-based dependency. A model must expose exactly
+	# one player so AnimationTree and death animation cannot target different
+	# player nodes.
+	_animator = _find_unique_component("AnimationPlayer") as AnimationPlayer
+	_animation_tree = _find_unique_component("AnimationTree") as AnimationTree
 
 	if not _skeleton:
 		push_warning("未找到骨骼系统，部分功能将不可用")
@@ -144,6 +147,19 @@ func _find_components() -> void:
 		push_warning("未找到动画系统")
 	if not _animation_tree:
 		push_warning("未找到 AnimationTree，动画混合将不可用")
+
+
+func _find_unique_component(type_name: String) -> Node:
+	if not is_instance_valid(_model_node):
+		return null
+	var components: Array[Node] = _model_node.find_children("*", type_name, true, false)
+	if components.size() == 1:
+		return components[0]
+	if components.is_empty():
+		push_warning("模型中未找到类型为 %s 的组件" % type_name)
+	else:
+		push_error("模型中必须恰好存在一个 %s，实际找到 %d 个" % [type_name, components.size()])
+	return null
 
 ## 为玩家创建碰撞体
 ## 使用胶囊体碰撞形状（CapsuleShape3D），参数来自 PlayerConfig

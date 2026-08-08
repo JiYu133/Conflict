@@ -111,9 +111,10 @@ func reload() -> void:
 	if current_weapon:
 		current_weapon.reload()
 
-func cycle_fire_mode() -> void:
+func cycle_fire_mode() -> bool:
 	if current_weapon:
-		current_weapon.cycle_fire_mode()
+		return current_weapon.cycle_fire_mode()
+	return false
 
 func attempt_malfunction_clearance() -> void:
 	if current_weapon:
@@ -200,28 +201,22 @@ func _apply_ads_state() -> void:
 func equip_attachment(slot_name: String, cfg: AttachmentConfig) -> bool:
 	if not current_weapon or not current_weapon.attachment_manager:
 		return false
-	var att := AttachmentFactory.create(cfg, current_weapon)
-	if not att:
-		return false
-	return current_weapon.attachment_manager.equip_to_slot(att, slot_name)
+	return current_weapon.equip_attachment(slot_name, cfg)
 
 
 ## 不指定槽位名，自动匹配当前第一个能接受该配件的空槽位。
 ## 父配件先装上后，它场景内的子槽会立即进入匹配范围。
 func equip_attachment_auto(cfg: AttachmentConfig) -> bool:
-	if not current_weapon or not current_weapon.attachment_manager:
+	if not current_weapon:
 		return false
-	var slot := current_weapon.attachment_manager.find_first_available_slot_for(cfg)
-	if not slot:
-		return false
-	return equip_attachment(slot.get_slot_key(), cfg)
+	return current_weapon.equip_attachment_auto(cfg)
 
 
 ## 从当前武器的指定槽位卸载配件，返回被卸下的实例（null = 失败）
 func detach_attachment(slot_name: String) -> BaseAttachment:
-	if not current_weapon or not current_weapon.attachment_manager:
+	if not current_weapon:
 		return null
-	return current_weapon.attachment_manager.detach_from_slot(slot_name)
+	return current_weapon.detach_attachment(slot_name)
 
 
 ## 查询当前武器所有槽位状态，供改装 UI 渲染列表
@@ -259,15 +254,13 @@ func get_supported_slot_types() -> Array[AttachmentSlot.SlotType]:
 
 ## 调整指定槽位配件的导轨位置（供改装 UI 滑动条调用）
 func set_rail_offset(slot_name: String, offset: float) -> void:
-	if current_weapon and current_weapon.attachment_manager:
-		current_weapon.attachment_manager.set_rail_offset(slot_name, offset)
+	if current_weapon:
+		current_weapon.set_attachment_rail_offset(slot_name, offset)
 
 
 ## 获取指定槽位配件的当前导轨偏移值
 func get_rail_offset(slot_name: String) -> float:
-	if current_weapon and current_weapon.attachment_manager:
-		return current_weapon.attachment_manager.get_rail_offset(slot_name)
-	return 0.0
+	return current_weapon.get_attachment_rail_offset(slot_name) if current_weapon else 0.0
 
 
 # ============================================================

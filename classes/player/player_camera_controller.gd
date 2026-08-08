@@ -67,6 +67,22 @@ var _target_eye_height: float = 1.6
 # 后座
 var _recoil_component: RecoilComponent = null
 
+# 受击疼痛镜头冲击：独立于鼠标视角和武器后座的短促阻尼弹簧。
+# 位置是当前角度偏移，速度由受击瞬间注入，随后自动回到零，
+# 因此不会产生《我的世界》式的持续随机抖屏。
+const PAIN_STIFFNESS: float = 105.0
+const PAIN_DAMPING: float = 22.0
+const PAIN_MAX_PITCH: float = 0.10 # 约 5.7°
+const PAIN_MAX_YAW: float = 0.07   # 约 4.0°
+const PAIN_MAX_ROLL: float = 0.14  # 约 8.0°
+var _pain_pitch: float = 0.0
+var _pain_pitch_velocity: float = 0.0
+var _pain_yaw: float = 0.0
+var _pain_yaw_velocity: float = 0.0
+var _pain_roll: float = 0.0
+var _pain_roll_velocity: float = 0.0
+var _pain_rng := RandomNumberGenerator.new()
+
 # 死亡摄像机跟随
 var _ragdoll_skeleton: Skeleton3D = null
 var _ragdoll_bone_idx: int = -1
@@ -89,7 +105,8 @@ func initialize(
 	model_manager: PlayerModelManager,
 	model_lookup_config: ModelLookupConfig,
 	camera_config: CameraConfig,
-	settings_service
+	settings_service,
+	create_local_camera: bool = true
 ) -> void:
 	_model_manager = model_manager
 	_model_lookup_config = model_lookup_config if model_lookup_config else ModelLookupConfig.new()
@@ -101,18 +118,19 @@ func initialize(
 	_spring_y = CameraSpring1D.new()
 	_spring_z = CameraSpring1D.new()
 	_update_spring_params()
+	_pain_rng.randomize()
 
 	_hip_fov = _camera_config.fov
 	# 眼部高度从 camera_config 头部偏移 Y 初始化（fallback 用）
 	_eye_height = _camera_config.head_offset.y if _camera_config.head_offset.y > 0.1 else 1.6
 	_target_eye_height = _eye_height
 
-	var seed: Camera3D = Camera3D.new()
-	seed.name = "SeedCamera"
-	seed.current = true
-	_player.add_child(seed)
-
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	if create_local_camera:
+		var seed: Camera3D = Camera3D.new()
+		seed.name = "SeedCamera"
+		seed.current = true
+		_player.add_child(seed)
+		_player.request_mouse_mode(BasePlayer.MOUSE_OWNER_CAMERA, Input.MOUSE_MODE_CAPTURED, 0)
 
 
 func _update_spring_params() -> void:
@@ -323,6 +341,10 @@ func _process(delta: float) -> void:
 	if not _active_camera or not _camera_config:
 		return
 
+	# 即使暂时失去输入控制，也让受击镜头继续回正，避免打开菜单后
+	# 冲击被冻结，关闭菜单时突然恢复一个过期的歪斜角度。
+	_update_pain_impulse(delta)
+
 	# 眼部高度平滑插值（蹲下/起立时移动摄像机 fallback 高度）
 	if _eye_height != _target_eye_height:
 		_eye_height = move_toward(_eye_height, _target_eye_height, 3.0 * delta)
@@ -371,13 +393,13 @@ func _process(delta: float) -> void:
 	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧
 	_active_camera.global_position = _player.global_transform * filtered_local
 
-	var player_yaw: float = _player.rotation.y if _player else 0.0
 	var recoil_pitch := _recoil_component.get_camera_pitch_offset() if _recoil_component else 0.0
 	var recoil_yaw := _recoil_component.get_camera_yaw_offset() if _recoil_component else 0.0
+	var player_yaw: float = _player.rotation.y if _player else 0.0
 	_active_camera.global_rotation = Vector3(
-		_vertical_angle + recoil_pitch,
-		player_yaw + recoil_yaw,
-		0.0
+		_vertical_angle + recoil_pitch + _pain_pitch,
+		player_yaw + recoil_yaw + _pain_yaw,
+		_pain_roll
 	)
 
 	_update_ads(delta)
@@ -440,6 +462,50 @@ func _update_weapon_spring(_delta: float) -> void:
 # ============================================================
 func set_recoil_component(rc: RecoilComponent) -> void:
 	_recoil_component = rc
+
+
+## 施加一次受击疼痛镜头冲击。
+## world_direction 是弹头飞向玩家的方向；amount 使用 DamageInfo 的动能（焦耳）。
+## 角度会根据受击左右方向决定，方向未知时只补一个很小的随机左右偏移。
+func add_pain_impulse(world_direction: Vector3, amount: float, intensity: float = 1.0) -> void:
+	if not is_instance_valid(_player) or not controllable:
+		return
+
+	var direction := world_direction.normalized()
+	var local_direction := _player.global_basis.inverse() * direction if direction != Vector3.ZERO else Vector3.ZERO
+	var side := clampf(local_direction.x, -1.0, 1.0)
+	if absf(side) < 0.1:
+		# 正面/背面命中没有可靠的左右信息；轻微随机即可避免每次都向同侧歪。
+		side = -1.0 if _pain_rng.randf() < 0.5 else 1.0
+
+	var energy_scale := clampf(amount / 600.0, 0.15, 1.0)
+	var impulse_scale := clampf(intensity, 0.35, 1.0) * energy_scale
+	# 受击方向只影响短促的上下/水平错动，主要视觉重点放在横滚疼痛感。
+	_pain_pitch_velocity += clampf(-local_direction.y * 0.55, -0.55, 0.55) * impulse_scale
+	_pain_yaw_velocity += -side * 0.38 * impulse_scale
+	_pain_roll_velocity += -side * 1.20 * impulse_scale
+
+
+## 清除受击冲击（死亡、昏迷或复活切换时使用）。
+func clear_pain_impulse() -> void:
+	_pain_pitch = 0.0
+	_pain_pitch_velocity = 0.0
+	_pain_yaw = 0.0
+	_pain_yaw_velocity = 0.0
+	_pain_roll = 0.0
+	_pain_roll_velocity = 0.0
+
+
+func _update_pain_impulse(delta: float) -> void:
+	_pain_pitch_velocity += (-PAIN_STIFFNESS * _pain_pitch - PAIN_DAMPING * _pain_pitch_velocity) * delta
+	_pain_yaw_velocity += (-PAIN_STIFFNESS * _pain_yaw - PAIN_DAMPING * _pain_yaw_velocity) * delta
+	_pain_roll_velocity += (-PAIN_STIFFNESS * _pain_roll - PAIN_DAMPING * _pain_roll_velocity) * delta
+	_pain_pitch += _pain_pitch_velocity * delta
+	_pain_yaw += _pain_yaw_velocity * delta
+	_pain_roll += _pain_roll_velocity * delta
+	_pain_pitch = clampf(_pain_pitch, -PAIN_MAX_PITCH, PAIN_MAX_PITCH)
+	_pain_yaw = clampf(_pain_yaw, -PAIN_MAX_YAW, PAIN_MAX_YAW)
+	_pain_roll = clampf(_pain_roll, -PAIN_MAX_ROLL, PAIN_MAX_ROLL)
 
 
 # ============================================================

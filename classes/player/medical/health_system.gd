@@ -434,8 +434,7 @@ func _evaluate_state(last_hit_direction: Vector3) -> void:
 		MedicalEnums.HealthState.DEAD:
 			_trigger_death(last_hit_direction)
 		MedicalEnums.HealthState.UNCONSCIOUS:
-			if _player.controllable:
-				_player.controllable = false
+			if _player.controllable or _player.is_bot:
 				went_unconscious.emit()
 				_player.go_unconscious(_last_hit_direction)
 		# 注意：从 UNCONSCIOUS 恢复意识需要显式治疗（P3 肾上腺素/血袋），
@@ -665,7 +664,7 @@ func _destroy_hitboxes() -> void:
 	_hitboxes.clear()
 
 
-# ── 调试接口（仅供 MedicalDebugMenu 使用）────────────────────
+# ── 调试接口（仅供 Debug 构建控制台指令使用）────────────────
 
 ## 直接注入一个伤口，用于测试出血/死亡流程。
 ## bleed_override < 0 时按软组织规则自动分类（P2：调试注入无伤道信息，

@@ -99,7 +99,10 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 	GlobalLogger.info("AnimationController", "Initialized with AnimationTree.")
 	_setup_animations()
 	_apply_config_to_transitions()
-	_transition(State.IDLE)
+	# _state 默认就是 IDLE，但状态机启动时仍停在 Start 节点；直接 start
+	# 确保运行时实例（尤其是动态创建的 Bot）不会保留导入模型的 T-pose。
+	_playback.start(SM_IDLE, true)
+	_state = State.IDLE
 
 
 # 初始化动画资源设置 ────────────────────────────────────

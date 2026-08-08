@@ -32,7 +32,7 @@ var _death_canvas: CanvasLayer = null   # layer=9，独立于 UI CanvasLayer
 var _death_rect: ColorRect = null
 
 # ── 内部状态 ────────────────────────────────────────────────
-var _player: BasePlayer = null
+var _player = null
 
 # 疼痛/体力模糊
 var _blur_pulse: float = 0.0
@@ -54,7 +54,7 @@ var _death_active: bool = false
 
 
 # ── 初始化 ──────────────────────────────────────────────────
-func initialize(player: BasePlayer) -> void:
+func initialize(player) -> void:
 	_player = player
 
 func _ready() -> void:
@@ -134,6 +134,17 @@ func _on_damage_taken(info: DamageInfo) -> void:
 	var pulse_strength := (info.amount / ke_ref) * MAX_PULSE_BLUR * 0.5
 	pulse_strength = maxf(pulse_strength, _current_pain * MAX_PULSE_BLUR * 0.6)
 	_blur_pulse = maxf(_blur_pulse, pulse_strength)
+
+	# 受伤镜头反馈使用一次性角度冲击，而不是持续随机抖动。
+	# 四肢命中通常不应像躯干/头部一样强烈地影响视线。
+	if _player and _player.is_alive and _player.controllable and _player.camera_controller:
+		var body_scale := 1.0
+		match info.body_part:
+			MedicalEnums.BodyPartId.HEAD:
+				body_scale = 1.25
+			MedicalEnums.BodyPartId.LEFT_UPPER_ARM, MedicalEnums.BodyPartId.LEFT_FOREARM, MedicalEnums.BodyPartId.RIGHT_UPPER_ARM, MedicalEnums.BodyPartId.RIGHT_FOREARM, MedicalEnums.BodyPartId.LEFT_THIGH, MedicalEnums.BodyPartId.LEFT_CALF, MedicalEnums.BodyPartId.RIGHT_THIGH, MedicalEnums.BodyPartId.RIGHT_CALF:
+				body_scale = 0.65
+		_player.camera_controller.add_pain_impulse(info.direction, info.amount, body_scale)
 
 func _on_pain_changed(level: float) -> void:
 	_current_pain = level

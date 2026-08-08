@@ -41,6 +41,31 @@ static func drag_decel(speed_mps: float, bc: float) -> float:
 	return drag_factor(bc) * speed_mps * speed_mps
 
 
+## 空气相对速度下的阻力加速度。wind_velocity 是空气相对世界的速度。
+static func drag_acceleration(relative_velocity: Vector3, bc: float, air_density_kg_m3: float = 1.225) -> Vector3:
+	var relative_speed := relative_velocity.length()
+	if relative_speed <= 0.0001 or bc <= 0.0:
+		return Vector3.ZERO
+	var density_scale := maxf(air_density_kg_m3, 0.0) / 1.225
+	return -relative_velocity.normalized() * drag_decel(relative_speed, bc) * density_scale
+
+
+## Simplified lateral acceleration used for right/left-hand spin drift.
+static func spin_drift_acceleration(
+	drift_axis: Vector3,
+	muzzle_speed_mps: float,
+	flight_time_s: float,
+	twist_rate_m: float,
+	rifling_direction: int,
+	scale: float = 0.0005,
+	speed_ratio: float = 1.0
+) -> Vector3:
+	if drift_axis == Vector3.ZERO or muzzle_speed_mps <= 0.0 or twist_rate_m <= 0.0 or rifling_direction == 0:
+		return Vector3.ZERO
+	var time_factor := minf(maxf(flight_time_s, 0.0), 1.0)
+	return drift_axis.normalized() * float(rifling_direction) * scale * muzzle_speed_mps / twist_rate_m * time_factor * clampf(speed_ratio, 0.0, 1.0)
+
+
 ## 根据射程估算弹头速度衰减（闭式解，供 hitscan 回退路径和调参参考）。
 ## 模型：dv/dt = −k·v² 沿弹道积分 → v(d) = v₀ / (1 + k·d)，k = DRAG_SCALE / BC
 ## [参数] muzzle_velocity  枪口初速（m/s）
