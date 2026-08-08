@@ -41,14 +41,17 @@ signal ammo_depleted()
 ## 所有弹药耗尽（尝试击发但无弹可用）
 signal reload_started()
 ## 开始换弹
-signal reload_finished()
+signal reload_countdown_started(duration: float)
+## 本次换弹倒计时开始。duration 为实际仍需执行的总时长（秒）。
+## 独立于分段动画信号，供 HUD 等只关心整体进度的系统使用。
+signal reload_stage_started(stage: int, duration: float)
 ## 换弹阶段开始（stage 见 BaseWeapon.ReloadStage，duration 为该段时长）。
 ## 动画/音效接口：监听此信号播放对应片段即可，无需关心换弹内部流程。
-signal reload_stage_started(stage: int, duration: float)
-## 换弹阶段结束
 signal reload_stage_finished(stage: int)
-## 换弹被打断，参数为已完成的阶段列表（下次换弹会跳过这些阶段）
+## 换弹阶段结束
 signal reload_interrupted(completed_stages: Array)
+## 换弹被打断，参数为已完成的阶段列表（下次换弹会跳过这些阶段）
+signal reload_finished()
 ## 换弹完成
 signal ejection(case_position: Vector3, case_velocity: Vector3)
 ## 抛壳，参数：弹壳弹出位置、弹壳初速度
@@ -349,9 +352,12 @@ func reload() -> void:
 	if staged.is_empty():
 		var reload_t  := mag_cfg.reload_time       if mag_cfg else 4.0
 		var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
-		if not await _run_reload_stage(ReloadStage.WHOLE, reload_t if tactical else reload_et):
+		var whole_duration: float = reload_t if tactical else reload_et
+		reload_countdown_started.emit(whole_duration)
+		if not await _run_reload_stage(ReloadStage.WHOLE, whole_duration):
 			return
 	else:
+		reload_countdown_started.emit(_remaining_reload_duration(staged))
 		for entry in staged:
 			var stage: ReloadStage = entry["stage"]
 			if _reload_done_stages.has(stage):
@@ -418,6 +424,16 @@ func _staged_reload_times(mag_cfg: MagazineConfig, tactical: bool) -> Array:
 	if charge > 0.0:
 		stages.append({ "stage": ReloadStage.CHARGE, "time": charge })
 	return stages
+
+
+## 汇总本次仍未完成的分段时长，供整体换弹倒计时显示。
+func _remaining_reload_duration(stages: Array) -> float:
+	var duration := 0.0
+	for entry in stages:
+		var stage: ReloadStage = entry["stage"]
+		if not _reload_done_stages.has(stage):
+			duration += float(entry["time"])
+	return duration
 
 
 ## 执行单个换弹阶段。返回 false 表示武器在等待期间失效，调用方应立即中止。
