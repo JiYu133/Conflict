@@ -163,10 +163,12 @@ func swap_magazine() -> void:
 		var idx = (current_magazine + 1 + i) % magazines.size()
 		if magazines[idx].size() > 0:
 			current_magazine = idx
+			ammo_count_changed.emit(get_current_magazine_count(), get_reserve_count())
 			return
 
 	# 所有弹匣都空：保持在原索引（弹匣计数仍为 0，触发空仓挂机）
 	current_magazine = current_magazine % magazines.size()
+	ammo_count_changed.emit(get_current_magazine_count(), get_reserve_count())
 
 ## 应用弹匣附件的容量加成（在 attachment_manager 初始化完成后调用）
 ## 入参：am = 所属武器的 AttachmentManager，从中读取扩容弹匣的额外容量

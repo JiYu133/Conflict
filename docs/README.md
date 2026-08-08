@@ -161,6 +161,7 @@ BaseWeapon
 | [BaseWeapon](weapon/BaseWeapon.md) | `classes/weapon/base_weapon.gd` | 枪械根节点，管理组件与自动循环状态机 |
 | [WeaponConfig](weapon/WeaponConfig.md) | `classes/weapon/weapon_config.gd` | 武器基础参数（待重构，部分属性将移至配件） |
 | [WeaponManager](weapon/WeaponManager.md) | `classes/weapon/weapon_manager.gd` | 武器装备/切换/改装接口 |
+| [武器交互与携行系统设计](weapon/WeaponInteractionDesign.md) | 概念设计 | 非格子背包、身体选弹匣、换弹/战术配件轮盘与单武器快捷键 |
 | [WeaponMovingPartsController](weapon/WeaponMovingPartsController.md) | `classes/weapon/weapon_moving_parts_controller.gd` | 枪机框/拉机柄位移驱动 |
 | [AmmoComponent](weapon/AmmoComponent.md) | `classes/weapon/ammo_component.gd` | 弹匣/膛内弹药状态 |
 | [BoltComponent](weapon/BoltComponent.md) | `classes/weapon/bolt_component.gd` | 枪机自动循环仿真 |
