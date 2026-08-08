@@ -35,7 +35,7 @@ var _config: StaminaConfig = null
 var _movement_state: MovementState = MovementState.IDLE
 var _is_exhausted: bool = false
 var _recovery_timer: float = 0.0
-var _carry_weight_kg: float = 0.0  # 预留负重接口，暂不影响计算
+var _carry_weight_kg: float = 0.0
 var _prev_low_breath: bool = false  # 上一帧是否处于低体力喘气状态
 
 # 初始化 ────────────────────────────────────────────────────────
@@ -65,20 +65,21 @@ func _physics_process(delta: float) -> void:
 	var prev_stamina := stamina
 
 	# 2. 消耗或恢复
+	var movement_cost_multiplier := get_movement_cost_multiplier()
 	match _movement_state:
 		MovementState.SPRINTING:
 			_recovery_timer = 0.0
-			stamina = maxf(0.0, stamina - _config.sprint_cost_per_sec * delta)
+			stamina = maxf(0.0, stamina - _config.sprint_cost_per_sec * movement_cost_multiplier * delta)
 		MovementState.RUNNING:
 			_recovery_timer = 0.0
-			stamina = maxf(0.0, stamina - _config.run_cost_per_sec * delta)
+			stamina = maxf(0.0, stamina - _config.run_cost_per_sec * movement_cost_multiplier * delta)
 		MovementState.WALKING:
 			_recovery_timer = 0.0
 			if stamina < max_stamina:
 				stamina = minf(max_stamina, stamina + _config.recovery_rate_walk * delta)
 			else:
 				# 满体力时行走也按消耗计（极小值，维持行走惩罚感）
-				stamina = maxf(0.0, stamina - _config.walk_cost_per_sec * delta)
+				stamina = maxf(0.0, stamina - _config.walk_cost_per_sec * movement_cost_multiplier * delta)
 		MovementState.IDLE:
 			_recovery_timer += delta
 			if _recovery_timer >= _config.recovery_delay:
@@ -88,7 +89,7 @@ func _physics_process(delta: float) -> void:
 	if _player.stance_controller:
 		var stance := _player.stance_controller.get_stance_value()
 		if stance > 0.05 and _movement_state != MovementState.SPRINTING and _movement_state != MovementState.RUNNING:
-			var crouch_cost: float = stance * _config.walk_cost_per_sec * _config.crouch_cost_multiplier * delta
+			var crouch_cost: float = stance * _config.walk_cost_per_sec * _config.crouch_cost_multiplier * movement_cost_multiplier * delta
 			stamina = maxf(0.0, stamina - crouch_cost)
 			_recovery_timer = 0.0
 
@@ -156,9 +157,24 @@ func allows_jump() -> bool:
 		return false
 	return true
 
-## 预留：负重设置（暂不影响任何计算，供后续负重系统调用）
+## 设置当前武器/负重重量（kg）。重量变化后下一帧立即影响运动消耗。
 func set_carry_weight(kg: float) -> void:
-	_carry_weight_kg = kg
+	_carry_weight_kg = maxf(kg, 0.0)
+
+
+func get_carry_weight_kg() -> float:
+	return _carry_weight_kg
+
+
+## 返回运动耐力消耗倍率。低于参考重量时保持基础消耗，避免轻武器改变原有平衡。
+func get_movement_cost_multiplier() -> float:
+	if not _config:
+		return 1.0
+	var excess_weight := maxf(_carry_weight_kg - _config.carry_weight_reference_kg, 0.0)
+	return minf(
+		1.0 + excess_weight * _config.carry_weight_cost_per_kg,
+		maxf(_config.carry_weight_max_multiplier, 1.0)
+	)
 
 
 # 运动状态切换（由 BasePlayer._connect_signals 挂接 MovementController 信号）──
@@ -182,7 +198,7 @@ func on_stopped_running() -> void:
 		_movement_state = MovementState.IDLE
 
 func on_jumped() -> void:
-	stamina = maxf(0.0, stamina - _config.jump_cost)
+	stamina = maxf(0.0, stamina - _config.jump_cost * get_movement_cost_multiplier())
 	stamina_changed.emit(get_stamina_pct())
 
 

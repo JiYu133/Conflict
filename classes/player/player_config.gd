@@ -146,4 +146,3 @@ var collision_shape_y_offset: float:
 	get: return movement_config.collision_shape_y_offset if movement_config else 0.0
 var model_y_offset: float:
 	get: return movement_config.model_y_offset if movement_config else -0.5
-

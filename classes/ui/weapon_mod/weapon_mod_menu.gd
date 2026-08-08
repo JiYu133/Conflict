@@ -43,7 +43,6 @@ signal closed
 
 var _player
 var _open := false
-var _was_controllable := false
 var _theme: Theme
 var _config: WeaponModConfig = MOD_CONFIG
 var _background_blur_layer: CanvasLayer
@@ -107,9 +106,8 @@ func open() -> void:
 	if _background_blur_layer:
 		_background_blur_layer.visible = true
 	if _player:
-		_was_controllable = _player.controllable
-		_player.set_controllable(false)
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		_player.acquire_control_lock(BasePlayer.CONTROL_LOCK_WEAPON_MOD)
+		_player.request_mouse_mode(BasePlayer.CONTROL_LOCK_WEAPON_MOD, Input.MOUSE_MODE_VISIBLE, 100)
 	_draft = _capture_attachment_state()
 	_draft_rail_offsets = _capture_rail_offsets()
 	_dirty = false
@@ -127,9 +125,9 @@ func close() -> void:
 	visible = false
 	if _background_blur_layer:
 		_background_blur_layer.visible = false
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if _player:
-		_player.set_controllable(_was_controllable and _player.is_alive)
+		_player.release_control_lock(BasePlayer.CONTROL_LOCK_WEAPON_MOD)
+		_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_WEAPON_MOD)
 	closed.emit()
 
 
@@ -148,6 +146,9 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
+	if _player:
+		_player.release_control_lock(BasePlayer.CONTROL_LOCK_WEAPON_MOD)
+		_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_WEAPON_MOD)
 	if _background_blur_layer and is_instance_valid(_background_blur_layer):
 		_background_blur_layer.queue_free()
 
@@ -1017,7 +1018,8 @@ func _set_draft_slot(slot_name: String, cfg: AttachmentConfig) -> void:
 	else:
 		_draft_rail_offsets.erase(slot_name)
 	_dirty = true
-	_rebuild_all()
+	_preview.sync_attachment_state(_draft, _draft_rail_offsets)
+	_refresh_from_preview()
 
 
 func _clear_draft_slot(slot_name: String) -> void:
@@ -1028,7 +1030,22 @@ func _clear_draft_slot(slot_name: String) -> void:
 	# 挂在该配件子槽位上的草稿项会暂时"无处安放"，故意保留：
 	# 若玩家又把父件装回来，这些配件会自动复位（见 _restore_attachments）
 	_dirty = true
-	_rebuild_all()
+	_preview.sync_attachment_state(_draft, _draft_rail_offsets)
+	_refresh_from_preview()
+
+
+func _refresh_from_preview() -> void:
+	var preview_weapon = _preview.get_weapon()
+	if preview_weapon:
+		_build_chips(preview_weapon)
+	_refresh_stats()
+	_refresh_apply_state()
+	if _active_slot != "" and _slot_chips.has(_active_slot):
+		_show_slot_detail(_active_slot)
+	else:
+		_active_slot = ""
+		_detail_panel.visible = false
+		_refresh_chip_focus()
 
 
 func _set_draft_rail_offset(slot_name: String, offset: float) -> void:
@@ -1098,14 +1115,11 @@ func _apply_changes() -> void:
 			if want == have:
 				continue
 			if slot.current_attachment:
-				am.detach_from_slot(key)
+				weapon.detach_attachment(key)
 				progressed = true
 			if want:
-				var att := AttachmentFactory.create(want, weapon)
-				if att and am.equip_to_slot(att, key):
+				if weapon.equip_attachment(key, want):
 					progressed = true
-				elif att:
-					att.queue_free()
 	for slot_name in _draft_rail_offsets:
 		am.set_rail_offset(slot_name, float(_draft_rail_offsets[slot_name]))
 	_dirty = false

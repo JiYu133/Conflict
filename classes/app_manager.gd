@@ -1,6 +1,6 @@
 extends Node
 
-# 应用生命周期管理：窗口关闭、全屏切换、FPS 显示
+# 应用生命周期管理：窗口关闭、FPS 显示
 
 var _fps_label: Label
 
@@ -35,26 +35,8 @@ func _notification(what: int) -> void:
 		_quit()
 
 
-func _input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and not event.echo:
-		match event.physical_keycode:
-			KEY_F11:
-				_toggle_fullscreen()
-			KEY_ENTER:
-				if event.alt_pressed:
-					_toggle_fullscreen()
-
-
 func _on_close_requested() -> void:
 	_quit()
-
-
-func _toggle_fullscreen() -> void:
-	var window := get_viewport().get_window()
-	if window.mode == Window.MODE_EXCLUSIVE_FULLSCREEN or window.mode == Window.MODE_FULLSCREEN:
-		window.mode = Window.MODE_WINDOWED
-	else:
-		window.mode = Window.MODE_EXCLUSIVE_FULLSCREEN
 
 
 func _quit() -> void:

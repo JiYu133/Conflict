@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="BallisticEnvironmentConfig" format=3]
+
+[ext_resource type="Script" path="res://classes/combat/ballistic_environment_config.gd" id="1_environment"]
+
+[resource]
+script = ExtResource("1_environment")
+gravity_mps2 = 9.80665
+air_density_kg_m3 = 1.225
+temperature_c = 15.0
+pressure_pa = 101325.0
+wind_velocity_mps = Vector3(0, 0, 0)
+max_range_m = 2000.0
+max_flight_time_s = 8.0
+minimum_effective_speed_mps = 40.0
+max_time_step_s = 0.00416667
+max_step_distance_m = 2.0
+max_penetrations_per_frame = 4

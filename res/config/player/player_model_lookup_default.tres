@@ -4,5 +4,4 @@
 
 [resource]
 script = ExtResource("1_b8bmj")
-animator_name = "AnimationPlayer2"
 metadata/_custom_type_script = "uid://bi5o6tknd7k8g"

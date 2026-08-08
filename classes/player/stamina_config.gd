@@ -29,6 +29,13 @@ extends Resource
 ## 半蹲持续消耗倍率（walk_cost_per_sec × stance_value × 此倍率）
 @export var crouch_cost_multiplier: float = 3.0
 
+## 进入负重耐力惩罚的参考重量（kg）
+@export var carry_weight_reference_kg: float = 3.5
+## 每超过参考重量 1 kg，运动耐力消耗增加的比例
+@export_range(0.0, 1.0, 0.01) var carry_weight_cost_per_kg: float = 0.08
+## 防止极端重量配置让耐力消耗失控
+@export var carry_weight_max_multiplier: float = 2.0
+
 # 体力恢复 ────────────────────────────────────────────────────
 @export_group("体力恢复")
 ## 静止时每秒恢复体力

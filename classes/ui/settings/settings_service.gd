@@ -7,11 +7,12 @@ const KeybindStore = preload("res://classes/ui/settings/keybind_store.gd")
 const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
 
 const SAVE_PATH := "user://settings.cfg"
-const VERSION := 1
+const VERSION := 2
 
 const DEFAULTS := {
 	"controls/sensitivity": 1.0,
 	"controls/invert_y": false,
+	"graphics/window_mode": "fullscreen",
 }
 
 signal value_changed(key: String, value: Variant)
@@ -21,6 +22,7 @@ var _values: Dictionary = DEFAULTS.duplicate(true)
 
 func initialize() -> void:
 	load_settings()
+	_apply_window_mode()
 	# 键位是 InputMap 的运行时覆盖，必须在首个玩家开始接收输入前恢复。
 	KeybindStore.apply_saved()
 
@@ -37,6 +39,8 @@ func set_value(key: String, value: Variant) -> void:
 	if _values.get(key) == normalized:
 		return
 	_values[key] = normalized
+	if key == "graphics/window_mode":
+		_apply_window_mode()
 	value_changed.emit(key, normalized)
 
 
@@ -54,6 +58,13 @@ func reset_controls() -> void:
 	for raw_key in DEFAULTS:
 		var key: String = String(raw_key)
 		if key.begins_with("controls/"):
+			set_value(key, DEFAULTS[key])
+
+
+func reset_video() -> void:
+	for raw_key in DEFAULTS:
+		var key: String = String(raw_key)
+		if key.begins_with("graphics/"):
 			set_value(key, DEFAULTS[key])
 
 
@@ -85,4 +96,16 @@ func _normalize_value(key: String, value: Variant) -> Variant:
 			return clampf(float(value), 0.10, 3.00)
 		"controls/invert_y":
 			return bool(value)
+		"graphics/window_mode":
+			var mode := String(value)
+			return mode if mode in ["windowed", "fullscreen"] else DEFAULTS[key]
 	return value
+
+
+func _apply_window_mode() -> void:
+	var mode := String(_values.get("graphics/window_mode", DEFAULTS["graphics/window_mode"]))
+	DisplayServer.window_set_mode(
+		DisplayServer.WINDOW_MODE_FULLSCREEN
+		if mode == "fullscreen"
+		else DisplayServer.WINDOW_MODE_WINDOWED
+	)

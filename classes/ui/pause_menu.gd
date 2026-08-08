@@ -14,7 +14,6 @@ const COL_MUTED := Color(0.61, 0.64, 0.68)
 var _player
 var _settings_menu
 var _open := false
-var _was_controllable := false
 var _theme: Theme
 var _backdrop: ColorRect
 var _panel: PanelContainer
@@ -58,9 +57,8 @@ func open() -> void:
 	if _background_blur_layer:
 		_background_blur_layer.visible = true
 	if _player:
-		_was_controllable = _player.controllable
-		_player.set_controllable(false)
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		_player.acquire_control_lock(BasePlayer.CONTROL_LOCK_PAUSE)
+		_player.request_mouse_mode(BasePlayer.CONTROL_LOCK_PAUSE, Input.MOUSE_MODE_VISIBLE, 100)
 	_play_open_animation()
 
 
@@ -70,11 +68,13 @@ func close() -> void:
 	if _settings_menu and _settings_menu.is_open():
 		_settings_menu.cancel_and_close()
 	_open = false
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	_play_close_animation()
 
 
 func _exit_tree() -> void:
+	if _player:
+		_player.release_control_lock(BasePlayer.CONTROL_LOCK_PAUSE)
+		_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_PAUSE)
 	if _background_blur_layer and is_instance_valid(_background_blur_layer):
 		_background_blur_layer.queue_free()
 
@@ -174,7 +174,8 @@ func _finish_close(on_finished: Callable = Callable()) -> void:
 	if on_finished.is_valid():
 		on_finished.call()
 	elif _player:
-		_player.set_controllable(_was_controllable and _player.is_alive)
+		_player.release_control_lock(BasePlayer.CONTROL_LOCK_PAUSE)
+		_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_PAUSE)
 
 
 func _stop_transition() -> void:

@@ -3,7 +3,7 @@ extends RefCounted
 ## 改装界面文案集中管理（与 settings_text.gd 同思路，便于后续本地化）
 
 const TITLE := "武器改装"
-const SUBTITLE := "点击引线标注的挂载点卡片，安装或卸下配件 · 应用后生效"
+const SUBTITLE := "点击引线标注的配件卡片，安装或卸下配件 · 应用后生效"
 const RESET_VIEW := "复位视角"
 const OPTION_COUNT := "%d 个可用配件"
 const INSTALL := "安装"
@@ -36,7 +36,7 @@ const FOOTER_HINT := "改装先在预览中生效，点「应用更改」写入�
 # 核心配件（握把 / 护木 / 机匣盖）：缺一不可，否则枪无法正常持握使用
 const CORE_TAG := "· 核心"
 const CORE_MISSING := "缺少核心配件"
-const CORE_HINT := "核心配件可暂时卸下，但应用前必须装回"
+const CORE_HINT := "缺少核心配件时无法完成改装"
 const CORE_BLOCKED := "无法应用：以下核心挂载点为空 — %s"
 
 const STAT_HEADER := "武器参数"
