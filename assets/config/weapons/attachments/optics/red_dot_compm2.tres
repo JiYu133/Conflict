@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="AttachmentConfig" format=3 uid="uid://breddot01"]
+
+[ext_resource type="Script" uid="uid://b1c11irknkvty" path="res://classes/weapon/weaponattachments/attachment_config.gd" id="1_rd"]
+
+[resource]
+script = ExtResource("1_rd")
+attachment_name = "Aimpoint CompM2 红点"
+hipfire_spread_modifier = -0.5
+ads_spread_modifier = -0.02
+weight_kg = 0.15
+ads_speed_modifier = 0.1
+reticle_color = Color(1, 0.1, 0.1, 1)
+mount_point_name = "OpticRail"
+rail_adjustable = true
+rail_offset = 0.0
+rail_offset_min = -0.03
+rail_offset_max = 0.03

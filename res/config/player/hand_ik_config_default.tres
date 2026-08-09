@@ -1,9 +1,0 @@
-[gd_resource type="Resource" script_class="HandIKConfig" format=3 uid="uid://7v30cxyumx43"]
-
-[ext_resource type="Script" uid="uid://b304dqmhgyp3b" path="res://Classes/Player/hand_ik_config.gd" id="1_hq47r"]
-
-[resource]
-script = ExtResource("1_hq47r")
-forearm_roll_align = 0.0
-default_ik_weight = 0.565
-metadata/_custom_type_script = "uid://b304dqmhgyp3b"

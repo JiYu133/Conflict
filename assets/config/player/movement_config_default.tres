@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="MovementConfig" format=3 uid="uid://0vt73yplssq8"]
+
+[ext_resource type="Script" uid="uid://btnlar62v6ik4" path="res://classes/player/movement_config.gd" id="1_movcfg"]
+
+[resource]
+script = ExtResource("1_movcfg")
+sprint_speed = 5.0
+crouch_capsule_height = 1.2
+collision_shape_radius = 0.3
+model_y_offset = -1.0

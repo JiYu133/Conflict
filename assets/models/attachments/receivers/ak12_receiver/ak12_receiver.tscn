@@ -1,0 +1,74 @@
+[gd_scene format=3 uid="uid://b15r8es3k4kf5"]
+
+[ext_resource type="PackedScene" uid="uid://bu1bmbbsbj46f" path="res://assets/models/attachments/receivers/ak12_receiver/ak12_receiver.glb" id="1_glb"]
+[ext_resource type="Script" uid="uid://d4el5fspo5xfp" path="res://classes/weapon/base_weapon.gd" id="2_weapon"]
+[ext_resource type="Script" uid="uid://01io7x43ey6y" path="res://classes/weapon/weaponattachments/attachment_slot.gd" id="3_slot"]
+
+[node name="ak12_receiver" unique_id=2097817250 instance=ExtResource("1_glb")]
+script = ExtResource("2_weapon")
+
+[node name="Barrel" type="Marker3D" parent="." index="1" unique_id=1220244498]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -0.00408151, 0.01977539, -0.07748178)
+script = ExtResource("3_slot")
+slot_type = 5
+allowed_attachment_types = Array[int]([4])
+slot_name = "Barrel"
+
+[node name="Handguard" type="Marker3D" parent="." index="2" unique_id=1513831694]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, -0.00041722693, 0.028980982, -0.14388062)
+script = ExtResource("3_slot")
+slot_type = 6
+allowed_attachment_types = Array[int]([5])
+slot_name = "Handguard"
+
+[node name="ReceiverCover" type="Marker3D" parent="." index="3" unique_id=811417751]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02944189, 0.09959959)
+script = ExtResource("3_slot")
+slot_type = 7
+allowed_attachment_types = Array[int]([8])
+slot_name = "ReceiverCover"
+
+[node name="PistolGrip" type="Marker3D" parent="." index="4" unique_id=99966775]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.018048055, 0.0780743)
+script = ExtResource("3_slot")
+slot_type = 8
+allowed_attachment_types = Array[int]([7])
+slot_name = "PistolGrip"
+
+[node name="TriggerGroup" type="Marker3D" parent="." index="5" unique_id=966789122]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.014787465, 0.015291825)
+script = ExtResource("3_slot")
+slot_type = 9
+allowed_attachment_types = Array[int]([9])
+slot_name = "TriggerGroup"
+
+[node name="MagazineWell" type="Marker3D" parent="." index="6" unique_id=1504537470]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.010349259, -0.058638357)
+script = ExtResource("3_slot")
+slot_type = 11
+allowed_attachment_types = Array[int]([3])
+slot_name = "MagazineWell"
+
+[node name="Stock" type="Marker3D" parent="." index="7" unique_id=1491246663]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0074972585, 0.10802066)
+script = ExtResource("3_slot")
+slot_type = 12
+allowed_attachment_types = Array[int]([6])
+slot_name = "Stock"
+
+[node name="BoltCarrierSlot" type="Marker3D" parent="." index="8" unique_id=1725150460]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.035, -0.181)
+script = ExtResource("3_slot")
+slot_type = 13
+allowed_attachment_types = Array[int]([14])
+slot_name = "BoltCarrierSlot"
+
+[node name="SelectorSwitch" type="Marker3D" parent="." index="9" unique_id=1370492142]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.016455092, 0.009371564, 0.05485919)
+script = ExtResource("3_slot")
+slot_type = 14
+allowed_attachment_types = Array[int]([15])
+slot_name = "SelectorSwitch"
+
+[node name="EjectionPort" type="Marker3D" parent="." index="10" unique_id=2084769951]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.033470675, -0.07130709)

@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="CombatNotificationLibrary" format=3 uid="uid://c4g4y8kj2s2sj"]
+
+[ext_resource type="Script" uid="uid://bn8hpqsh4rnu5" path="res://classes/ui/combat_notification_library.gd" id="1_lib"]
+[ext_resource type="Script" uid="uid://cam8vgw06i5w6" path="res://classes/ui/top_right_notification_entry.gd" id="2_entry"]
+
+[sub_resource type="Resource" id="entry_critical"]
+script = ExtResource("2_entry")
+notification_id = &"state_critical"
+text = "⚠ 你在大量失血 ！"
+visible = false
+accent_color = Color(1, 0.2, 0.2, 1)
+
+[sub_resource type="Resource" id="entry_dead"]
+script = ExtResource("2_entry")
+notification_id = &"player_dead"
+text = "已阵亡"
+visible = false
+accent_color = Color(1, 0.18, 0.18, 1)
+
+[sub_resource type="Resource" id="entry_unconscious"]
+script = ExtResource("2_entry")
+notification_id = &"state_unconscious"
+text = "你昏迷了
+保持清醒，你的队友会尝试唤醒你！"
+visible = false
+accent_color = Color(0.7, 0.7, 0.9, 1)
+
+[resource]
+script = ExtResource("1_lib")
+critical = SubResource("entry_critical")
+unconscious = SubResource("entry_unconscious")
+dead = SubResource("entry_dead")
+arterial_text = "⚠   {part} 动脉出血！立即止血！ "
+venous_text = "⚠  {part}的静脉正在出血 "
+capillary_text = "⚠  {part} 正在渗血"
+fracture_text = "⚠ {part}骨折"

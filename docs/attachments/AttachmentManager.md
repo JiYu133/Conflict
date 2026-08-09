@@ -1,98 +1,66 @@
 # AttachmentManager
 
-**文件路径：** `Classes/Weapon/WeaponAttachments/attachment_manager.gd`
+**文件路径：** `classes/weapon/weaponattachments/attachment_manager.gd`
 **继承自：** `Node`
 
 ## 功能概述
 
-配件管理器。每把武器挂一个 AttachmentManager，负责：
-1. 递归扫描武器场景内所有的 `AttachmentSlot` 并建立字典索引
-2. 接受装备/卸载请求，委托给对应槽位处理
-3. 汇总所有已装配件的数值修正，供武器各子系统查询
+配件管理器。每个机匣（BaseWeapon）挂一个 AttachmentManager，负责：
+1. 递归扫描场景内所有 `AttachmentSlot` 建立字典索引，并在配件装入后继续扫描配件自身的子槽（层级槽位）
+2. 管理配件节点的场景树归属（add_child / remove_child）
+3. 维护数值修正缓存，`attachments_changed` 时触发 `_rebuild_cache()` 重算
 
-数值汇总公式：`武器实际值 = 武器基础值 + Σ 所有当前配件的修正`
+`AttachmentSlot` 本身即为挂载锚点，配件作为其子节点挂载，对齐规则见下文「对齐方式（SnapPoint）」。
+槽位允许安装的配件类型在场景 Marker3D 的 `allowed_attachment_types` 上多选；运行时不再读取 `WeaponConfig.supported_slots`。
 
-## 初始化
+## 层级槽位
 
-```
-initialize(weapon: BaseWeapon, weapon_root: Node) -> void
-```
+配件场景内可包含子 `AttachmentSlot`（例：机匣盖场景里有 `OpticRail` 槽，护木场景里有 `Underbarrel` 槽）。装上配件时自动扫描并注册这些新槽；卸下时自动递归清理。
 
-由 `BaseWeapon.initialize()` 调用。保存武器引用后，递归扫描 `weapon_root` 下所有 `AttachmentSlot` 子节点，以 `slot_name`（或节点名）为 key 存入 `_slots` 字典。重名挂载点保留先扫描到的，并发出警告。
-
-## 信号（Signals）
+## 信号
 
 | 信号 | 参数 | 触发时机 |
 |------|------|---------|
-| `attachment_equipped` | `slot: AttachmentSlot, attachment: BaseAttachment` | 配件成功装备后 |
-| `attachment_detached` | `slot: AttachmentSlot, attachment: BaseAttachment` | 配件成功卸下后 |
-| `attachments_changed` | — | 任意装备或卸载操作成功后（用于触发数值重算） |
+| `attachment_equipped` | `slot, attachment` | 配件成功装入后 |
+| `attachment_detached` | `slot, attachment` | 配件成功卸下后 |
+| `attachments_changed` | — | 任意装卸操作后，触发缓存重建 |
 
-## 公开属性（Properties）
+## 公开方法
 
-| 属性 | 类型 | 说明 |
-|------|------|------|
-| `parent_weapon` | `BaseWeapon` | 所属武器引用 |
+| 方法 | 说明 |
+|------|------|
+| `initialize(weapon, weapon_root)` | 扫描槽位，连接缓存信号 |
+| `get_slot_names() -> Array[String]` | 所有已注册槽位名（不直接暴露 _slots） |
+| `equip_to_slot(attachment, slot_name) -> bool` | 装入配件，扫描子槽，触发信号 |
+| `detach_from_slot(slot_name) -> BaseAttachment` | 卸下配件，递归清理子槽，从场景树移除 |
+| `get_slot(slot_name) -> AttachmentSlot` | 获取槽位节点 |
+| `get_slots() -> Array[AttachmentSlot]` | 获取所有已注册槽位 |
+| `find_first_available_slot_for(cfg) -> AttachmentSlot` | 先按 `preferred_slot_names` 找，再按场景顺序找第一个可接受且未占用的槽位 |
+| `get_all_attachments() -> Array[BaseAttachment]` | 所有已装配件 |
+| `get_attachment_in_slot(slot_name) -> BaseAttachment` | 指定槽位的配件 |
+| `set_rail_offset(slot_name, offset)` | 调整导轨配件前后位置（clamp 到 min/max） |
+| `get_rail_offset(slot_name) -> float` | 获取当前导轨偏移 |
 
-## 公开方法（Methods）
+## 数值查询（读缓存，O(1)）
 
-### `equip_to_slot(attachment: BaseAttachment, slot_name: String) -> bool`
-将配件装入指定名称的槽位。槽位不存在时 `push_error` 并返回 `false`；成功时设置 `attachment.parent_weapon`，发出 `attachment_equipped` 和 `attachments_changed` 信号。
+`get_total_spread_modifier(is_ads)` / `get_total_ads_speed_modifier()` / `get_total_attachment_weight()` / `get_total_length_modifier()` / `get_total_magazine_capacity_bonus()` / `suppresses_muzzle_flash()` / `suppresses_sound()` / `get_magnification()` / `get_fov_override()`
 
-### `detach_from_slot(slot_name: String) -> BaseAttachment`
-从指定槽位卸下配件，发出 `attachment_detached` 和 `attachments_changed` 信号，返回被卸下的配件实例。槽位不存在或为空时返回 `null`。
+后座不再通过 AttachmentManager 汇总角度修正。`RecoilPhysicsModel` 直接读取当前配件实例的重量、质心、枪口燃气参数、握把支撑和枪托肩部接触点，重建真实物理结果。
 
-### `get_slot(slot_name: String) -> AttachmentSlot`
-按名称获取挂载点节点，不存在时返回 `null`。
+## 对齐方式（SnapPoint）
 
-### `get_all_attachments() -> Array[BaseAttachment]`
-返回所有已占用槽位中的配件数组，用于数值汇总遍历。
+配件装入槽位后的位置由两条规则决定：
 
-### `get_attachment_in_slot(slot_name: String) -> BaseAttachment`
-返回指定槽位当前的配件实例，槽位为空或不存在时返回 `null`。
+1. **有 SnapPoint**：配件场景内若存在名为 `SnapPoint` 的 `Marker3D`，管理器计算它相对配件根节点的变换并取逆，使 SnapPoint 的世界位置与 `AttachmentSlot` 重合。美术在 Blender/Godot 里手动摆放这个点，标记真正的装配接触面。
+2. **无 SnapPoint**：回退为 `transform = IDENTITY`，即配件原点贴合槽位。原点已经设在接触面中心的配件可以不加 SnapPoint。
 
-### `get_total_spread_modifier(is_ads: bool) -> float`
-所有配件的散布修正之和（区分机瞄/腰射）。
+配置了非 0 `rail_offset` 的配件（不要求 `rail_adjustable`）在对齐结果基础上叠加 Z 轴偏移；对齐后的基准 Z 存在节点 meta `_rail_base_z` 里，当前实例的偏移存在 `_rail_offset` 里。`set_rail_offset()` 每次都从基准重新计算，不会累积漂移，也不会修改可能被预览武器和真枪共同引用的 `AttachmentConfig` 资源。`get_rail_offset()` 优先读取实例元数据，旧实例没有元数据时才回退到配置默认值。
 
-### `get_total_recoil_vertical_modifier() -> float`
-所有配件的垂直后座修正之和。
-
-### `get_total_recoil_horizontal_modifier() -> float`
-所有配件的水平后座修正之和。
-
-### `get_total_recoil_recovery_modifier() -> float`
-所有配件的后座回正速度修正之和。
-
-### `get_total_ads_speed_modifier() -> float`
-所有配件的瞄准速度修正之和。
-
-### `get_total_attachment_weight() -> float`
-所有配件的重量之和（kg）。
-
-### `suppresses_muzzle_flash() -> bool`
-任意配件抑制枪口火光时返回 `true`。
-
-### `suppresses_sound() -> bool`
-任意配件抑制枪声时返回 `true`。
-
-### `get_magnification() -> float`
-返回当前瞄具的最大放大倍率（无瞄具时返回 1.0，仅对 `OpticAttachment` 类型生效）。
-
-### `get_total_length_modifier() -> float`
-所有枪口装置的长度修正之和（m），用于顶墙收枪射线检测。
-
-### `get_total_magazine_capacity_bonus() -> int`
-所有扩容弹匣的额外容量之和（仅对 `ExtendedMagAttachment` 类型生效）。
-
-### `get_fov_override() -> float`
-返回当前瞄具的 FOV 覆盖值（无瞄具或无覆盖时返回 -1.0，仅对 `OpticAttachment` 类型且 `fov_override > 0` 时生效）。
-
-## 依赖关系
-- **依赖：** `BaseWeapon`、`AttachmentSlot`、`BaseAttachment`、`OpticAttachment`（类型检查）、`ExtendedMagAttachment`（类型检查）
-- **被依赖：** `BaseWeapon`（持有引用，初始化后调用各汇总方法）、`RecoilComponent`（查询后座修正）、`AmmoComponent`（查询弹匣容量加成）
+旧的 `auto_center`（运行时 AABB 居中）已移除——局部 AABB 在子节点带 transform 时结果不可靠，且业界（Arma Reforger 的 Slot/Snap、RoN 的手动偏移）均采用手动标记点方案。
 
 ## 注意事项
 
-- `get_magnification()` 和 `get_fov_override()` 使用 `is OpticAttachment` 类型检查，依赖 `OpticAttachment` 子类存在；`get_total_magazine_capacity_bonus()` 同理依赖 `ExtendedMagAttachment`。
-- 所有数值汇总方法每次调用都遍历 `get_all_attachments()`，无缓存；配件数量较多时如有性能需求，可在 `attachments_changed` 时重算并缓存。
-- 重名挂载点（`slot_name` 相同）只保留先扫描到的，后者被忽略并发出警告，避免使用重复名称。
+- 数值查询全部走缓存，无性能问题，不需要每帧遍历
+- 卸下配件时递归 `_remove_child_slots()`，防止子槽残留
+- 重名槽位只保留先扫描到的，后者打警告忽略
+- 右侧 AK-12 皮卡汀尼侧导轨的预设首选槽位是 `SideRailRight`；左右专用资源必须让 `preferred_slot_names` 与模型方向一致

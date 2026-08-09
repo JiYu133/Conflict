@@ -39,6 +39,14 @@ func initialize(
 
 完成模型加载后，调用 `enable_camera()` 正式激活视角控制并发出 `camera_ready` 信号。
 
+玩家死亡/昏迷后，`disable_camera()` 会将活动相机移出玩家和模型层级，关闭头部位置弹簧，
+并直接读取布娃娃头部的物理姿态。若模型没有头部 `PhysicalBone3D`，会回退到最近的物理父骨骼
+（当前测试模型为 `mixamorig_Neck`），再应用死亡前缓存的头部相对变换，因此相机可以保留真实的翻滚。
+
+进入昏迷或死亡布娃娃后，会通过 `set_ragdoll_camera_shake(true)` 启用轻微的程序化位置、俯仰、偏航和横滚晃动；
+恢复意识、复活或重新启用正常相机时会清除该效果。晃动幅度保持较低，并叠加在物理骨骼的真实翻滚姿态之上。
+相机接管前会缓存原父节点和局部变换，复活时原样恢复，因此同时兼容显式 `CameraMount` 和模型自带 `Camera3D`。
+
 ---
 
 ## 信号（Signals）
@@ -79,6 +87,8 @@ func initialize(
 ### `get_active_camera() -> Camera3D`
 
 返回当前活动的 `Camera3D`，供 `WeaponObstructionDetector` 等外部系统使用。
+
+死亡跟随期间返回的相机仍为同一活动相机，但其父节点为场景根，位置和朝向每帧由布娃娃物理骨骼驱动。
 
 ### `on_landed() -> void`
 
@@ -219,4 +229,3 @@ Z 轴（`position.z`）保留给 `WeaponObstructionDetector` 控制收枪偏移�
 - **`ModelLookupConfig` 与 `CameraConfig` 可为空。** `initialize()` 对两者均做了 `if … else … .new()` 保护，传入 `null` 时会使用默认配置实例，不会崩溃。
 
 - **弹簧参数在 `initialize()` 时写入，此后修改 `CameraConfig` 不会自动同步。** 若需运行时热更新弹簧参数，需手动赋值 `_land_spring.stiffness` 等属性。
-

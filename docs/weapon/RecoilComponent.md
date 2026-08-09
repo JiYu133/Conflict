@@ -1,50 +1,52 @@
 # RecoilComponent
 
-**文件路径：** `Classes/Weapon/Weapon/recoil_component.gd`
+**文件路径：** `classes/weapon/recoil_component.gd`
 **继承自：** `Node`
 
 ## 功能概述
 
-后座组件。模拟每发子弹射击后的枪口上跳（垂直后座）以及左右随机偏移（水平后座），并在每帧自动回正，模拟玩家控枪复位动作。后座角度累积后由外部（摄像机控制器或准星系统）每帧读取，用于驱动画面或准星偏移。
+物理驱动的后座组件。每发子弹根据弹头动量、燃气冲量、武器总质量、质心、转动惯量和力矩臂，计算一次俯仰/偏航角速度冲量；随后用弹簧阻尼系统将摄像机偏移回正。
+
+它不再读取 `recoil_vertical_modifier` / `recoil_horizontal_modifier` 等角度修正字段。旧字段仅保留为兼容数据，不参与后座计算。
 
 ## 初始化
 
-```
+```gdscript
 initialize(cfg: WeaponConfig, am: AttachmentManager = null) -> void
 ```
 
-注入武器配置和配件管理器引用。`am` 可为 null（无配件修正时）。初始化后重置累积角度为 0。
+创建 `RecoilPhysicsModel` 并根据当前武器和配件重建物理快照。
 
-## 信号（Signals）
+## 公开方法
 
-无。
+```gdscript
+rebuild_physics() -> void
+```
 
-## 公开属性（Properties）
+配件装卸后由 `BaseWeapon._reconfigure_from_attachments()` 调用，重新计算质量、质心、转动惯量、燃气冲量和控枪参数。
 
-| 属性 | 类型 | 说明 |
-|------|------|------|
-| `config` | `WeaponConfig` | 武器配置，提供基础后座参数 |
-| `attachment_manager` | `AttachmentManager` | 配件管理器，用于读取配件的后座修正（可为 null） |
+```gdscript
+apply_recoil(control_multiplier: float = 1.0) -> void
+```
 
-## 公开方法（Methods）
+对当前后座状态施加一发子弹的角速度冲量。`control_multiplier` 只影响后续弹簧刚度/阻尼，不改变单发冲量。
 
-### `apply_recoil() -> void`
-应用一发子弹的后座。每次 `fired` 信号触发时由 `BaseWeapon` 调用。
-- 垂直后座 = `config.recoil_vertical` + 所有配件的垂直修正，取 max(值, 0)后累加到 `_current_recoil_angle`
-- 水平后座 = `config.recoil_horizontal` + 所有配件的水平修正，取 max(值, 0)后在 `[-horizontal, +horizontal]` 范围内随机叠加
+```gdscript
+get_camera_pitch_offset() -> float
+get_camera_yaw_offset() -> float
+```
 
-### `get_recoil_offset() -> float`
-返回当前累积的垂直后座角度（度，正值 = 枪口上抬）。外部摄像机控制器每帧调用。
+返回当前瞬态后座偏移（弧度），由 `PlayerCameraController` 每帧叠加到鼠标视角上。
 
-### `get_recoil_horizontal_offset() -> float`
-返回当前累积的水平后座角度（度，正值 = 向右，负值 = 向左）。外部准星或相机 yaw 叠加此值。
+```gdscript
+get_physics_snapshot() -> Dictionary
+```
+
+返回 `RecoilPhysicsModel` 的物理快照，供改装 UI 和调试使用。
 
 ## 依赖关系
-- **依赖：** `WeaponConfig`（`recoil_vertical`、`recoil_horizontal`、`recoil_recovery_speed`）、`AttachmentManager`（后座修正汇总）
-- **被依赖：** `BaseWeapon`（持有引用，在 `_fire_one_round()` 中调用 `apply_recoil()`）、摄像机/准星控制器（每帧读取偏移量）
 
-## 注意事项
-
-- 回正逻辑在 `_process(delta)` 中每帧执行，使用 `move_toward` 线性插值，`recovery_speed` 来自 `config` 与配件修正之和（取 max(值, 0) 防止负速度）。
-- 水平后座方向随机（`randf_range`），每发方向独立，不会单向累积。
-- 此组件不直接操作摄像机，仅维护角度数值；调用方负责将偏移量映射到实际旋转。
+- `RecoilPhysicsModel`：冲量、力矩、转动惯量、弹簧阻尼计算
+- `BarrelConfig`：弹头质量、初速、装药质量、燃气速度
+- `MuzzleDeviceConfig` / `GripConfig` / `StockConfig`：枪口燃气向量、握把支撑、肩部接触点
+- `PlayerCameraController`：每帧读取 `get_camera_*_offset()` 并应用到摄像机

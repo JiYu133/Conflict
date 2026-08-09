@@ -1,0 +1,7 @@
+[gd_resource type="Theme" format=3 uid="uid://uaphwcxkg252"]
+
+[ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://assets/fonts/ConflictCJKUI.ttf" id="1_52ekm"]
+
+[resource]
+default_font = ExtResource("1_52ekm")
+default_font_size = 15

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BoltCarrierConfig" format=3 uid="uid://k12bolt01"]
+
+[ext_resource type="Script" path="res://classes/weapon/weaponattachments/bolt_carrier_config.gd" id="1_a"]
+[ext_resource type="PackedScene" uid="uid://ak12_bolt_carrier_tscn" path="res://assets/models/attachments/bolt_carriers/ak12_bolt_carrier/ak12_bolt_carrier.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_a")
+attachment_name = "AK-12 枪机框组"
+attachment_type = 14
+allowed_slot = 13
+weight_kg = 0.28
+attachment_scene = ExtResource("2_scene")
+no_visual = false
+bolt_mass = 0.28
+recoil_spring_strength = 68.0
+bolt_travel_m = 0.072
+stovepipe_chance = 0.0
+double_feed_chance = 0.0

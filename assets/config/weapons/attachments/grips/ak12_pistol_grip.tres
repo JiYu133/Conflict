@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="AttachmentConfig" format=3 uid="uid://k12grip01"]
+
+[ext_resource type="Script" uid="uid://wwvoc4u8v141" path="res://classes/weapon/weaponattachments/attachment_config.gd" id="1_a"]
+[ext_resource type="PackedScene" uid="uid://chln4eywkrsf4" path="res://assets/models/attachments/grips/grip_pistol_ergonomic/grip_pistol_ergonomic.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_a")
+attachment_name = "人体工学手枪握把"
+attachment_type = 7
+allowed_slot = 8
+weight_kg = 0.18
+attachment_scene = ExtResource("2_scene")

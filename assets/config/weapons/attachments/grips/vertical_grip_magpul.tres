@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="GripConfig" format=3 uid="uid://bvgrip01"]
+
+[ext_resource type="Script" path="res://classes/weapon/weaponattachments/grip_config.gd" id="1_v"]
+
+[resource]
+script = ExtResource("1_v")
+attachment_name = "Magpul RVG 垂直握把"
+attachment_type = 2
+allowed_slot = 4
+hipfire_spread_modifier = -0.2
+ads_spread_modifier = 0.0
+weight_kg = 0.1
+center_of_mass_local = Vector3(0, -0.05, 0.12)
+grip_point_local = Vector3(0, -0.05, 0.12)
+support_stiffness = 45.0
+support_damping = 7.0
+ads_speed_modifier = 0.0
+magnification = 1.0
+fov_override = -1.0
+has_reticle = false
+reticle_color = Color(0, 0, 0, 1)
+suppresses_flash = false
+suppresses_sound = false
+damage_modifier = 0.0
+mount_point_name = "Underbarrel"
