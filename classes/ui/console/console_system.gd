@@ -4,7 +4,7 @@ extends CanvasLayer
 ## 本地运行时控制台。它是覆盖层而不是暂停菜单，因此打开时世界继续运行，
 ## 但通过 PlayerControlState 独立锁阻断当前玩家输入。
 
-const FONT_PATH := "res://res/fonts/ConflictCJKUI.ttf"
+const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
 const SETTINGS_TEXT = preload("res://classes/ui/settings/settings_text.gd")
 const HISTORY_PATH := "user://console_history.cfg"
 const HISTORY_LIMIT := 50
@@ -30,6 +30,7 @@ const COMMANDS := {
 	"kill": {"usage": "kill", "help": "杀死当前玩家。仅 Debug 构建可用。", "debug_only": true},
 	"health": {"usage": "health <0-100>", "help": "设置玩家血量百分比。仅 Debug 构建可用。", "debug_only": true},
 	"clear_wounds": {"usage": "clear_wounds", "help": "清除当前玩家全部伤口。仅 Debug 构建可用。", "debug_only": true},
+	"clear_blood": {"usage": "clear_blood", "help": "清除场景中所有死亡后留下的血迹。仅 Debug 构建可用。", "debug_only": true},
 	"medical_wound": {"usage": "medical_wound <part> <severity> [bleed]", "help": "向指定部位注入伤口。仅 Debug 构建可用。", "debug_only": true},
 	"medical_kill": {"usage": "medical_kill <front|front_headshot|explosion>", "help": "按指定类型触发医疗死亡测试。仅 Debug 构建可用。", "debug_only": true},
 	"give_ammo": {"usage": "give_ammo <current_mag> <reserve_rounds> [chambered=1] [release_bolt=1]", "help": "按弹匣状态重建当前武器弹药。仅 Debug 构建可用。", "debug_only": true},
@@ -41,11 +42,11 @@ const COMMANDS := {
 	"set_aiming": {"usage": "set_aiming <0|1>", "help": "切换武器举枪状态。仅 Debug 构建可用。", "debug_only": true},
 	"reload": {"usage": "reload", "help": "调用当前武器换弹流程。", "safe": true},
 	"teleport": {"usage": "teleport <x> <y> <z>", "help": "将玩家移动到当前世界坐标。仅 Debug 构建可用。", "debug_only": true},
-	"bot": {"usage": "bot add|list|kill|remove ...", "help": "创建、查询、击杀或删除地图内 Bot。", "safe": true},
+	"bot": {"usage": "bot add|list|move|velocity|stop|kill|remove ...", "help": "创建、查询、移动、击杀或删除地图内 Bot。", "safe": true},
 }
 const COMMAND_ORDER := [
 	"help", "clear", "fps", "status", "timescale", "freecam", "revive", "kill",
-	"health", "clear_wounds", "give_ammo", "press_trigger", "release_trigger",
+	"health", "clear_wounds", "clear_blood", "give_ammo", "press_trigger", "release_trigger",
 	"medical_wound", "medical_kill", "cycle_fire_mode", "bolt_release", "clear_malfunction",
 	"set_aiming", "reload", "teleport", "bot",
 ]
@@ -306,6 +307,14 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 				return _error_result("当前系统不可用：医疗系统未初始化。")
 			_player.health_system.debug_clear_wounds()
 			return _ok_result("全部伤口已清除。")
+		"clear_blood":
+			if not args.is_empty():
+				return _error_result("参数数量错误：clear_blood 不接受参数。")
+			var cleared := 0
+			for effect in get_tree().get_nodes_in_group("blood_effects"):
+				if is_instance_valid(effect) and effect.has_method("clear_bloodstains"):
+					cleared += int(effect.clear_bloodstains())
+			return _ok_result("已清除 %d 处血迹。" % cleared)
 		"medical_wound":
 			return _run_medical_wound(args)
 		"medical_kill":
@@ -385,7 +394,7 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 
 func _run_bot_command(args: Array[String]) -> Dictionary:
 	if args.is_empty():
-		return _error_result("参数错误：bot 子命令只能是 add、list、kill 或 remove。")
+		return _error_result("参数错误：bot 子命令只能是 add、list、move、velocity、stop、kill 或 remove。")
 	var manager := _get_bot_manager()
 	if not manager:
 		return _error_result("当前系统不可用：BotManager 未初始化。")
@@ -436,6 +445,20 @@ func _run_bot_command(args: Array[String]) -> Dictionary:
 					bot.bot_id, bot.bot_display_name, _bot_faction_name(bot.faction), str(bot.global_position), "是" if bot.is_alive else "否"
 				])
 			return _ok_result("\n".join(lines))
+		"move":
+			return _run_bot_move_command(manager, args)
+		"velocity":
+			return _run_bot_velocity_command(manager, args)
+		"stop":
+			if args.size() != 2:
+				return _error_result("参数数量错误：bot stop 用法为 bot stop <id|all>。")
+			if args[1].to_lower() == "all":
+				return _ok_result("已停止 %d 个 Bot 的测试移动。" % manager.stop_all_bot_test_motion())
+			if not args[1].is_valid_int() or int(args[1]) <= 0:
+				return _error_result("参数错误：Bot ID 必须是正整数或 all。")
+			if not manager.stop_bot_test_motion(int(args[1])):
+				return _error_result(manager.last_error)
+			return _ok_result("Bot ID=%d 已停止测试移动。" % int(args[1]))
 		"kill", "remove":
 			if args.size() != 2:
 				return _error_result("参数数量错误：bot %s 用法为 bot %s <id|all>。" % [subcommand, subcommand])
@@ -450,7 +473,58 @@ func _run_bot_command(args: Array[String]) -> Dictionary:
 				return _error_result(manager.last_error)
 			return _ok_result("Bot ID=%d 已%s。" % [bot_id, "击杀" if subcommand == "kill" else "删除"])
 		_:
-			return _error_result("参数错误：未知 bot 子命令 %s，可用 add、list、kill、remove。" % args[0])
+			return _error_result("参数错误：未知 bot 子命令 %s，可用 add、list、move、velocity、stop、kill、remove。" % args[0])
+
+
+func _run_bot_move_command(manager: BotManager, args: Array[String]) -> Dictionary:
+	if args.size() != 4:
+		return _error_result("参数数量错误：用法为 bot move <id|all> <forward|back|left|right> <speed>。")
+	if not args[3].is_valid_float():
+		return _error_result("参数错误：speed 必须是数字。")
+	var speed := float(args[3])
+	if speed < 0.0 or speed > 50.0:
+		return _error_result("范围错误：speed 必须在 0 到 50 m/s 之间。")
+	var direction := _get_bot_test_direction(args[2])
+	if direction == Vector3.ZERO:
+		return _error_result("参数错误：方向只能是 forward、back、left 或 right。")
+	return _set_bot_test_velocity(manager, args[1], direction * speed)
+
+
+func _run_bot_velocity_command(manager: BotManager, args: Array[String]) -> Dictionary:
+	if args.size() != 5:
+		return _error_result("参数数量错误：用法为 bot velocity <id|all> <x> <y> <z>。")
+	for index in range(2, 5):
+		if not args[index].is_valid_float():
+			return _error_result("参数错误：速度分量 x、y、z 必须全部是数字。")
+	var velocity := Vector3(float(args[2]), float(args[3]), float(args[4]))
+	if velocity.length() > 50.0:
+		return _error_result("范围错误：速度向量长度不能超过 50 m/s。")
+	return _set_bot_test_velocity(manager, args[1], velocity)
+
+
+func _set_bot_test_velocity(manager: BotManager, target: String, velocity: Vector3) -> Dictionary:
+	if target.to_lower() == "all":
+		return _ok_result("已为 %d 个 Bot 设置测试速度 %s m/s。" % [
+			manager.set_all_bot_test_motion(velocity), str(velocity)
+		])
+	if not target.is_valid_int() or int(target) <= 0:
+		return _error_result("参数错误：Bot ID 必须是正整数或 all。")
+	var bot_id := int(target)
+	if not manager.set_bot_test_motion(bot_id, velocity):
+		return _error_result(manager.last_error)
+	return _ok_result("Bot ID=%d 测试速度已设置为 %s m/s。" % [bot_id, str(velocity)])
+
+
+func _get_bot_test_direction(value: String) -> Vector3:
+	if not _player:
+		return Vector3.ZERO
+	var basis: Basis = _player.global_basis
+	match value.to_lower():
+		"forward": return Vector3(-basis.z.x, 0.0, -basis.z.z).normalized()
+		"back": return Vector3(basis.z.x, 0.0, basis.z.z).normalized()
+		"left": return Vector3(-basis.x.x, 0.0, -basis.x.z).normalized()
+		"right": return Vector3(basis.x.x, 0.0, basis.x.z).normalized()
+	return Vector3.ZERO
 
 
 func _get_bot_manager() -> BotManager:
@@ -652,17 +726,23 @@ func _get_bot_parameter_hint(value: String) -> String:
 	var coords := str(_player.global_position) if _player else "(0, 0, 0)"
 	var tokens := value.strip_edges().split(" ", false)
 	if tokens.size() <= 1:
-		return "bot add|list|kill|remove"
+		return "bot add|list|move|velocity|stop|kill|remove"
 	match String(tokens[1]).to_lower():
 		"add":
 			return "bot add [name] [faction] [x] [y] [z]  | 默认坐标：%s" % coords
 		"list":
 			return "bot list"
+		"move":
+			return "bot move <id|all> <forward|back|left|right> <speed>"
+		"velocity":
+			return "bot velocity <id|all> <x> <y> <z>"
+		"stop":
+			return "bot stop <id|all>"
 		"kill":
 			return "bot kill <id|all>"
 		"remove":
 			return "bot remove <id|all>"
-	return "未知 bot 子命令；可用 add、list、kill、remove"
+	return "未知 bot 子命令；可用 add、list、move、velocity、stop、kill、remove"
 
 
 func _open_completion() -> void:
@@ -720,7 +800,7 @@ func _get_bot_completion_items(value: String) -> Array[String]:
 		return candidates
 	if tokens.size() <= 1 or (tokens.size() == 2 and not trailing_space):
 		var prefix := String(tokens[1]).to_lower() if tokens.size() > 1 else ""
-		for subcommand in ["add", "list", "kill", "remove"]:
+		for subcommand in ["add", "list", "move", "velocity", "stop", "kill", "remove"]:
 			if prefix.is_empty() or subcommand.begins_with(prefix):
 				candidates.append("bot " + subcommand)
 		return candidates

@@ -1,7 +1,7 @@
 # AttachmentConfig
 
 **脚本路径：** `classes/weapon/weaponattachments/attachment_config.gd`
-**资源路径：** `res/config/weapons/attachments/<配件类型>/*.tres`
+**资源路径：** `assets/config/weapons/attachments/<配件类型>/*.tres`
 
 ## 功能概述
 

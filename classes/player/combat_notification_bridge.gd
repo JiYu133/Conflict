@@ -8,7 +8,7 @@ extends Node
 # 由 BasePlayer._initialize_subsystems() 创建，调用 initialize(player) 激活。
 # ============================================================
 
-const DEFAULT_LIBRARY_PATH := "res://res/config/ui/notifications/combat_notifications.tres"
+const DEFAULT_LIBRARY_PATH := "res://assets/config/ui/notifications/combat_notifications.tres"
 
 const PART_NAMES: Dictionary = {
 	MedicalEnums.BodyPartId.HEAD:           "头部",

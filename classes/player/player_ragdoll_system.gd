@@ -71,10 +71,22 @@ var _physical_bone_entries: Array = []
 ## 死亡动画到物理阶段的倒计时（秒）
 var _death_anim_timer: float = 0.0
 
-## 待施加的冲击力方向（物理阶段启动时使用）
+## 待施加的冲击方向（物理阶段启动时使用）
 var _pending_impact_direction: Vector3 = Vector3.ZERO
 
-## 待施加冲击力的死亡类型
+## 最后一次命中的动能（J）；由 HealthSystem 传入，布娃娃系统不读取武器
+var _pending_impact_energy_j: float = 0.0
+
+## 最后一次命中的弹头/等效质量（kg）
+var _pending_impact_mass_kg: float = 0.0
+
+## 最后一次命中的通用伤害类型
+var _pending_impact_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BULLET
+
+## CharacterBody3D 在死亡瞬间的世界速度；用于保留移动中的尸体惯性。
+var _pending_inherited_velocity: Vector3 = Vector3.ZERO
+
+## 待施加冲击的死亡类型
 var _pending_death_type: DeathType = DeathType.GENERIC
 
 ## 布娃娃激活前保存的骨骼全局变换（用于复活恢复）
@@ -182,6 +194,11 @@ func _prepare_authored_physics_bones() -> void:
 			bone.collision_layer = _config.ragdoll_collision_layer
 			bone.collision_mask = _config.ragdoll_collision_mask
 			bone.collision_priority = 5.0
+			# PhysicalBone3D 的质量和阻尼默认由引擎决定；若不覆盖，
+			# 预制骨骼会过轻，普通枪击也会把尸体明显踢飞。
+			bone.mass = maxf(_config.mass, 0.1)
+			bone.linear_damp = maxf(_config.linear_damping, 0.0)
+			bone.angular_damp = maxf(_config.angular_damping, 0.0)
 			var bone_idx := _skeleton.find_bone(bone.bone_name)
 			if bone_idx >= 0:
 				_physical_bone_entries.append({"bone": bone, "bone_idx": bone_idx, "physical_parent_idx": _skeleton.get_bone_parent(bone_idx)})
@@ -224,8 +241,16 @@ func set_weapon_mount(weapon_mount: Node3D) -> void:
 ## 启动死亡流程
 ## 依序执行：保存当前骨骼姿态 → 播放死亡动画 → 等待过渡时间 → 启动物理模拟
 ## death_type:       死亡类型，决定动画选择和冲击力默认方向
-## impact_direction: 冲击力方向（世界空间），Vector3.ZERO 时使用类型对应的默认方向
-func enable(death_type: DeathType = DeathType.GENERIC, impact_direction: Vector3 = Vector3.ZERO) -> void:
+## impact_direction: 冲击方向（世界空间），Vector3.ZERO 时使用类型对应的默认方向
+## impact_energy_j / impact_mass_kg: 通用命中物理数据，不依赖武器实现。
+func enable(
+	death_type: DeathType = DeathType.GENERIC,
+	impact_direction: Vector3 = Vector3.ZERO,
+	impact_energy_j: float = 0.0,
+	impact_mass_kg: float = 0.0,
+	impact_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BULLET,
+	inherited_velocity: Vector3 = Vector3.ZERO
+) -> void:
 	if _is_active or not _skeleton:
 		return
 
@@ -248,6 +273,10 @@ func enable(death_type: DeathType = DeathType.GENERIC, impact_direction: Vector3
 
 	# Step 3: 选择并播放死亡动画（仅在配置启用时）
 	_pending_impact_direction = impact_direction
+	_pending_impact_energy_j = maxf(impact_energy_j, 0.0)
+	_pending_impact_mass_kg = maxf(impact_mass_kg, 0.0)
+	_pending_impact_damage_type = impact_damage_type
+	_pending_inherited_velocity = inherited_velocity
 	_pending_death_type = death_type
 	_current_phase = RagdollPhase.DEATH_ANIMATION
 
@@ -380,28 +409,69 @@ func _start_physics_phase() -> void:
 
 	# 物理骨架已经由场景资产完整定义，直接启动该模拟器下的全部预制骨骼。
 	_physical_simulator.physical_bones_start_simulation()
+	_apply_inherited_velocity()
 
-	# 施加冲击力
-	_apply_impact_force(_pending_death_type, _pending_impact_direction)
+	# 用命中能量和质量计算动量后施加冲量
+	_apply_impact_impulse(
+		_pending_death_type,
+		_pending_impact_direction,
+		_pending_impact_energy_j,
+		_pending_impact_mass_kg,
+		_pending_impact_damage_type
+	)
 
 	set_process(false)
 	ragdoll_physics_started.emit()
 	GlobalLogger.info("RagdollSystem", "Physics simulation started")
 
-# 私有 — 冲击力 ──────────────────────────────────────────────
+## 将死亡瞬间 CharacterBody3D 的速度复制到全部物理骨骼。
+## 这是速度继承，不属于枪械命中冲量；枪械冲量仍由 _apply_impact_impulse() 计算。
+func _apply_inherited_velocity() -> void:
+	if _pending_inherited_velocity.length_squared() <= 0.0001:
+		return
+	for entry in _physical_bone_entries:
+		var bone := entry["bone"] as PhysicalBone3D
+		if is_instance_valid(bone):
+			bone.linear_velocity = _pending_inherited_velocity
 
-## 根据死亡类型和方向对上身骨骼施加冲击力
-func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
-	# 确定冲击力大小
-	var force_magnitude := _config.default_impact_force
+# 私有 — 动能冲量 ────────────────────────────────────────────
+
+## 根据命中动能计算弹头动量，再按骨骼质量比例分配总冲量。
+## p = m*v = sqrt(2*m*E)，因此这里没有固定的牛顿力或固定击飞力。
+func _apply_impact_impulse(
+	death_type: DeathType,
+	direction: Vector3,
+	impact_energy_j: float,
+	impact_mass_kg: float,
+	impact_damage_type: MedicalEnums.DamageType
+) -> void:
+	if impact_energy_j <= 0.0:
+		# 控制台直接 die()、失血死亡等没有命中能量，不制造虚假飞行动量。
+		return
+
+	var effective_mass := impact_mass_kg
+	if effective_mass <= 0.0:
+		# 普通子弹/破片没有质量就无法从能量唯一确定动量；不猜一个质量，
+		# 防止调试伤害被误当成重物产生异常尸体飞行。
+		if impact_damage_type == MedicalEnums.DamageType.BULLET or \
+				impact_damage_type == MedicalEnums.DamageType.FRAGMENT:
+			return
+		effective_mass = _config.fallback_impact_mass_kg
+	effective_mass = maxf(effective_mass, 0.001)
+
 	var is_headshot: bool = death_type in [
 		DeathType.FRONT_HEADSHOT, DeathType.BACK_HEADSHOT, DeathType.CROUCHING_HEADSHOT
 	]
-
+	var transfer_ratio := _config.impact_energy_transfer
 	if is_headshot:
-		force_magnitude *= _config.headshot_force_multiplier
-	elif death_type == DeathType.EXPLOSION:
-		force_magnitude = _config.explosion_force
+		transfer_ratio = _config.headshot_energy_transfer
+	elif death_type == DeathType.EXPLOSION or impact_damage_type == MedicalEnums.DamageType.EXPLOSION:
+		transfer_ratio = _config.explosion_energy_transfer
+	transfer_ratio = clampf(transfer_ratio, 0.0, 1.0)
+
+	var total_impulse := sqrt(2.0 * effective_mass * impact_energy_j) * transfer_ratio
+	if total_impulse <= 0.0:
+		return
 
 	# 默认方向：死亡类型推断
 	if direction == Vector3.ZERO:
@@ -409,8 +479,9 @@ func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
 
 	var dir_normalized := direction.normalized()
 
-	# 收集受力骨骼。force_magnitude 表示整个身体的总冲量，不能对每块骨骼重复全额施加。
+	# 收集受力骨骼；总冲量不能对每块骨骼重复全额施加。
 	var targets: Array[PhysicalBone3D] = []
+	var total_target_mass := 0.0
 	for entry in _physical_bone_entries:
 		var pb: PhysicalBone3D = entry["bone"]
 		if not is_instance_valid(pb):
@@ -425,29 +496,30 @@ func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
 			continue
 
 		targets.append(pb)
+		total_target_mass += maxf(pb.mass, 0.001)
 
-	# 配置使用牛顿，而 apply_central_impulse() 使用 N·s。将 1~2 个物理帧的
-	# 短时力转换为一次等效冲量，避免把 500 N 错当成 500 N·s 发射角色。
-	var physics_hz := maxf(float(Engine.physics_ticks_per_second), 1.0)
-	var impact_duration := float(_config.impact_force_frames) / physics_hz
-	var total_impulse := force_magnitude * impact_duration
-	var impulse_per_bone := total_impulse / maxf(float(targets.size()), 1.0)
+	if targets.is_empty() or total_target_mass <= 0.0:
+		return
+
+	# 质量越大的骨骼获得的冲量份额越大，使同一组骨骼的初始速度响应一致。
 	for target in targets:
-		target.apply_central_impulse(dir_normalized * impulse_per_bone)
+		var mass_share := maxf(target.mass, 0.001) / total_target_mass
+		target.apply_central_impulse(dir_normalized * total_impulse * mass_share)
 
-	# 爆头：对头部骨骼额外施加更大的力
+	# 爆头：在已经按能量计算的总冲量之外，将少量动量集中到头部。
 	if is_headshot:
 		for entry in _physical_bone_entries:
 			var pb: PhysicalBone3D = entry["bone"]
 			if not is_instance_valid(pb):
 				continue
 			if "Head" in pb.bone_name:
-				pb.apply_central_impulse(dir_normalized * total_impulse * 0.5)
-				GlobalLogger.debug("RagdollSystem", "Headshot extra impulse on %s: %.2f N*s" % [pb.bone_name, total_impulse * 0.5])
+				var extra_impulse := total_impulse * clampf(_config.headshot_extra_impulse_ratio, 0.0, 1.0)
+				pb.apply_central_impulse(dir_normalized * extra_impulse)
+				GlobalLogger.debug("RagdollSystem", "Headshot extra impulse on %s: %.2f kg*m/s" % [pb.bone_name, extra_impulse])
 				break
 
-	GlobalLogger.info("RagdollSystem", "Applied %.1f N for %d physics frame(s) = %.2f N*s across %d bones (dir: %s)" % \
-		[force_magnitude, _config.impact_force_frames, total_impulse, targets.size(), dir_normalized])
+	GlobalLogger.info("RagdollSystem", "Applied kinetic impulse %.2f kg*m/s (E=%.1f J, m=%.5f kg, transfer=%.2f) across %d bones (dir: %s)" % \
+		[total_impulse, impact_energy_j, effective_mass, transfer_ratio, targets.size(), dir_normalized])
 
 ## 根据死亡类型推断默认的冲击力方向（世界空间）
 func _get_default_impact_direction(death_type: DeathType) -> Vector3:

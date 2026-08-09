@@ -2,11 +2,11 @@ extends CanvasLayer
 
 ## 设置页只编辑玩家偏好草稿；PauseMenu 负责暂停与恢复玩家控制。
 
-const FONT_PATH := "res://res/fonts/ConflictCJKUI.ttf"
+const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
 const KeybindStore = preload("res://classes/ui/settings/keybind_store.gd")
 const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
 const AnimatedToggle = preload("res://classes/ui/settings/animated_toggle.gd")
-const BLUR_SHADER_PATH := "res://res/shaders/death_blur.gdshader"
+const BLUR_SHADER_PATH := "res://assets/shaders/death_blur.gdshader"
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)
 const COL_PANEL := Color(0.063, 0.067, 0.075, 0.90)
 const COL_SURFACE := Color(0.10, 0.106, 0.12, 0.76)
@@ -515,9 +515,21 @@ func _build_controls_page() -> void:
 
 func _build_video_page() -> void:
 	_content_title.text = SettingsText.CATEGORY_VIDEO
-	_content_subtitle.text = SettingsText.VIDEO_SUBTITLE
+	_content_subtitle.text = "调整窗口显示方式、视觉特效和血腥内容显示。"
 	_add_section(SettingsText.SECTION_DISPLAY)
 	_add_window_mode_row()
+	_add_section(SettingsText.SECTION_COMFORT)
+	_add_slider_row(SettingsText.VIDEO_HIT_CAMERA_IMPACT, SettingsText.VIDEO_HIT_CAMERA_IMPACT_HINT, "graphics/hit_camera_impact", 0.0, 1.0, 0.05)
+	_add_slider_row(SettingsText.VIDEO_DAMAGE_BLUR, SettingsText.VIDEO_DAMAGE_BLUR_HINT, "graphics/damage_blur", 0.0, 1.0, 0.05)
+	_add_toggle_row(SettingsText.VIDEO_COMA_EFFECT, SettingsText.VIDEO_COMA_EFFECT_HINT, "graphics/coma_effect")
+	_add_toggle_row(SettingsText.VIDEO_DEATH_EFFECT, SettingsText.VIDEO_DEATH_EFFECT_HINT, "graphics/death_effect")
+	_add_slider_row(SettingsText.VIDEO_DEATH_CAMERA_SHAKE, SettingsText.VIDEO_DEATH_CAMERA_SHAKE_HINT, "graphics/death_camera_shake", 0.0, 1.0, 0.05)
+	_add_section(SettingsText.SECTION_WEAPON_EFFECTS)
+	_add_toggle_row(SettingsText.VIDEO_MUZZLE_FLASH, SettingsText.VIDEO_MUZZLE_FLASH_HINT, "graphics/muzzle_flash")
+	_add_toggle_row(SettingsText.VIDEO_MUZZLE_LIGHT, SettingsText.VIDEO_MUZZLE_LIGHT_HINT, "graphics/muzzle_light")
+	_add_toggle_row(SettingsText.VIDEO_HEAT_HAZE, SettingsText.VIDEO_HEAT_HAZE_HINT, "graphics/heat_haze")
+	_add_section(SettingsText.SECTION_BLOOD_EFFECTS)
+	_add_toggle_row(SettingsText.VIDEO_BLOOD_EFFECTS, SettingsText.VIDEO_BLOOD_EFFECTS_HINT, "graphics/blood_effects")
 
 
 func _build_placeholder_page(category: String) -> void:
@@ -692,12 +704,15 @@ func _add_toggle_row(title: String, description: String, key: String) -> void:
 	var row := _new_row()
 	_add_row_labels(row, title, description)
 	var toggle := AnimatedToggle.new()
-	toggle.button_pressed = bool(_settings_service.get_value(key))
+	var current_value := bool(_settings_service.get_value(key, true))
 	toggle.toggled.connect(func(enabled: bool):
 		_settings_service.set_value(key, enabled)
 		_mark_dirty()
 	)
 	row.add_child(toggle)
+	# 先入树触发 AnimatedToggle._ready，再同步当前值，避免 toggle_mode
+	# 初始化顺序导致视觉状态被重置。
+	toggle.set_toggle_value(current_value)
 
 
 func _add_bind_row(entry: Dictionary) -> void:

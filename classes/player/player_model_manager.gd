@@ -173,4 +173,4 @@ func _create_collision_body() -> void:
 	shape.height = _player_config.collision_shape_height
 	shape.radius = _player_config.collision_shape_radius
 	_collision_shape.shape = shape
-	_collision_shape.position = Vector3.ZERO  # 碰撞体中心置于身体中部
+	_collision_shape.position = Vector3(0, _player_config.collision_shape_y_offset, 0)

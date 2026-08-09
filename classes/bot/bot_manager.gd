@@ -118,6 +118,38 @@ func get_bots() -> Array[BasePlayer]:
 			result.append(bot)
 	return result
 
+func set_bot_test_motion(bot_id: int, world_velocity: Vector3) -> bool:
+	var bot := get_bot(bot_id)
+	if not bot:
+		last_error = "找不到 Bot ID：%d。" % bot_id
+		return false
+	if not bot.set_bot_test_motion(world_velocity):
+		last_error = "Bot ID=%d 当前不可移动。" % bot_id
+		return false
+	return true
+
+func set_all_bot_test_motion(world_velocity: Vector3) -> int:
+	var count := 0
+	for bot in get_bots():
+		if bot.set_bot_test_motion(world_velocity):
+			count += 1
+	return count
+
+func stop_bot_test_motion(bot_id: int) -> bool:
+	var bot := get_bot(bot_id)
+	if not bot:
+		last_error = "找不到 Bot ID：%d。" % bot_id
+		return false
+	bot.stop_bot_test_motion()
+	return true
+
+func stop_all_bot_test_motion() -> int:
+	var count := 0
+	for bot in get_bots():
+		if bot.stop_bot_test_motion():
+			count += 1
+	return count
+
 
 func kill_bot(bot_id: int) -> bool:
 	var bot := get_bot(bot_id)

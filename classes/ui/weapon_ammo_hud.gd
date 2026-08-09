@@ -7,7 +7,7 @@ extends CanvasLayer
 ##
 ## 配色沿用设置页/改装界面，保持整体一致。
 
-const FONT_PATH := "res://res/fonts/ConflictCJKUI.ttf"
+const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
 const COL_TEXT := Color(0.945, 0.953, 0.961)
 const COL_MUTED := Color(0.61, 0.64, 0.68)
 const COL_LOW := Color(0.90, 0.62, 0.30)      # 余弹偏低

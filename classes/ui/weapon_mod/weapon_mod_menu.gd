@@ -14,13 +14,13 @@ extends CanvasLayer
 ## 对外接口：initialize(player) / open() / close() / toggle() / is_open()
 ##           signal opened / closed
 
-const FONT_PATH := "res://res/fonts/ConflictCJKUI.ttf"
-const BLUR_SHADER_PATH := "res://res/shaders/death_blur.gdshader"
-const GRID_SHADER_PATH := "res://res/shaders/blueprint_grid.gdshader"
+const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
+const BLUR_SHADER_PATH := "res://assets/shaders/death_blur.gdshader"
+const GRID_SHADER_PATH := "res://assets/shaders/blueprint_grid.gdshader"
 const AttachmentCatalog = preload("res://classes/ui/weapon_mod/attachment_catalog.gd")
 const WeaponPreviewScript = preload("res://classes/ui/weapon_mod/weapon_preview.gd")
 const CalloutLayerScript = preload("res://classes/ui/weapon_mod/weapon_callout_layer.gd")
-const MOD_CONFIG: WeaponModConfig = preload("res://res/config/ui/weapon_mod_config.tres")
+const MOD_CONFIG: WeaponModConfig = preload("res://assets/config/ui/weapon_mod_config.tres")
 
 # 配色沿用设置页
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)

@@ -13,6 +13,7 @@ signal weapon_stats_changed()
 var current_weapon: BaseWeapon
 var weapon_mount: Node3D
 var camera_controller: PlayerCameraController
+var settings_service
 var is_aiming: bool = false
 
 var _weapon_anim_controller: WeaponAnimationController
@@ -37,6 +38,8 @@ func equip_weapon(weapon: BaseWeapon, emit_changed: bool = true) -> void:
 		_weapon_anim_controller = null
 		_moving_parts_controller = null
 	current_weapon = weapon
+	if weapon.fx_controller:
+		weapon.fx_controller.set_settings_service(settings_service)
 	if weapon_mount:
 		weapon_mount.add_child(weapon)
 		_align_to_grip(weapon)
@@ -96,8 +99,34 @@ func _relative_grip_transform(root: Node3D, descendant: Node3D) -> Transform3D:
 func set_mount(mount: Node3D) -> void:
 	weapon_mount = mount
 
+
+## Detach the equipped weapon without replacing or duplicating it.
+func detach_current_weapon_to(new_parent: Node3D) -> BaseWeapon:
+	if not is_instance_valid(current_weapon) or not is_instance_valid(new_parent):
+		return null
+	release_trigger()
+	set_aiming(false)
+	current_weapon.reparent(new_parent, false)
+	current_weapon.transform = Transform3D.IDENTITY
+	return current_weapon
+
+
+## Return a previously detached current weapon to the authored hand mount.
+func restore_current_weapon_to_mount(weapon: BaseWeapon) -> bool:
+	if not is_instance_valid(weapon) or weapon != current_weapon or not is_instance_valid(weapon_mount):
+		return false
+	weapon.reparent(weapon_mount, false)
+	_align_to_grip(weapon)
+	_apply_ads_state()
+	return true
+
 func set_camera_controller(controller: PlayerCameraController) -> void:
 	camera_controller = controller
+
+func set_settings_service(service) -> void:
+	settings_service = service
+	if current_weapon and current_weapon.fx_controller:
+		current_weapon.fx_controller.set_settings_service(service)
 
 func press_trigger() -> void:
 	if current_weapon:

@@ -75,7 +75,7 @@ Classes/Combat/
 Classes/Weapon/Weapon/
   ammo_ballistics_config.gd # class_name AmmoBallisticsConfig — projectile_mass(g) + reuse muzzle_velocity
 
-Config resources (res/config/player/, res/config/combat/):
+Config resources (assets/config/player/, assets/config/combat/):
   health_config_default.tres, medical items table, ammo ballistics table.
 
 Docs (matching docs/ convention):

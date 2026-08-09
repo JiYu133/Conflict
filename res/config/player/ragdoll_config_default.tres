@@ -1,9 +1,0 @@
-[gd_resource type="Resource" script_class="RagdollConfig" format=3 uid="uid://dw84v6n2k5p1x"]
-
-[ext_resource type="Script" uid="uid://dn103ririhbav" path="res://classes/player/ragdoll_config.gd" id="1_script"]
-
-[resource]
-script = ExtResource("1_script")
-default_impact_force = 600.0
-upper_body_keywords = Array[String](["Spine", "Neck"])
-metadata/_custom_type_script = "uid://dn103ririhbav"

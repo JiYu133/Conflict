@@ -1,0 +1,26 @@
+[gd_scene format=3 uid="uid://brr5u8wue44bk"]
+
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_base"]
+[ext_resource type="Script" uid="uid://01io7x43ey6y" path="res://classes/weapon/weaponattachments/attachment_slot.gd" id="2_slot"]
+[ext_resource type="PackedScene" uid="uid://ciew6qjvks7lp" path="res://assets/models/attachments/barrel_assemblies/barrel_assembly_415mm_standard/barrel_415mm_standard.glb" id="3_mesh"]
+
+[node name="BarrelAssembly415mm" type="Node3D" unique_id=935509273]
+script = ExtResource("1_base")
+
+[node name="Mesh" parent="." unique_id=1786184056 instance=ExtResource("3_mesh")]
+
+[node name="SnapPoint" type="Marker3D" parent="." unique_id=1280735282]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0.0078125, 0)
+
+[node name="MuzzleDevice" type="Marker3D" parent="." unique_id=99270094]
+transform = Transform3D(-1, 0, 8.742278e-08, 0, 1, 0, -8.742278e-08, 0, -1, 0, 0, -0.44140625)
+script = ExtResource("2_slot")
+slot_type = 3
+allowed_attachment_types = Array[int]([1])
+slot_name = "MuzzleDevice"
+
+[node name="Muzzle" type="Marker3D" parent="." unique_id=1172927334]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.43908924)
+
+[node name="HeatHaze" type="Marker3D" parent="." unique_id=186802677]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, -0.4888533)

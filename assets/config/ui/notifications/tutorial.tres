@@ -1,0 +1,115 @@
+[gd_resource type="Resource" script_class="TopRightNotificationConfig" format=3 uid="uid://ke76oc81381y"]
+
+[ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://assets/fonts/ConflictCJKUI.ttf" id="1_4rpcs"]
+[ext_resource type="Script" uid="uid://dblt8r4wcqoat" path="res://classes/ui/top_right_notification_config.gd" id="2_2sijf"]
+[ext_resource type="Script" uid="uid://cam8vgw06i5w6" path="res://classes/ui/top_right_notification_entry.gd" id="3_w8h6i"]
+[ext_resource type="Texture2D" uid="uid://cmd8x3rrp3sri" path="res://icon.svg" id="4_yf03i"]
+
+[sub_resource type="Resource" id="Resource_3xd07"]
+script = ExtResource("3_w8h6i")
+text = "这是《Conflict》的内部测试版本"
+icon = ExtResource("4_yf03i")
+
+[sub_resource type="Resource" id="Resource_muw3u"]
+script = ExtResource("3_w8h6i")
+text = "使用鼠标旋转你的视角"
+display_order = 1
+duration = 6.0
+block_next = true
+accent_color = Color(0.7882353, 0.69803923, 0, 1)
+
+[sub_resource type="Resource" id="Resource_ntr6m"]
+script = ExtResource("3_w8h6i")
+text = "使用键盘上的WASD控制你自己"
+display_order = 1
+duration = 6.0
+block_next = true
+accent_color = Color(0.7882353, 0.69803923, 0, 1)
+
+[sub_resource type="Resource" id="Resource_r7er6"]
+script = ExtResource("3_w8h6i")
+text = "单击Shift以快步行走
+长按Shift进入奔跑"
+duration = 6.0
+block_next = true
+accent_color = Color(0.7882353, 0.69803923, 0, 1)
+
+[sub_resource type="Resource" id="Resource_tmv8l"]
+script = ExtResource("3_w8h6i")
+text = "在奔跑时你无法抬枪瞄准
+且会快速消耗你的耐力
+遇到复杂情况时尽量不要使用"
+duration = 3.0
+block_next = true
+accent_color = Color(0.7882353, 0, 0, 1)
+
+[sub_resource type="Resource" id="Resource_f0l5x"]
+script = ExtResource("3_w8h6i")
+text = "按下C切换蹲姿"
+duration = 6.0
+block_next = true
+accent_color = Color(0.7882353, 0.69803923, 0, 1)
+
+[sub_resource type="Resource" id="Resource_on76t"]
+script = ExtResource("3_w8h6i")
+text = "蹲下以及蹲下行走会很快消耗你的耐力
+在蹲姿下，你的身体暴露在敌人面前的面积更小"
+duration = 6.0
+block_next = true
+accent_color = Color(0.7882353, 0, 0, 1)
+
+[sub_resource type="Resource" id="Resource_hvme1"]
+script = ExtResource("3_w8h6i")
+text = "滚动滚轮可以精细调整你的高度
+但长期处于半蹲会消耗耐力"
+duration = 6.0
+block_next = true
+accent_color = Color(0.7882353, 0.69803923, 0, 1)
+metadata/_custom_type_script = "uid://cam8vgw06i5w6"
+
+[sub_resource type="Resource" id="Resource_a24ph"]
+script = ExtResource("3_w8h6i")
+text = "按下Space来跳跃"
+duration = 6.0
+block_next = true
+accent_color = Color(0.7882353, 0.69803923, 0, 1)
+
+[sub_resource type="Resource" id="Resource_s6j0y"]
+script = ExtResource("3_w8h6i")
+text = "和奔跑一样，跳跃不仅影响你的耐力，还会大幅降低你的精准度
+在落地时你也会减速"
+duration = 6.0
+block_next = true
+accent_color = Color(0.7882353, 0, 0, 1)
+
+[sub_resource type="Resource" id="Resource_4e16f"]
+script = ExtResource("3_w8h6i")
+text = "按下ESC可以暂停游戏
+设置界面内有更多按键提示"
+duration = 6.0
+block_next = true
+
+[sub_resource type="Resource" id="Resource_8lp8y"]
+script = ExtResource("3_w8h6i")
+text = "按F进入自由视角
+自由视角下对准玩家部位，你会看见瞄准的部位名称和情况"
+duration = 6.0
+block_next = true
+
+[sub_resource type="Resource" id="Resource_b314j"]
+script = ExtResource("3_w8h6i")
+text = "按下左键以进行模拟射击
+自由视角功能会在正式版移除，此处仅为测试使用"
+metadata/_custom_type_script = "uid://cam8vgw06i5w6"
+
+[sub_resource type="Resource" id="Resource_83ou0"]
+script = ExtResource("3_w8h6i")
+text = "测试版本存在Bug，如果遇到问题及时反馈
+游戏开发群号在游戏文件夹里的txt内"
+duration = 10.0
+metadata/_custom_type_script = "uid://cam8vgw06i5w6"
+
+[resource]
+script = ExtResource("2_2sijf")
+startup_notifications = Array[ExtResource("3_w8h6i")]([SubResource("Resource_3xd07"), SubResource("Resource_muw3u"), SubResource("Resource_ntr6m"), SubResource("Resource_r7er6"), SubResource("Resource_tmv8l"), SubResource("Resource_f0l5x"), SubResource("Resource_on76t"), SubResource("Resource_hvme1"), SubResource("Resource_a24ph"), SubResource("Resource_s6j0y"), SubResource("Resource_4e16f"), SubResource("Resource_8lp8y"), SubResource("Resource_b314j"), SubResource("Resource_83ou0")])
+font = ExtResource("1_4rpcs")

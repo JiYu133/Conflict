@@ -2,7 +2,7 @@ extends SceneTree
 
 
 func _init() -> void:
-	var scene := load("res://res/map/TestMap.tscn") as PackedScene
+	var scene := load("res://assets/map/TestMap.tscn") as PackedScene
 	if not _check(scene != null, "TestMap scene loads"):
 		return
 	var map := scene.instantiate()
@@ -69,7 +69,29 @@ func _init() -> void:
 	var simulator := first.ragdoll_system._physical_simulator as PhysicalBoneSimulator3D
 	if not _check(simulator != null and simulator.is_simulating_physics(), "bot death starts physical ragdoll simulation"):
 		return
+	var dropped_bot_weapon := map.get_node_or_null("%s_Dropped" % bot_weapon.name) as RigidBody3D
+	if not _check(dropped_bot_weapon != null and bot_weapon.get_parent() == dropped_bot_weapon, "bot death drops its weapon as a rigid body"):
+		return
+	if not _check(dropped_bot_weapon.get_node_or_null("DroppedWeaponCollision") is CollisionShape3D, "dropped bot weapon has authored collision"):
+		return
 	if not _check(bot_head.visible and (bot_head.layers & 1) != 0, "ragdoll keeps the bot head visible to world cameras"):
+		return
+	first.revive()
+	await process_frame
+	if not _check(bot_weapon.get_parent() == first.weapon_manager.weapon_mount, "revive restores the bot weapon to its mount"):
+		return
+	if not _check(not is_instance_valid(dropped_bot_weapon), "revive removes the dropped bot weapon body"):
+		return
+
+	var player_weapon := player.weapon_manager.current_weapon
+	player.die()
+	await process_frame
+	var dropped_player_weapon := map.get_node_or_null("%s_Dropped" % player_weapon.name) as RigidBody3D
+	if not _check(dropped_player_weapon != null and player_weapon.get_parent() == dropped_player_weapon, "player death uses the same weapon drop system"):
+		return
+	player.revive()
+	await process_frame
+	if not _check(player_weapon.get_parent() == player.weapon_manager.weapon_mount, "player revive restores the weapon to its mount"):
 		return
 	if not _check(manager.remove_bot(first.bot_id), "remove_bot accepts a valid ID"):
 		return

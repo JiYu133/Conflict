@@ -48,6 +48,9 @@ var _tick_timer: float = 0.0
 var _is_dead: bool = false
 var _hitboxes: Array[BodyHitbox] = []  # 存活时的命中检测区域
 var _last_hit_direction: Vector3 = Vector3.ZERO  # 最后一次受击方向，供失血死亡时选择死亡动画
+var _last_hit_energy_j: float = 0.0  # 最后一次命中携带的动能/冲击能量
+var _last_hit_mass_kg: float = 0.0  # 最后一次命中的等效质量，用于由能量反推动量
+var _last_hit_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BULLET
 var _anatomy: AnatomyConfig = null  # P2 解剖模型
 var _rng := RandomNumberGenerator.new()  # 解剖损伤概率判定
 var _lethal_organ_destroyed: bool = false  # 心/脑等关键器官被摧毁 → 直接死亡
@@ -94,9 +97,20 @@ func apply_damage(info: DamageInfo) -> void:
 	if info.direction != Vector3.ZERO:
 		# 缓存受击方向：之后失血死亡时仍能按最后中弹方向选择死亡动画，而非 GENERIC
 		_last_hit_direction = info.direction
+	if info.amount > 0.0:
+		# 这里只保存通用伤害数据，不依赖武器或布娃娃系统。
+		# amount 在 Combat 管线中是焦耳；非弹道伤害若未提供质量，后续使用配置的等效质量。
+		_last_hit_energy_j = info.amount
+		_last_hit_mass_kg = maxf(info.impact_mass_kg, 0.0)
+		_last_hit_damage_type = info.type
+	else:
+		# 没有瞬时能量的脚本/状态伤害不能复用上一发弹药的动量。
+		_last_hit_energy_j = 0.0
+		_last_hit_mass_kg = 0.0
+		_last_hit_damage_type = info.type
 	_apply_structural_damage(info)
 	damage_taken.emit(info)
-	_evaluate_state(info.direction)
+	_evaluate_state(info.direction, true)
 
 ## 应用治疗（P3 实现；P1 存根返回 false）
 func apply_treatment(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartId) -> bool:
@@ -416,11 +430,12 @@ func _run_physiology_tick(dt: float) -> void:
 	pain_changed.emit(vitals.pain_level)
 
 	# 使用缓存的最后受击方向：失血死亡也能选择方向正确的死亡动画
-	_evaluate_state(_last_hit_direction)
+	# 失血/生理状态导致的死亡没有新的瞬时碰撞，不重复使用旧子弹的动能。
+	_evaluate_state(_last_hit_direction, false)
 
 # 私有 — 状态评估与死亡桥 ──────────────────────────────────
 
-func _evaluate_state(last_hit_direction: Vector3) -> void:
+func _evaluate_state(last_hit_direction: Vector3, include_impact_data: bool = true) -> void:
 	if _is_dead:
 		return
 
@@ -432,11 +447,16 @@ func _evaluate_state(last_hit_direction: Vector3) -> void:
 
 	match current_state:
 		MedicalEnums.HealthState.DEAD:
-			_trigger_death(last_hit_direction)
+			_trigger_death(last_hit_direction, include_impact_data)
 		MedicalEnums.HealthState.UNCONSCIOUS:
 			if _player.controllable or _player.is_bot:
 				went_unconscious.emit()
-				_player.go_unconscious(_last_hit_direction)
+				var impact_energy := _last_hit_energy_j if include_impact_data else 0.0
+				var impact_mass := _last_hit_mass_kg if include_impact_data else 0.0
+				var impact_type := _last_hit_damage_type if include_impact_data else MedicalEnums.DamageType.FALL
+				_player.go_unconscious(
+					_last_hit_direction, impact_energy, impact_mass, impact_type
+				)
 		# 注意：从 UNCONSCIOUS 恢复意识需要显式治疗（P3 肾上腺素/血袋），
 		# 不会因血量稳定而自动恢复——拟真设计中失血是单向的。
 
@@ -482,7 +502,7 @@ func _compute_state() -> MedicalEnums.HealthState:
 
 	return MedicalEnums.HealthState.HEALTHY
 
-func _trigger_death(impact_direction: Vector3) -> void:
+func _trigger_death(impact_direction: Vector3, include_impact_data: bool = true) -> void:
 	if _is_dead:
 		return
 	_is_dead = true
@@ -493,7 +513,10 @@ func _trigger_death(impact_direction: Vector3) -> void:
 		impact_direction
 	])
 	medically_died.emit(death_type, impact_direction)
-	_player.die(death_type, impact_direction)
+	var impact_energy := _last_hit_energy_j if include_impact_data else 0.0
+	var impact_mass := _last_hit_mass_kg if include_impact_data else 0.0
+	var impact_type := _last_hit_damage_type if include_impact_data else MedicalEnums.DamageType.FALL
+	_player.die(death_type, impact_direction, impact_energy, impact_mass, impact_type)
 
 func _resolve_death_type(dir: Vector3) -> PlayerRagdollSystem.DeathType:
 	# 将致命伤情 + 最后击中方向映射到现有 DeathType
@@ -540,6 +563,9 @@ func _on_player_died() -> void:
 func _on_player_revived() -> void:
 	vitals.initialize(_config)
 	_last_hit_direction = Vector3.ZERO
+	_last_hit_energy_j = 0.0
+	_last_hit_mass_kg = 0.0
+	_last_hit_damage_type = MedicalEnums.DamageType.BULLET
 	_lethal_organ_destroyed = false
 	_is_dead = false
 	_tick_timer = 0.0
