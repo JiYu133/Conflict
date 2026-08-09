@@ -71,6 +71,7 @@ static func fire_hitscan(
 		result, energy, MedicalEnums.DamageType.BULLET, source, target_dir.normalized()
 	)
 	info.impact_velocity = velocity
+	info.impact_mass_kg = mass_kg
 	var health_system := player_node.get_node("HealthSystem") as HealthSystem
 	health_system.apply_damage(info)
 

@@ -256,7 +256,7 @@ button.theme_type_variation = "AccentButton"
 
 **使用方式**:
 - 在主题中设为 Default Font（推荐）
-- 代码加载: `load("res://res/fonts/ConflictCJKUI.ttf")`
+- 代码加载: `load("res://assets/fonts/ConflictCJKUI.ttf")`
 
 ---
 

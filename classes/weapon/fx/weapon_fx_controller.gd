@@ -18,11 +18,23 @@ extends Node
 
 const MUZZLE_NODE_NAME := "Muzzle"
 const EJECTION_NODE_NAME := "EjectionPort"
+const HEAT_HAZE_MARKER_NAME := "HeatHaze"
+const HEAT_HAZE_MATERIAL_PATH := "res://assets/materials/fx/heat_haze_material.tres"
+const PREFERRED_HEAT_HAZE_NOISE_PATH := "res://assets/textures/fx/noise_heat_haze.png"
+const DEFAULT_HEAT_HAZE_NOISE_PATH := "res://assets/textures/effects/noise/noise_heat_haze.tres"
 
 var _weapon: BaseWeapon
 var _fx: WeaponFXConfig
+var _settings_service = null
 var _muzzle_point: Node3D
 var _ejection_point: Node3D
+var _heat_haze_marker: Node3D
+var _heat_haze_particles: GPUParticles3D
+var _heat_haze_material: ShaderMaterial
+var _heat_haze_noise: Texture2D
+var _heat_haze_particle_process: ParticleProcessMaterial
+var _heat_haze_heat: float = 0.0
+var _heat_haze_profile_multiplier: float = 1.0
 var _live_shells: Array[ShellCasing] = []
 
 
@@ -30,6 +42,7 @@ func initialize(weapon: BaseWeapon, fx: WeaponFXConfig) -> void:
 	_weapon = weapon
 	_fx = fx if fx else WeaponFXConfig.new()
 	_resolve_markers()
+	_load_heat_haze_resources()
 	# 抛壳窗与枪口挂点通常定义在配件场景里（抛壳窗在机匣/机匣盖，枪口在枪管），
 	# 而配件是在武器初始化之后才装上的——因此必须在配件变动后重新查找，
 	# 否则永远只找得到机匣本体上的挂点（或找不到，退化成硬编码偏移）。
@@ -41,6 +54,32 @@ func initialize(weapon: BaseWeapon, fx: WeaponFXConfig) -> void:
 	if not weapon.fired.is_connected(_on_fired):
 		weapon.fired.connect(_on_fired)
 
+func set_settings_service(service) -> void:
+	_settings_service = service
+	if _settings_service and not _settings_service.value_changed.is_connected(_on_setting_changed):
+		_settings_service.value_changed.connect(_on_setting_changed)
+	if _heat_haze_allowed() and not _heat_haze_material:
+		_load_heat_haze_resources()
+
+func _on_setting_changed(key: String, value: Variant) -> void:
+	match key:
+		"graphics/heat_haze":
+			if not bool(value):
+				_heat_haze_heat = 0.0
+				if is_instance_valid(_heat_haze_particles):
+					_heat_haze_particles.emitting = false
+					_heat_haze_particles.visible = false
+			else:
+				_load_heat_haze_resources()
+				if is_instance_valid(_heat_haze_particles):
+					_heat_haze_particles.visible = true
+		"graphics/muzzle_flash":
+			if not bool(value):
+				_free_effect_group("weapon_muzzle_flash_effects")
+		"graphics/muzzle_light":
+			if not bool(value):
+				_free_effect_group("weapon_muzzle_light_effects")
+
 
 ## 递归查找挂点。find_child(recursive) 会一并搜索已装配件的场景，
 ## 因此挂点既可以放在机匣本体，也可以放在配件里（推荐后者：
@@ -50,6 +89,13 @@ func _resolve_markers() -> void:
 		return
 	_muzzle_point = _weapon.find_child(MUZZLE_NODE_NAME, true, false) as Node3D
 	_ejection_point = _weapon.find_child(EJECTION_NODE_NAME, true, false) as Node3D
+	var next_heat_marker := _weapon.find_child(HEAT_HAZE_MARKER_NAME, true, false) as Node3D
+	# 旧武器没有专用 Marker 时回退到 Muzzle，但新枪管应始终提供 HeatHaze Marker。
+	if not next_heat_marker:
+		next_heat_marker = _muzzle_point
+	if next_heat_marker != _heat_haze_marker:
+		_clear_heat_haze_node()
+		_heat_haze_marker = next_heat_marker
 	if not _ejection_point:
 		GlobalLogger.debug(
 			"WeaponFX",
@@ -140,9 +186,24 @@ func _on_fired() -> void:
 		return
 	var profile := _fx.resolve_muzzle_profile(_effective_barrel_length(), _muzzle_kind())
 	var xf := _muzzle_transform()
-	_spawn_flash(profile, xf)
+	if _setting_enabled("graphics/muzzle_flash", true):
+		_spawn_flash(profile, xf)
 	_spawn_muzzle_light(profile, xf)
 	_spawn_smoke(xf)
+	if _heat_haze_allowed():
+		_add_heat_haze_heat(profile)
+
+
+func _process(delta: float) -> void:
+	if not _fx:
+		return
+	if _heat_haze_allowed() and _heat_haze_heat > 0.0:
+		_heat_haze_heat = maxf(
+			_heat_haze_heat - maxf(_fx.heat_haze_cooling_rate, 0.01) * delta,
+			0.0
+		)
+	if _heat_haze_allowed():
+		_update_heat_haze_particles()
 
 
 ## 有效枪管长度：优先取已装枪管组件，其次武器配置
@@ -201,13 +262,14 @@ func _spawn_flash(profile: Dictionary, xf: Transform3D) -> void:
 	if not node:
 		return
 	_weapon.get_tree().current_scene.add_child(node)
+	node.add_to_group("weapon_muzzle_flash_effects")
 	node.global_transform = xf
 	node.scale = Vector3.ONE * float(profile.get("scale", 1.0))
 	_auto_free(node, float(profile.get("lifetime", 0.05)) + 1.0)
 
 
 func _spawn_muzzle_light(profile: Dictionary, xf: Transform3D) -> void:
-	if not _fx.muzzle_light_enabled:
+	if not _fx.muzzle_light_enabled or not _setting_enabled("graphics/muzzle_light", true):
 		return
 	var light := OmniLight3D.new()
 	light.light_color = _fx.muzzle_light_color
@@ -215,6 +277,7 @@ func _spawn_muzzle_light(profile: Dictionary, xf: Transform3D) -> void:
 	light.omni_range = _fx.muzzle_light_range
 	light.shadow_enabled = false
 	_weapon.get_tree().current_scene.add_child(light)
+	light.add_to_group("weapon_muzzle_light_effects")
 	light.global_position = xf.origin
 	# 一次性闪光：能量快速衰减到 0 后销毁
 	var tween := light.create_tween()
@@ -231,6 +294,161 @@ func _spawn_smoke(xf: Transform3D) -> void:
 	_weapon.get_tree().current_scene.add_child(node)
 	node.global_transform = xf
 	_auto_free(node, 4.0)
+
+
+## 初始化并缓存 Shader/Noise。热浪节点只在第一次开火时创建一次，后续复用。
+func _load_heat_haze_resources() -> void:
+	if not _fx.heat_haze_enabled or not _heat_haze_allowed():
+		return
+	_heat_haze_noise = _fx.heat_haze_noise_texture as Texture2D
+	if not _heat_haze_noise and ResourceLoader.exists(PREFERRED_HEAT_HAZE_NOISE_PATH):
+		_heat_haze_noise = load(PREFERRED_HEAT_HAZE_NOISE_PATH) as Texture2D
+	if not _heat_haze_noise and ResourceLoader.exists(DEFAULT_HEAT_HAZE_NOISE_PATH):
+		_heat_haze_noise = load(DEFAULT_HEAT_HAZE_NOISE_PATH) as Texture2D
+	if not _heat_haze_material:
+		var configured_material := _fx.heat_haze_material as ShaderMaterial
+		if configured_material:
+			_heat_haze_material = configured_material.duplicate() as ShaderMaterial
+		elif ResourceLoader.exists(HEAT_HAZE_MATERIAL_PATH):
+			_heat_haze_material = (load(HEAT_HAZE_MATERIAL_PATH) as ShaderMaterial).duplicate() as ShaderMaterial
+	if _heat_haze_material:
+		# 每把武器使用自己的材质实例，避免热量透明度互相污染。
+		if _heat_haze_noise:
+			_heat_haze_material.set_shader_parameter("noise_texture", _heat_haze_noise)
+		_heat_haze_material.set_shader_parameter("distortion_strength", _fx.heat_haze_strength)
+		_heat_haze_material.set_shader_parameter("flow_speed", _fx.heat_haze_flow_speed)
+		_heat_haze_material.set_shader_parameter("noise_scale", _fx.heat_haze_noise_scale)
+		_heat_haze_material.set_shader_parameter("proximity_fade_distance", 0.75)
+
+
+func _add_heat_haze_heat(profile: Dictionary) -> void:
+	if not _heat_haze_allowed() or not _weapon or not _weapon.is_inside_tree():
+		return
+	var profile_id: int = int(profile.get("profile", WeaponFXConfig.MuzzleProfile.STANDARD))
+	_heat_haze_profile_multiplier = _heat_haze_multiplier_for_profile(profile_id)
+	_heat_haze_heat = minf(
+		_heat_haze_heat + _fx.heat_haze_heat_per_shot * _heat_haze_profile_multiplier,
+		maxf(_fx.heat_haze_max_heat, 0.1)
+	)
+	_ensure_heat_haze_particles()
+	_update_heat_haze_particles()
+	if is_instance_valid(_heat_haze_particles):
+		# restart() 清除上一轮尚未结束的粒子，保证自动射击不会无限堆积。
+		_heat_haze_particles.emitting = true
+		_heat_haze_particles.restart()
+
+
+func _heat_haze_multiplier_for_profile(profile_id: int) -> float:
+	match profile_id:
+		WeaponFXConfig.MuzzleProfile.SHORT_BARREL:
+			return 1.25
+		WeaponFXConfig.MuzzleProfile.LONG_BARREL:
+			return 0.75
+		WeaponFXConfig.MuzzleProfile.FLASH_HIDER:
+			return 0.75
+		WeaponFXConfig.MuzzleProfile.MUZZLE_BRAKE:
+			return 1.15
+		WeaponFXConfig.MuzzleProfile.SUPPRESSOR:
+			return 0.55
+	return 1.0
+
+
+func _ensure_heat_haze_particles() -> void:
+	if is_instance_valid(_heat_haze_particles):
+		return
+	if not _heat_haze_marker or not is_instance_valid(_heat_haze_marker):
+		return
+	if not _heat_haze_material:
+		return
+	_heat_haze_particles = GPUParticles3D.new()
+	_heat_haze_particles.name = "HeatHazeParticles"
+	_heat_haze_particles.amount = maxi(_fx.heat_haze_particle_amount, 1)
+	_heat_haze_particles.lifetime = maxf(_fx.heat_haze_particle_lifetime, 0.05)
+	_heat_haze_particles.one_shot = true
+	_heat_haze_particles.explosiveness = 1.0
+	_heat_haze_particles.local_coords = true
+	_heat_haze_particles.emitting = false
+	_heat_haze_particles.visibility_aabb = AABB(Vector3(-3.0, -3.0, -3.0), Vector3(6.0, 6.0, 6.0))
+	_heat_haze_particles.position = Vector3(0.0, 0.0, -_fx.heat_haze_offset)
+	_heat_haze_marker.add_child(_heat_haze_particles)
+
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE
+	quad.material = _heat_haze_material
+	_heat_haze_particles.draw_pass_1 = quad
+	_heat_haze_particle_process = _build_heat_haze_particle_process()
+	_heat_haze_particles.process_material = _heat_haze_particle_process
+
+
+func _build_heat_haze_particle_process() -> ParticleProcessMaterial:
+	var process_material := ParticleProcessMaterial.new()
+	process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_POINT
+	process_material.direction = Vector3.UP
+	process_material.spread = clampf(_fx.heat_haze_spread, 0.0, 45.0)
+	process_material.initial_velocity_min = maxf(_fx.heat_haze_velocity_min, 0.0)
+	process_material.initial_velocity_max = maxf(_fx.heat_haze_velocity_max, process_material.initial_velocity_min)
+	process_material.gravity = Vector3.ZERO
+	process_material.scale_min = 1.0
+	process_material.scale_max = 1.0
+	var scale_texture := CurveTexture.new()
+	scale_texture.curve = _build_heat_haze_scale_curve()
+	process_material.scale_curve = scale_texture
+	process_material.color_ramp = _build_heat_haze_color_ramp()
+	return process_material
+
+
+func _build_heat_haze_scale_curve() -> Curve:
+	var curve := Curve.new()
+	curve.min_value = 0.0
+	curve.max_value = maxf(_fx.heat_haze_particle_scale.y, 0.1)
+	curve.add_point(Vector2(0.0, maxf(_fx.heat_haze_particle_scale.x, 0.01)))
+	curve.add_point(Vector2(0.12, lerpf(_fx.heat_haze_particle_scale.x, _fx.heat_haze_particle_scale.y, 0.65)))
+	curve.add_point(Vector2(0.35, _fx.heat_haze_particle_scale.y))
+	curve.add_point(Vector2(1.0, _fx.heat_haze_particle_scale.y))
+	return curve
+
+
+func _build_heat_haze_color_ramp() -> GradientTexture1D:
+	var gradient := Gradient.new()
+	gradient.colors = PackedColorArray([
+		Color(1.0, 1.0, 1.0, 0.5),
+		Color(1.0, 1.0, 1.0, 0.0)
+	])
+	var ramp := GradientTexture1D.new()
+	ramp.gradient = gradient
+	return ramp
+
+
+func _update_heat_haze_particles() -> void:
+	if not is_instance_valid(_heat_haze_particles) or not _heat_haze_material:
+		return
+	_heat_haze_particles.visible = _heat_haze_allowed()
+	var heat_factor := clampf(_heat_haze_heat / maxf(_fx.heat_haze_max_heat, 0.1), 0.0, 1.0)
+	var opacity := _fx.heat_haze_opacity * lerpf(0.35, 1.0, heat_factor) * _heat_haze_profile_multiplier
+	_heat_haze_material.set_shader_parameter("opacity", opacity)
+
+
+func _heat_haze_allowed() -> bool:
+	return _fx.heat_haze_enabled and _setting_enabled("graphics/heat_haze", true)
+
+
+func _setting_enabled(key: String, fallback: bool) -> bool:
+	return bool(_settings_service.get_value(key, fallback)) if _settings_service else fallback
+
+
+func _free_effect_group(group_name: String) -> void:
+	if not _weapon or not _weapon.get_tree():
+		return
+	for node in _weapon.get_tree().get_nodes_in_group(group_name):
+		if is_instance_valid(node):
+			node.queue_free()
+
+
+func _clear_heat_haze_node() -> void:
+	if is_instance_valid(_heat_haze_particles):
+		_heat_haze_particles.queue_free()
+	_heat_haze_particles = null
+	_heat_haze_particle_process = null
 
 
 func _auto_free(node: Node, seconds: float) -> void:

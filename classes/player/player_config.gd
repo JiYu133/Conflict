@@ -55,6 +55,8 @@ extends Resource
 @export_group("医疗配置")
 ## 医疗系统配置
 @export var health_config: HealthConfig
+## 死亡后渗血表现配置；为空时使用默认时序，但不会提供缺失的美术纹理。
+@export var blood_effect_config: BloodEffectConfig
 
 # 体力配置 ─────────────────────────────────────────────────
 @export_group("体力配置")

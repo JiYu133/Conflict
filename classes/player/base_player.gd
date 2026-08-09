@@ -8,6 +8,8 @@ const WEAPON_MOD_MENU_SCRIPT := preload("res://classes/ui/weapon_mod/weapon_mod_
 const AMMO_HUD_SCRIPT := preload("res://classes/ui/weapon_ammo_hud.gd")
 const CONTROL_STATE_SCRIPT := preload("res://classes/player/player_control_state.gd")
 const CONSOLE_SYSTEM_SCRIPT := preload("res://classes/ui/console/console_system.gd")
+const DEATH_BLOOD_EFFECT_SCRIPT := preload("res://classes/player/medical/death_blood_effect.gd")
+const WEAPON_DROP_SYSTEM_SCRIPT := preload("res://classes/player/weapon_drop_system.gd")
 
 # 在定义玩家对象时绑定给玩家的脚本 同时也要绑定玩家配置文件
 
@@ -76,8 +78,10 @@ var movement_controller: PlayerMovementController
 var foot_ik_controller: FootIKController
 var hand_ik_controller: HandIKController
 var weapon_manager: WeaponManager
+var weapon_drop_system: WeaponDropSystem
 var animation_controller: PlayerAnimationController
 var health_system: HealthSystem
+var death_blood_effect: DeathBloodEffect
 var stamina_system: StaminaSystem
 var screen_effects
 var settings_service
@@ -132,6 +136,7 @@ func _initialize_subsystems() -> void:
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
+	weapon_drop_system = _create_subsystem(WEAPON_DROP_SYSTEM_SCRIPT.new(), "WeaponDropSystem") as WeaponDropSystem
 	animation_controller = _create_subsystem(PlayerAnimationController.new(), "AnimationController")
 	health_system = _create_subsystem(HealthSystem.new(), "HealthSystem")
 	stamina_system = _create_subsystem(StaminaSystem.new(), "StaminaSystem")
@@ -168,17 +173,25 @@ func _initialize_subsystems() -> void:
 
 
 	weapon_manager.set_camera_controller(camera_controller)
+	weapon_manager.set_settings_service(settings_service)
+	weapon_drop_system.initialize(self, weapon_manager)
 
 	health_system.initialize(
 		self,
 		player_config.health_config if player_config else null
+		)
+	death_blood_effect = _create_subsystem(DEATH_BLOOD_EFFECT_SCRIPT.new(), "DeathBloodEffect") as DeathBloodEffect
+	death_blood_effect.initialize(
+		self,
+		player_config.blood_effect_config if player_config else null,
+		settings_service
 		)
 
 	stamina_system.initialize(self, player_config.stamina_config if player_config else null)
 
 	if not is_bot:
 		screen_effects = _create_subsystem(PlayerScreenEffects.new(), "ScreenEffects")
-		screen_effects.initialize(self)
+		screen_effects.initialize(self, settings_service)
 
 		# 弹药 HUD（右下角）：显示膛内状态、弹匣余弹 / 备弹、射击模式
 		var ammo_hud := _create_subsystem(AMMO_HUD_SCRIPT.new(), "WeaponAmmoHUD")
@@ -342,10 +355,6 @@ func _is_medical_debug_mesh(mesh: MeshInstance3D, model: Node3D) -> bool:
 
 
 func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
-	if new_weapon and new_weapon.recoil_component:
-		camera_controller.set_recoil_component(new_weapon.recoil_component)
-	else:
-		camera_controller.set_recoil_component(null)
 	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
 	hand_ik_controller.set_weapon(new_weapon, weight)
 	_sync_weapon_weight_to_stamina()
@@ -473,13 +482,21 @@ func _on_stance_changed(value: float) -> void:
 		camera_controller._on_stance_changed(value)
 
 
-func go_unconscious(impact_direction: Vector3 = Vector3.ZERO) -> void:
+func go_unconscious(
+	impact_direction: Vector3 = Vector3.ZERO,
+	impact_energy_j: float = 0.0,
+	impact_mass_kg: float = 0.0,
+	impact_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BULLET
+) -> void:
 	if not is_alive:
 		return
 	acquire_control_lock(CONTROL_LOCK_UNCONSCIOUS)
 	# 停止动画控制器的状态机，防止 AnimationTree 每帧覆盖物理骨骼姿势导致穿地
 	animation_controller.on_unconscious()
-	_activate_ragdoll(PlayerRagdollSystem.DeathType.GENERIC, impact_direction)
+	_activate_ragdoll(
+		PlayerRagdollSystem.DeathType.GENERIC, impact_direction,
+		impact_energy_j, impact_mass_kg, impact_damage_type
+	)
 	if screen_effects:
 		screen_effects.trigger_unconscious_blur()
 	GlobalLogger.info("Player", get_parent().name + " fell unconscious")
@@ -503,22 +520,40 @@ func regain_consciousness() -> void:
 	GlobalLogger.info("Player", get_parent().name + " regained consciousness")
 
 
-func die(death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathType.GENERIC, impact_direction: Vector3 = Vector3.ZERO) -> void:
+func die(
+	death_type: PlayerRagdollSystem.DeathType = PlayerRagdollSystem.DeathType.GENERIC,
+	impact_direction: Vector3 = Vector3.ZERO,
+	impact_energy_j: float = 0.0,
+	impact_mass_kg: float = 0.0,
+	impact_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BULLET
+) -> void:
 	if not is_alive:
 		return
+	var inherited_velocity := velocity
 	is_alive = false
-	_activate_ragdoll(death_type, impact_direction)
+	_activate_ragdoll(
+		death_type, impact_direction,
+		impact_energy_j, impact_mass_kg, impact_damage_type, inherited_velocity
+	)
 	if screen_effects:
 		screen_effects.trigger_death_blur()
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
 
 
 ## 启动布娃娃物理的公共逻辑，die() 和 go_unconscious() 共用
-func _activate_ragdoll(death_type: PlayerRagdollSystem.DeathType, impact_direction: Vector3) -> void:
+func _activate_ragdoll(
+	death_type: PlayerRagdollSystem.DeathType,
+	impact_direction: Vector3,
+	impact_energy_j: float = 0.0,
+	impact_mass_kg: float = 0.0,
+	impact_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BULLET,
+	inherited_velocity: Vector3 = Vector3.ZERO
+) -> void:
 	if free_camera_controller:
 		free_camera_controller.force_exit()
 	if camera_controller:
 		camera_controller.clear_pain_impulse()
+		camera_controller.set_ragdoll_camera_shake(false)
 	is_ragdolled = true
 	velocity = Vector3.ZERO
 	_set_collision_enabled(false)
@@ -527,9 +562,13 @@ func _activate_ragdoll(death_type: PlayerRagdollSystem.DeathType, impact_directi
 	global_position.y += 0.05
 	if not is_bot and camera_controller:
 		camera_controller.disable_camera(model_manager.skeleton)
+		camera_controller.set_ragdoll_camera_shake(true)
 		if not ragdoll_system.ragdoll_physics_started.is_connected(camera_controller.on_ragdoll_physics_started):
 			ragdoll_system.ragdoll_physics_started.connect(camera_controller.on_ragdoll_physics_started, CONNECT_ONE_SHOT)
-	ragdoll_system.enable.call_deferred(death_type, impact_direction)
+	ragdoll_system.enable.call_deferred(
+		death_type, impact_direction,
+		impact_energy_j, impact_mass_kg, impact_damage_type, inherited_velocity
+	)
 
 func revive() -> void:
 	if is_alive:
@@ -565,6 +604,23 @@ func revive() -> void:
 func set_controllable(enabled: bool) -> void:
 	controllable = enabled
 	GlobalLogger.info("Player", "Controller of player " + get_parent().name + " has been" + ("ENABLED" if enabled else "DISABLED"))
+
+## Debug-only Bot motion bridge. The actual movement remains in the normal
+## CharacterBody3D movement controller and is therefore visible to ragdoll.
+func set_bot_test_motion(world_velocity: Vector3) -> bool:
+	if not is_bot or not movement_controller or not is_alive:
+		return false
+	movement_controller.set_test_motion_velocity(world_velocity)
+	return true
+
+func stop_bot_test_motion() -> bool:
+	if not is_bot or not movement_controller:
+		return false
+	movement_controller.clear_test_motion()
+	return true
+
+func is_bot_test_motion_active() -> bool:
+	return is_bot and movement_controller and movement_controller.is_test_motion_active()
 
 
 ## 由需要临时接管输入的组件持有独立锁，避免互相覆盖控制状态。

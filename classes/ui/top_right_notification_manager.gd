@@ -5,7 +5,7 @@ signal notification_dismissed(notification_id: StringName)
 
 @export var config: TopRightNotificationConfig
 
-const DEFAULT_CONFIG_PATH := "res://res/config/ui/top_right_notification_config_default.tres"
+const DEFAULT_CONFIG_PATH := "res://assets/config/ui/top_right_notification_config_default.tres"
 
 var _stack: VBoxContainer
 var _entries: Dictionary[StringName, TopRightNotificationEntry] = {}

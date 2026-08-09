@@ -1,10 +1,10 @@
 extends SceneTree
 
 func _init() -> void:
-	var barrel := load("res://res/config/weapons/attachments/barrel_assemblies/ak12_barrel_assembly.tres")
-	var muzzle := load("res://res/config/weapons/attachments/muzzle_devices/ak12_muzzle_brake.tres")
-	var grip := load("res://res/config/weapons/attachments/grips/vertical_grip_magpul.tres")
-	var stock := load("res://res/config/weapons/attachments/stocks/ak12_stock.tres")
+	var barrel := load("res://assets/config/weapons/attachments/barrel_assemblies/ak12_barrel_assembly.tres")
+	var muzzle := load("res://assets/config/weapons/attachments/muzzle_devices/ak12_muzzle_brake.tres")
+	var grip := load("res://assets/config/weapons/attachments/grips/vertical_grip_magpul.tres")
+	var stock := load("res://assets/config/weapons/attachments/stocks/ak12_stock.tres")
 
 	if not (barrel is BarrelConfig):
 		push_error("BarrelConfig failed to load")

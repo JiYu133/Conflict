@@ -1,8 +1,8 @@
 extends SceneTree
 
 func _init() -> void:
-	var environment := load("res://res/config/ballistics/default_environment.tres") as BallisticEnvironmentConfig
-	var barrel := load("res://res/config/weapons/attachments/barrel_assemblies/ak12_barrel_assembly.tres") as BarrelConfig
+	var environment := load("res://assets/config/ballistics/default_environment.tres") as BallisticEnvironmentConfig
+	var barrel := load("res://assets/config/weapons/attachments/barrel_assemblies/ak12_barrel_assembly.tres") as BarrelConfig
 	if not environment or not barrel:
 		_fail("ballistic resources failed to load")
 		return

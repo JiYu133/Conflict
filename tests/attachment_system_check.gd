@@ -9,7 +9,7 @@ func _init() -> void:
 	if not _check(muzzle_slot.can_accept_attachment(muzzle_cfg), "MuzzleDevice slot accepts muzzle attachment"):
 		return
 
-	var receiver_scene := load("res://res/models/attachments/receivers/ak12_receiver/ak12_receiver.tscn") as PackedScene
+	var receiver_scene := load("res://assets/models/attachments/receivers/ak12_receiver/ak12_receiver.tscn") as PackedScene
 	var receiver := receiver_scene.instantiate()
 	if not (receiver is BaseWeapon):
 		_fail("AK12 receiver root should be BaseWeapon")
@@ -23,7 +23,7 @@ func _init() -> void:
 	if not _check(manager.get_slot_names().has("ReceiverCover"), "Scene Marker ReceiverCover is registered"):
 		return
 
-	var dust_cfg := load("res://res/config/weapons/attachments/receiver_covers/ak12_dust_cover.tres") as AttachmentConfig
+	var dust_cfg := load("res://assets/config/weapons/attachments/receiver_covers/ak12_dust_cover.tres") as AttachmentConfig
 	var dust_att := AttachmentFactory.create(dust_cfg, receiver as BaseWeapon)
 	if not _check(dust_att != null, "Dust cover attachment can be created"):
 		return
@@ -32,7 +32,7 @@ func _init() -> void:
 	if not _check(manager.get_slot_names().has("OpticRail"), "Nested OpticRail Marker is registered after parent equips"):
 		return
 
-	var sight_cfg := load("res://res/config/weapons/attachments/optics/ak12_iron_sight.tres") as AttachmentConfig
+	var sight_cfg := load("res://assets/config/weapons/attachments/optics/ak12_iron_sight.tres") as AttachmentConfig
 	var matched_slot := manager.find_first_available_slot_for(sight_cfg)
 	if not _check(matched_slot != null and matched_slot.get_slot_key() == "OpticRail", "Auto preset matches nested OpticRail"):
 		return

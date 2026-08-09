@@ -352,7 +352,7 @@ channel_length = clamp(
 
 **文件路径：** `classes/player/medical/health_config.gd`
 
-**资源文件：** `res/config/player/health_config_default.tres`
+**资源文件：** `assets/config/player/health_config_default.tres`
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|

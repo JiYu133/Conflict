@@ -4,7 +4,7 @@ extends Node
 ## Shared, allocation-light external-ballistics simulation.
 ## Projectile origin and direction are supplied by the weapon muzzle only.
 
-const DEFAULT_ENVIRONMENT: BallisticEnvironmentConfig = preload("res://res/config/ballistics/default_environment.tres")
+const DEFAULT_ENVIRONMENT: BallisticEnvironmentConfig = preload("res://assets/config/ballistics/default_environment.tres")
 ## Legacy constants retained for callers that used the original fixed limits.
 const MAX_RANGE_M: float = 2000.0
 const MAX_FLIGHT_TIME_S: float = 8.0
@@ -249,6 +249,7 @@ func _apply_player_damage(b: Dictionary, ray_result: Dictionary, velocity: Vecto
 		ray_result, energy, MedicalEnums.DamageType.BULLET, source, velocity.normalized()
 	)
 	info.impact_velocity = velocity.length()
+	info.impact_mass_kg = b["mass_kg"]
 	info.is_penetrating = b["penetrations_this_frame"] > 0
 	(player_node.get_node("HealthSystem") as HealthSystem).apply_damage(info)
 	GlobalLogger.debug("Ballistics", "Bullet hit at %.1fm: %.0f m/s → %.0f J" % [

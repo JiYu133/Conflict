@@ -56,7 +56,7 @@
 2. 点击 **[empty]** 右侧的下拉箭头
 3. 选择 **Quick Load**
 4. 输入 `ConflictCJKUI` 搜索
-5. 选择 `res://res/fonts/ConflictCJKUI.ttf`，点击 **Open**
+5. 选择 `res://assets/fonts/ConflictCJKUI.ttf`，点击 **Open**
 6. 在 **Default Font Size** 字段输入 `15`
 
 ### 步骤 5：配置 Button 样式

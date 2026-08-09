@@ -1,0 +1,12 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://assets/shaders/heat_haze_particles.gdshader" id="1_heat_haze_shader"]
+
+[resource]
+render_priority = 1
+shader = ExtResource("1_heat_haze_shader")
+shader_parameter/distortion_strength = 0.03
+shader_parameter/opacity = 0.10
+shader_parameter/flow_speed = 0.22
+shader_parameter/noise_scale = Vector2(0.65, 0.9)
+shader_parameter/proximity_fade_distance = 0.75

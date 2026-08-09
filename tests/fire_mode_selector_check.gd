@@ -2,11 +2,11 @@ extends SceneTree
 
 
 func _init() -> void:
-	var config := load("res://res/config/weapons/ak12_config.tres") as WeaponConfig
+	var config := load("res://assets/config/weapons/ak12_config.tres") as WeaponConfig
 	if not _check(config != null, "AK12 config loads"):
 		return
 
-	var receiver_scene := load("res://res/models/attachments/receivers/ak12_receiver/ak12_receiver.tscn") as PackedScene
+	var receiver_scene := load("res://assets/models/attachments/receivers/ak12_receiver/ak12_receiver.tscn") as PackedScene
 	if not _check(receiver_scene != null, "AK12 receiver scene loads"):
 		return
 	var weapon := receiver_scene.instantiate() as BaseWeapon
@@ -22,7 +22,7 @@ func _init() -> void:
 	if not _check(weapon.current_fire_mode == config.default_fire_mode, "Mode stays unchanged without selector switch"):
 		return
 
-	var selector_cfg := load("res://res/config/weapons/attachments/selector_switches/ak12_selector_switch.tres") as AttachmentConfig
+	var selector_cfg := load("res://assets/config/weapons/attachments/selector_switches/ak12_selector_switch.tres") as AttachmentConfig
 	var selector := AttachmentFactory.create(selector_cfg, weapon)
 	if not _check(selector is SelectorSwitchAttachment, "Selector config creates selector behavior attachment"):
 		return
