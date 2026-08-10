@@ -192,7 +192,9 @@ func _prepare_authored_physics_bones() -> void:
 
 		for bone in _collect_physical_bones(simulator):
 			bone.collision_layer = _config.ragdoll_collision_layer
-			bone.collision_mask = _config.ragdoll_collision_mask
+			# 弹壳永远不能参与尸体接触求解。这里再次强制排除，避免旧的
+			# RagdollConfig 资源保存了“全部层”后覆盖代码默认值。
+			bone.collision_mask = _config.ragdoll_collision_mask & ~PhysicsLayers.SHELL_CASING
 			bone.collision_priority = 5.0
 			# PhysicalBone3D 的质量和阻尼默认由引擎决定；若不覆盖，
 			# 预制骨骼会过轻，普通枪击也会把尸体明显踢飞。

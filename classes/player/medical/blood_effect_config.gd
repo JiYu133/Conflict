@@ -34,4 +34,4 @@ extends Resource
 @export_group("Ground Query")
 ## 地面射线检测的长度；应覆盖尸体可能离地的高度。
 @export_range(1.0, 30.0, 0.5) var ground_ray_length: float = 8.0
-@export_flags_3d_physics var ground_collision_mask: int = 1
+@export_flags_3d_physics var ground_collision_mask: int = PhysicsLayers.WORLD

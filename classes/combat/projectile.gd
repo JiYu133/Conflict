@@ -39,7 +39,7 @@ static func fire_hitscan(
 	var query := PhysicsRayQueryParameters3D.create(
 		origin,
 		origin + target_dir.normalized() * 2000.0,
-		1 | 2,
+		PhysicsLayers.BALLISTIC_TARGETS,
 		exclude
 	)
 	query.collide_with_areas = true
