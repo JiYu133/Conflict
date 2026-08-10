@@ -61,6 +61,7 @@ const CONTROL_LOCK_UNCONSCIOUS := "unconscious"
 const CONTROL_LOCK_SETTINGS := "settings_menu"
 const MOUSE_OWNER_CAMERA := "player_camera"
 const CONTROL_LOCK_CONSOLE := "console"
+const CONTROL_LOCK_RADIAL_MENU := "radial_menu"
 
 var control_state: PlayerControlState
 var _controllable_fallback: bool = true
@@ -90,6 +91,7 @@ var pause_menu
 var weapon_mod_menu
 var free_camera_controller: FreeCameraController
 var console_system: ConsoleSystem
+var radial_menu_service
 
 # 信号
 
@@ -214,6 +216,14 @@ func _initialize_subsystems() -> void:
 		weapon_mod_menu.initialize(self)
 		console_system = _create_subsystem(CONSOLE_SYSTEM_SCRIPT.new(), "ConsoleSystem") as ConsoleSystem
 		console_system.initialize(self)
+		radial_menu_service = RadialMenuService
+		radial_menu_service.set_player(self)
+		radial_menu_service.register_wheel(
+			"fire_mode",
+			"cycle_fire_mode",
+			func(): weapon_manager.cycle_fire_mode(),
+			_get_fire_mode_wheel_options
+		)
 
 		if OS.is_debug_build():
 			free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
@@ -380,7 +390,8 @@ func _process(delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	# 暂停菜单/设置页/改装界面打开时，本地玩家让出全部输入。
 	if (settings_menu and settings_menu.is_open()) or (pause_menu and pause_menu.is_open()) \
-			or (weapon_mod_menu and weapon_mod_menu.is_open()) or (console_system and console_system.is_open()):
+			or (weapon_mod_menu and weapon_mod_menu.is_open()) or (console_system and console_system.is_open()) \
+			or (radial_menu_service and radial_menu_service.is_open()):
 		return
 
 	if is_alive and controllable:
@@ -393,8 +404,6 @@ func _input(event: InputEvent) -> void:
 		if event.is_action_released("fire"):
 			weapon_manager.release_trigger()
 		# 切换射击模式
-		if event.is_action_pressed("cycle_fire_mode"):
-			weapon_manager.cycle_fire_mode()
 		# 排障
 		if event.is_action_pressed("clear_malfunction"):
 			weapon_manager.attempt_malfunction_clearance()
@@ -443,6 +452,50 @@ func _input(event: InputEvent) -> void:
 						_debug_refill_ammo()
 					else:
 						weapon_manager.reload()
+
+
+func _get_fire_mode_wheel_options() -> Array[RadialMenuOption]:
+	var result: Array[RadialMenuOption] = []
+	if not weapon_manager or not weapon_manager.current_weapon:
+		return result
+	var weapon: BaseWeapon = weapon_manager.current_weapon
+	if not weapon.config:
+		return result
+	var available := weapon_manager.get_available_fire_modes()
+	for mode in weapon.config.fire_modes:
+		var option := RadialMenuOption.new()
+		option.id = mode
+		option.title = _fire_mode_display(mode)
+		option.description = "Current mode" if mode == weapon.current_fire_mode else "Select fire mode"
+		option.icon = _fire_mode_icon(mode)
+		option.is_current = mode == weapon.current_fire_mode
+		option.is_enabled = available.has(mode)
+		option.disabled_reason = "Selector switch unavailable" if not option.is_enabled else ""
+		option.execute = _make_fire_mode_callback(mode)
+		result.append(option)
+	return result
+
+
+func _make_fire_mode_callback(mode: String) -> Callable:
+	return func(): weapon_manager.set_fire_mode(mode)
+
+
+func _fire_mode_display(mode: String) -> String:
+	match mode:
+		"safe": return "SAFE"
+		"semi": return "SEMI"
+		"auto": return "AUTO"
+		"burst": return "BURST"
+		_: return mode.to_upper()
+
+
+func _fire_mode_icon(mode: String) -> String:
+	match mode:
+		"safe": return "S"
+		"semi": return "1"
+		"auto": return "A"
+		"burst": return "3"
+		_: return "*"
 
 
 ## 调试用弹药重置：补满当前武器全部弹匣并上膛

@@ -10,7 +10,7 @@ const MAX_RANGE_M: float = 2000.0
 const MAX_FLIGHT_TIME_S: float = 8.0
 const MIN_SPEED_MPS: float = 40.0
 const MAX_ACTIVE_BULLETS: int = 256
-const HIT_MASK: int = 1 | 2
+const HIT_MASK: int = PhysicsLayers.BALLISTIC_TARGETS
 const COLLISION_EPSILON_M: float = 0.002
 
 static var _instance: BallisticProjectileSystem = null
