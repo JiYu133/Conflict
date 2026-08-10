@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="WeaponConfig" format=3 uid="uid://bak12001"]
+
+[ext_resource type="Script" uid="uid://wwvoc4u8v141" path="res://classes/weapon/weaponattachments/attachment_config.gd" id="1_6868r"]
+[ext_resource type="Script" uid="uid://bkitu5jv7pfm8" path="res://classes/weapon/weapon_config.gd" id="1_cfg"]
+[ext_resource type="Resource" uid="uid://k12barrel01" path="res://assets/config/weapons/attachments/barrel_assemblies/ak12_barrel_assembly.tres" id="3_barrel"]
+[ext_resource type="Resource" uid="uid://k12mag01" path="res://assets/config/weapons/attachments/magazines/ak12_magazine_30rnd.tres" id="4_mag"]
+[ext_resource type="Resource" uid="uid://k12bolt01" path="res://assets/config/weapons/attachments/bolt_carriers/ak12_bolt_carrier.tres" id="5_bolt"]
+[ext_resource type="Resource" uid="uid://dq4g61156q3r5" path="res://assets/config/weapons/attachments/handguards/ak12_handguard.tres" id="6_handguard"]
+[ext_resource type="Resource" uid="uid://k12stock01" path="res://assets/config/weapons/attachments/stocks/ak12_stock.tres" id="7_stock"]
+[ext_resource type="Resource" uid="uid://k12grip01" path="res://assets/config/weapons/attachments/grips/ak12_pistol_grip.tres" id="8_grip"]
+[ext_resource type="Resource" uid="uid://dq02diw0seir5" path="res://assets/config/weapons/attachments/receiver_covers/ak12_dust_cover.tres" id="9_dustcover"]
+[ext_resource type="Resource" uid="uid://db817hjtpa1ii" path="res://assets/config/weapons/attachments/selector_switches/ak12_selector_switch.tres" id="10_selector"]
+[ext_resource type="Resource" uid="uid://k12trigger01" path="res://assets/config/weapons/attachments/triggers/ak12_trigger.tres" id="11_trigger"]
+[ext_resource type="Resource" uid="uid://hgiklt0ol5me" path="res://assets/config/weapons/attachments/muzzle_devices/ak12_muzzle_brake.tres" id="12_a7cew"]
+[ext_resource type="Resource" uid="uid://dq5x8detdhkr5" path="res://assets/config/weapons/attachments/optics/ak12_iron_sight.tres" id="12_sight"]
+[ext_resource type="Resource" uid="uid://db82b8j843uii" path="res://assets/config/weapons/attachments/side_rails/ak12_side_rail_left.tres" id="13_y6xlr"]
+[ext_resource type="Resource" uid="uid://bfmsre0u1hpkw" path="res://assets/config/weapons/attachments/side_rails/ak12_side_rail_right.tres" id="14_xxkj3"]
+[ext_resource type="PackedScene" uid="uid://b15r8es3k4kf5" path="res://assets/models/attachments/receivers/ak12_receiver/ak12_receiver.tscn" id="16_y6xlr"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_dropped_weapon"]
+points = PackedVector3Array(-0.02, 0.015, -0.4725, 0.02, 0.015, -0.4725, -0.06, -0.085, -0.36, 0.06, -0.085, -0.36, -0.06, 0.06, -0.36, 0.06, 0.06, -0.36, -0.055, -0.085, 0.35, 0.055, -0.085, 0.35, -0.055, 0.06, 0.35, 0.055, 0.06, 0.35, -0.018, 0, 0.4725, 0.018, 0, 0.4725)
+
+[resource]
+script = ExtResource("1_cfg")
+weapon_name = "AK-12"
+logic_enabled = true
+cycle_rate = 700.0
+fire_modes = Array[String](["safe", "semi", "burst", "auto"])
+burst_count = 2
+hipfire_spread = 2.8
+ads_spread = 0.09
+weight = 3.8
+receiver_mass_kg = 1.7
+bore_point_local = Vector3(0, 0.07, -0.42)
+bore_axis_height_m = 0.07
+shoulder_pivot_local = Vector3(0, -0.04, 0.38)
+recoil_control_stiffness = 130.0
+recoil_control_damping = 17.0
+weapon_scene = ExtResource("16_y6xlr")
+weapon_length = 0.945
+ads_time = 0.22
+dropped_collision_shape = SubResource("ConvexPolygonShape3D_dropped_weapon")
+supported_slots = Array[int]([5, 6, 7, 8, 9, 11, 12, 13, 14])
+default_attachment_configs = Array[ExtResource("1_6868r")]([ExtResource("3_barrel"), ExtResource("4_mag"), ExtResource("5_bolt"), ExtResource("6_handguard"), ExtResource("7_stock"), ExtResource("8_grip"), ExtResource("9_dustcover"), ExtResource("10_selector"), ExtResource("11_trigger"), ExtResource("12_sight"), ExtResource("12_a7cew"), ExtResource("13_y6xlr"), ExtResource("14_xxkj3")])

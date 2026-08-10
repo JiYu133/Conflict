@@ -21,7 +21,7 @@ extends RefCounted
 ## 返回：BaseAttachment 子类实例，失败返回 null
 static func create(cfg: AttachmentConfig, weapon: BaseWeapon) -> BaseAttachment:
 	# 纯数值配件：不生成任何模型节点，直接返回空 BaseAttachment
-	if cfg.no_visual:
+	if cfg.no_visual and cfg.attachment_type != AttachmentConfig.AttachmentType.SELECTOR_SWITCH:
 		var att := BaseAttachment.new()
 		att.name = cfg.attachment_name
 		att.initialize(cfg, weapon)
@@ -72,6 +72,8 @@ static func _create_default_placeholder(cfg: AttachmentConfig) -> BaseAttachment
 			script_class = load("res://classes/weapon/weaponattachments/bolt_carrier_config.gd")
 		AttachmentConfig.AttachmentType.MAGAZINE:
 			script_class = load("res://classes/weapon/weaponattachments/magazine_config.gd")
+		AttachmentConfig.AttachmentType.SELECTOR_SWITCH:
+			script_class = load("res://classes/weapon/weaponattachments/selector_switch.gd")
 		_:
 			script_class = load("res://classes/weapon/weaponattachments/base_attachment.gd")
 

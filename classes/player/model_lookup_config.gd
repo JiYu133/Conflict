@@ -14,8 +14,6 @@ extends Resource
 # 骨骼 / 动画器名称 ────────────────────────────────────────
 ## 骨骼系统的节点名称 / Skeleton3D node name in the model scene
 @export var skeleton_name: String = "Skeleton3D"
-## 动画播放器的节点名称 / AnimationPlayer node name
-@export var animator_name: String = "AnimationPlayer"
 ## AnimationTree 节点名称 / AnimationTree node name
 @export var animation_tree_name: String = "AnimationTree"
 

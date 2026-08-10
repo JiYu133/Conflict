@@ -158,6 +158,15 @@ func get_attachment_in_slot(slot_name: String) -> BaseAttachment:
 	return null
 
 
+## 返回指定类型的第一个已装配配件。
+## 管理器只提供查询，不承担配件行为或武器逻辑。
+func get_attachment_of_type(attachment_type: AttachmentConfig.AttachmentType) -> BaseAttachment:
+	for att in get_all_attachments():
+		if att and att.config and att.config.attachment_type == attachment_type:
+			return att
+	return null
+
+
 # ──────────────────────────── 节点挂载 ────────────────────────────
 
 ## 将配件作为 AttachmentSlot 的子节点挂载

@@ -3,7 +3,7 @@ extends CanvasLayer
 ## 按键提示显示配置。留空时自动加载默认配置文件
 @export var config: KeyPromptConfig
 
-const DEFAULT_CONFIG_PATH := "res://res/config/ui/key_prompt_config_default.tres"
+const DEFAULT_CONFIG_PATH := "res://assets/config/ui/key_prompt_config_default.tres"
 
 var _active_cards: Array[KeyPromptCard] = []
 var _queue: Array[KeyPromptEntry] = []

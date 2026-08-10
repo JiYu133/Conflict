@@ -77,27 +77,10 @@ func _process(delta: float) -> void:
 	_yaw = clampf(_yaw, -MAX_CAMERA_OFFSET_RAD, MAX_CAMERA_OFFSET_RAD)
 
 
-func get_camera_pitch_offset() -> float:
-	return _pitch
-
-
-func get_camera_yaw_offset() -> float:
-	return _yaw
-
-
 func get_physics_snapshot() -> Dictionary:
 	if not physics_model:
 		return {}
 	return physics_model.get_snapshot()
-
-
-# Deprecated compatibility helpers. The camera no longer consumes these values.
-func consume_camera_kick_pitch() -> float:
-	return _pitch
-
-
-func consume_camera_kick_yaw() -> float:
-	return _yaw
 
 
 func get_recoil_offset() -> float:

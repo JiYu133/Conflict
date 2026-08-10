@@ -50,12 +50,16 @@ extends Resource
 ## 机瞄散布修正：负值 = 减少散布 / ADS spread modifier; negative = tighter
 @export var ads_spread_modifier: float = 0.0
 
-# 后座旧字段（兼容）──────────────────────────────────────────
-## Deprecated: kept only so older .tres resources remain loadable.
-## RecoilPhysicsModel never reads these angle/recovery modifiers.
-@export_storage var recoil_vertical_modifier: float = 0.0
-@export_storage var recoil_horizontal_modifier: float = 0.0
-@export_storage var recoil_recovery_modifier: float = 0.0
+# ──────────────────────────── 后座修正 ────────────────────────────
+@export_group("后座修正")
+## 垂直后座修正：负值 = 减少上跳 / Vertical recoil modifier; negative = less climb
+@export var recoil_vertical_modifier: float = 0.0
+
+## 水平后座修正：负值 = 减少左右偏移 / Horizontal recoil modifier; negative = less drift
+@export var recoil_horizontal_modifier: float = 0.0
+
+## 后座回正速度修正：正值 = 更快回正 / Recoil recovery speed modifier; positive = faster
+@export var recoil_recovery_modifier: float = 0.0
 
 # ──────────────────────────── 重量与机动 ────────────────────────────
 @export_group("重量与机动")

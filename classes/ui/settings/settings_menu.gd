@@ -2,11 +2,11 @@ extends CanvasLayer
 
 ## 设置页只编辑玩家偏好草稿；PauseMenu 负责暂停与恢复玩家控制。
 
-const FONT_PATH := "res://res/fonts/ConflictCJKUI.ttf"
+const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
 const KeybindStore = preload("res://classes/ui/settings/keybind_store.gd")
 const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
 const AnimatedToggle = preload("res://classes/ui/settings/animated_toggle.gd")
-const BLUR_SHADER_PATH := "res://res/shaders/death_blur.gdshader"
+const BLUR_SHADER_PATH := "res://assets/shaders/death_blur.gdshader"
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)
 const COL_PANEL := Color(0.063, 0.067, 0.075, 0.90)
 const COL_SURFACE := Color(0.10, 0.106, 0.12, 0.76)
@@ -22,7 +22,7 @@ const COL_VALUE_HIGHLIGHT := Color(1.0, 0.92, 0.52)
 
 const CATEGORIES := [
 	{ "id": "controls", "label": SettingsText.CATEGORY_CONTROLS },
-	{ "id": "video", "label": SettingsText.CATEGORY_VIDEO, "available": false },
+	{ "id": "video", "label": SettingsText.CATEGORY_VIDEO },
 	{ "id": "audio", "label": SettingsText.CATEGORY_AUDIO, "available": false },
 	{ "id": "interface", "label": SettingsText.CATEGORY_INTERFACE, "available": false },
 	{ "id": "accessibility", "label": SettingsText.CATEGORY_ACCESSIBILITY, "available": false },
@@ -31,12 +31,16 @@ const CATEGORIES := [
 signal closed
 
 var _open := false
+var _player
 var _settings_service
 var _theme: Theme
 var _background_blur_layer: CanvasLayer
 var _backdrop: ColorRect
 var _panel: PanelContainer
 var _panel_rest_position := Vector2.ZERO
+var _sidebar_layer: Control
+var _category_indicator: PanelContainer
+var _category_indicator_tween: Tween
 var _transition: Tween
 var _transitioning := false
 var _active_category := "controls"
@@ -44,6 +48,8 @@ var _category_buttons: Dictionary = {}
 var _content_title: Label
 var _content_subtitle: Label
 var _content_rows: VBoxContainer
+var _content_transition: Tween
+var _content_request_id := 0
 var _warning_label: Label
 var _conflict_panel: PanelContainer
 var _conflict_label: Label
@@ -60,14 +66,16 @@ var _pending_event: InputEvent
 var _pending_action := ""
 var _pending_slot := -1
 var _value_label_tweens: Dictionary = {}
+var _category_hover_tweens: Dictionary = {}
 
 
 func is_open() -> bool:
 	return _open or _transitioning
 
 
-func initialize(settings_service) -> void:
+func initialize(settings_service, player = null) -> void:
 	_settings_service = settings_service
+	_player = player
 
 
 func _ready() -> void:
@@ -79,6 +87,7 @@ func _ready() -> void:
 	_setup_tooltip_style()
 	_setup_background_blur()
 	_build_ui()
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	visible = false
 
 
@@ -96,6 +105,10 @@ func open() -> void:
 	_panel.position = _panel_rest_position + Vector2(0.0, 8.0)
 	if _background_blur_layer:
 		_background_blur_layer.visible = true
+	# 设置页拥有自己的输入请求；暂停页的请求在切换过程中继续存在。
+	if _player:
+		_player.acquire_control_lock(BasePlayer.CONTROL_LOCK_SETTINGS)
+		_player.request_mouse_mode(BasePlayer.CONTROL_LOCK_SETTINGS, Input.MOUSE_MODE_VISIBLE, 110)
 	_select_category("controls")
 	_play_open_animation()
 
@@ -130,6 +143,9 @@ func _close() -> void:
 
 
 func _exit_tree() -> void:
+	if _player:
+		_player.release_control_lock(BasePlayer.CONTROL_LOCK_SETTINGS)
+		_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_SETTINGS)
 	if _background_blur_layer and is_instance_valid(_background_blur_layer):
 		_background_blur_layer.queue_free()
 
@@ -183,7 +199,7 @@ func _build_ui() -> void:
 	_panel = PanelContainer.new()
 	_panel.theme = _theme
 	_panel.add_theme_stylebox_override("panel", _box(COL_PANEL, COL_BORDER, 4))
-	_panel.custom_minimum_size = Vector2(1080, 650)
+	_panel.custom_minimum_size = Vector2.ZERO
 	_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -216,6 +232,25 @@ func _build_ui() -> void:
 
 	root.add_child(_divider())
 	_build_footer(root)
+	_fit_panel_to_viewport()
+
+
+func _on_viewport_size_changed() -> void:
+	call_deferred("_fit_panel_to_viewport")
+
+
+func _fit_panel_to_viewport() -> void:
+	if not _panel or not is_instance_valid(_panel):
+		return
+	var viewport_size := get_viewport().get_visible_rect().size
+	_panel.custom_minimum_size = Vector2(
+		maxf(0.0, minf(1080.0, viewport_size.x - 40.0)),
+		maxf(0.0, minf(650.0, viewport_size.y - 40.0))
+	)
+	_panel.reset_size()
+	_panel.position = (viewport_size - _panel.size) * 0.5
+	_panel_rest_position = _panel.position
+	_update_category_indicator(false)
 
 
 ## 提示气泡（未开放分类等）默认背景过于透明，文字会与下层界面叠在一起看不清。
@@ -278,10 +313,15 @@ func _build_header(parent: Control) -> void:
 
 
 func _build_sidebar(parent: Control) -> void:
+	var sidebar_layer := Control.new()
+	sidebar_layer.custom_minimum_size = Vector2(170, 0)
+	sidebar_layer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parent.add_child(sidebar_layer)
+	_sidebar_layer = sidebar_layer
 	var sidebar := VBoxContainer.new()
-	sidebar.custom_minimum_size = Vector2(170, 0)
 	sidebar.add_theme_constant_override("separation", 4)
-	parent.add_child(sidebar)
+	sidebar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	sidebar_layer.add_child(sidebar)
 	for category in CATEGORIES:
 		var button := Button.new()
 		button.text = category["label"]
@@ -291,8 +331,15 @@ func _build_sidebar(parent: Control) -> void:
 		button.tooltip_text = SettingsText.SETTINGS_UNAVAILABLE_TOOLTIP if category.get("available", true) == false else ""
 		button.disabled = category.get("available", true) == false
 		button.pressed.connect(_select_category.bind(category["id"]))
+		button.mouse_entered.connect(_set_category_hover.bind(button, true))
+		button.mouse_exited.connect(_set_category_hover.bind(button, false))
 		sidebar.add_child(button)
 		_category_buttons[category["id"]] = button
+	_category_indicator = PanelContainer.new()
+	_category_indicator.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_category_indicator.z_index = 1
+	_category_indicator.add_theme_stylebox_override("panel", _box(Color(1, 1, 1, 0.02), Color.WHITE, 2, 1))
+	sidebar_layer.add_child(_category_indicator)
 
 
 func _build_content(parent: Control) -> void:
@@ -383,15 +430,69 @@ func _build_conflict_prompt(parent: Control) -> void:
 
 
 func _select_category(category: String) -> void:
+	var animate_indicator := _active_category != category
 	_active_category = category
 	for id in _category_buttons:
 		_style_category(_category_buttons[id], id == category)
+	_update_category_indicator(animate_indicator)
+	if animate_indicator and _content_rows.get_child_count() > 0:
+		_play_content_exit(category)
+	else:
+		_rebuild_category_content(category)
+
+
+func _rebuild_category_content(category: String) -> void:
 	_clear_content()
 	match category:
 		"controls":
 			_build_controls_page()
+		"video":
+			_build_video_page()
 		_:
 			_build_placeholder_page(category)
+	_play_content_enter()
+
+
+func _play_content_exit(category: String) -> void:
+	_stop_content_transition()
+	_content_request_id += 1
+	var request_id := _content_request_id
+	_content_transition = create_tween()
+	_content_transition.set_parallel()
+	_content_transition.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_content_transition.tween_property(_content_title, "modulate:a", 0.0, 0.08)
+	_content_transition.tween_property(_content_subtitle, "modulate:a", 0.0, 0.08)
+	_content_transition.tween_property(_content_rows, "modulate:a", 0.0, 0.08)
+	_content_transition.chain().tween_callback(func():
+		if request_id == _content_request_id:
+			_rebuild_category_content(category)
+	)
+
+
+func _play_content_enter() -> void:
+	_stop_content_transition()
+	_content_title.modulate.a = 0.0
+	_content_subtitle.modulate.a = 0.0
+	_content_rows.modulate.a = 1.0
+	_content_rows.position.y = 8.0
+	var rows := _content_rows.get_children()
+	for child in rows:
+		child.modulate.a = 0.0
+	_content_transition = create_tween()
+	_content_transition.set_parallel()
+	_content_transition.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_content_transition.tween_property(_content_title, "modulate:a", 1.0, 0.14)
+	_content_transition.tween_property(_content_subtitle, "modulate:a", 1.0, 0.14).set_delay(0.02)
+	_content_transition.tween_property(_content_rows, "position:y", 0.0, 0.16)
+	for index in rows.size():
+		var delay := minf(float(index) * 0.02, 0.12)
+		_content_transition.tween_property(rows[index], "modulate:a", 1.0, 0.12).set_delay(delay)
+
+
+func _stop_content_transition() -> void:
+	if _content_transition and _content_transition.is_valid():
+		_content_transition.kill()
+	_content_transition = null
 
 
 func _build_controls_page() -> void:
@@ -410,6 +511,25 @@ func _build_controls_page() -> void:
 			_add_binding_group(current_category)
 		_add_bind_row(entry)
 	_refresh_bindings()
+
+
+func _build_video_page() -> void:
+	_content_title.text = SettingsText.CATEGORY_VIDEO
+	_content_subtitle.text = "调整窗口显示方式、视觉特效和血腥内容显示。"
+	_add_section(SettingsText.SECTION_DISPLAY)
+	_add_window_mode_row()
+	_add_section(SettingsText.SECTION_COMFORT)
+	_add_slider_row(SettingsText.VIDEO_HIT_CAMERA_IMPACT, SettingsText.VIDEO_HIT_CAMERA_IMPACT_HINT, "graphics/hit_camera_impact", 0.0, 1.0, 0.05)
+	_add_slider_row(SettingsText.VIDEO_DAMAGE_BLUR, SettingsText.VIDEO_DAMAGE_BLUR_HINT, "graphics/damage_blur", 0.0, 1.0, 0.05)
+	_add_toggle_row(SettingsText.VIDEO_COMA_EFFECT, SettingsText.VIDEO_COMA_EFFECT_HINT, "graphics/coma_effect")
+	_add_toggle_row(SettingsText.VIDEO_DEATH_EFFECT, SettingsText.VIDEO_DEATH_EFFECT_HINT, "graphics/death_effect")
+	_add_slider_row(SettingsText.VIDEO_DEATH_CAMERA_SHAKE, SettingsText.VIDEO_DEATH_CAMERA_SHAKE_HINT, "graphics/death_camera_shake", 0.0, 1.0, 0.05)
+	_add_section(SettingsText.SECTION_WEAPON_EFFECTS)
+	_add_toggle_row(SettingsText.VIDEO_MUZZLE_FLASH, SettingsText.VIDEO_MUZZLE_FLASH_HINT, "graphics/muzzle_flash")
+	_add_toggle_row(SettingsText.VIDEO_MUZZLE_LIGHT, SettingsText.VIDEO_MUZZLE_LIGHT_HINT, "graphics/muzzle_light")
+	_add_toggle_row(SettingsText.VIDEO_HEAT_HAZE, SettingsText.VIDEO_HEAT_HAZE_HINT, "graphics/heat_haze")
+	_add_section(SettingsText.SECTION_BLOOD_EFFECTS)
+	_add_toggle_row(SettingsText.VIDEO_BLOOD_EFFECTS, SettingsText.VIDEO_BLOOD_EFFECTS_HINT, "graphics/blood_effects")
 
 
 func _build_placeholder_page(category: String) -> void:
@@ -474,6 +594,25 @@ func _add_slider_row(title: String, description: String, key: String, minimum: f
 		_pulse_value_label(value_label, false)
 	)
 	row.add_child(slider)
+
+
+func _add_window_mode_row() -> void:
+	var row := _new_row()
+	_add_row_labels(row, SettingsText.VIDEO_WINDOW_MODE, SettingsText.VIDEO_WINDOW_MODE_HINT)
+	var option := OptionButton.new()
+	option.custom_minimum_size = Vector2(170, 34)
+	option.focus_mode = Control.FOCUS_ALL
+	option.add_item(SettingsText.WINDOW_MODE_WINDOWED)
+	option.set_item_metadata(0, "windowed")
+	option.add_item(SettingsText.WINDOW_MODE_FULLSCREEN)
+	option.set_item_metadata(1, "fullscreen")
+	var current_mode := String(_settings_service.get_value("graphics/window_mode", "fullscreen"))
+	option.select(1 if current_mode == "fullscreen" else 0)
+	option.item_selected.connect(func(index: int):
+		_settings_service.set_value("graphics/window_mode", option.get_item_metadata(index))
+		_mark_dirty()
+	)
+	row.add_child(option)
 
 
 func _style_slider(slider: HSlider) -> void:
@@ -549,6 +688,9 @@ func _finish_close() -> void:
 	_panel.modulate.a = 1.0
 	if _background_blur_layer:
 		_background_blur_layer.visible = false
+	if _player:
+		_player.release_control_lock(BasePlayer.CONTROL_LOCK_SETTINGS)
+		_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_SETTINGS)
 	closed.emit()
 
 
@@ -562,12 +704,15 @@ func _add_toggle_row(title: String, description: String, key: String) -> void:
 	var row := _new_row()
 	_add_row_labels(row, title, description)
 	var toggle := AnimatedToggle.new()
-	toggle.button_pressed = bool(_settings_service.get_value(key))
+	var current_value := bool(_settings_service.get_value(key, true))
 	toggle.toggled.connect(func(enabled: bool):
 		_settings_service.set_value(key, enabled)
 		_mark_dirty()
 	)
 	row.add_child(toggle)
+	# 先入树触发 AnimatedToggle._ready，再同步当前值，避免 toggle_mode
+	# 初始化顺序导致视觉状态被重置。
+	toggle.set_toggle_value(current_value)
 
 
 func _add_bind_row(entry: Dictionary) -> void:
@@ -575,6 +720,10 @@ func _add_bind_row(entry: Dictionary) -> void:
 	var row := _new_row()
 	var name := Label.new()
 	name.text = entry["display"]
+	if entry.has("hint"):
+		name.text += "\n" + String(entry["hint"])
+		name.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		name.add_theme_font_size_override("font_size", 13)
 	name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name.add_theme_color_override("font_color", COL_TEXT)
 	row.add_child(name)
@@ -680,12 +829,16 @@ func _cancel_pending_conflict() -> void:
 
 
 func _reset_current_page() -> void:
-	if _active_category != "controls":
-		return
-	_settings_service.reset_controls()
-	KeybindStore.reset_all(false)
+	match _active_category:
+		"controls":
+			_settings_service.reset_controls()
+			KeybindStore.reset_all(false)
+		"video":
+			_settings_service.reset_video()
+		_:
+			return
 	_mark_dirty()
-	_select_category("controls")
+	_select_category(_active_category)
 
 
 func _clear_content() -> void:
@@ -739,11 +892,55 @@ func _button_id(action: String, slot: int) -> String:
 
 
 func _style_category(button: Button, selected: bool) -> void:
-	button.add_theme_stylebox_override("normal", _box(Color(1, 1, 1, 0.07) if selected else Color(1, 1, 1, 0.0), Color.WHITE if selected else Color(1, 1, 1, 0.0), 2, 1 if selected else 0))
+	button.add_theme_stylebox_override("normal", _box(Color(1, 1, 1, 0.07) if selected else Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), 2))
 	button.add_theme_stylebox_override("hover", _box(COL_HOVER, Color(1, 1, 1, 0.35), 2))
 	button.add_theme_stylebox_override("focus", _box(COL_HOVER, Color.WHITE, 2, 2))
 	button.add_theme_color_override("font_color", COL_TEXT if selected else COL_MUTED)
 	button.add_theme_color_override("font_disabled_color", Color(0.4, 0.42, 0.45))
+
+
+func _set_category_hover(button: Button, hovered: bool) -> void:
+	var old_tween := _category_hover_tweens.get(button) as Tween
+	if old_tween and old_tween.is_valid():
+		old_tween.kill()
+	var target := Color(1.04, 1.04, 1.04, 1.0) if hovered else Color.WHITE
+	var tween := button.create_tween()
+	tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(button, "modulate", target, 0.12)
+	_category_hover_tweens[button] = tween
+
+
+func _update_category_indicator(animated: bool) -> void:
+	if not _category_indicator or not is_instance_valid(_category_indicator):
+		return
+	var button := _category_buttons.get(_active_category) as Button
+	if not button or not is_instance_valid(button):
+		return
+	if button.size.y <= 0.0:
+		call_deferred("_sync_category_indicator")
+		return
+	var sidebar_width := _sidebar_layer.size.x if _sidebar_layer else 0.0
+	if sidebar_width <= 0.0:
+		call_deferred("_sync_category_indicator")
+		return
+	var target_position := Vector2(0.0, button.position.y)
+	var target_size := Vector2(sidebar_width, button.size.y)
+	if _category_indicator_tween and _category_indicator_tween.is_valid():
+		_category_indicator_tween.kill()
+	_category_indicator_tween = null
+	if not animated or _category_indicator.size.y <= 0.0:
+		_category_indicator.position = target_position
+		_category_indicator.size = target_size
+		return
+	_category_indicator_tween = create_tween()
+	_category_indicator_tween.set_parallel()
+	_category_indicator_tween.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_category_indicator_tween.tween_property(_category_indicator, "position", target_position, 0.18)
+	_category_indicator_tween.tween_property(_category_indicator, "size", target_size, 0.18)
+
+
+func _sync_category_indicator() -> void:
+	_update_category_indicator(false)
 
 
 func _style_key_button(button: Button, listening: bool, conflict: bool) -> void:

@@ -49,7 +49,7 @@ Classes/Medical/
     medical_body_region.gd
     medical_enums.gd
 
-res/config/medical/
+assets/config/medical/
     medical_config_default.tres
     injuries/
     treatments/
@@ -413,4 +413,3 @@ MODEL MEDICAL CAUSES AND THEIR CONSEQUENCES. DO NOT IMPLEMENT A TRADITIONAL HEAL
 Damage should create anatomical trauma. Trauma should create wounds and physiological
 effects. Treatment should manage those effects. Incapacitation and death should be
 the results of the simulated medical state.
-

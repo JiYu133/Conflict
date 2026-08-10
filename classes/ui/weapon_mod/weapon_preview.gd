@@ -93,9 +93,41 @@ func rebuild(config: WeaponConfig, attachment_state: Dictionary, rail_offsets: D
 
 ## 只更新预览中一个已安装配件的位置，不必重建整把武器。
 func set_rail_offset(slot_name: String, offset: float) -> void:
+	if not _weapon:
+		return
+	_weapon.set_attachment_rail_offset(slot_name, offset)
+
+
+## 将草稿状态增量同步到当前预览武器，不销毁并重建整把武器。
+func sync_attachment_state(attachment_state: Dictionary, rail_offsets: Dictionary = {}) -> void:
 	if not _weapon or not _weapon.attachment_manager:
 		return
-	_weapon.attachment_manager.set_rail_offset(slot_name, offset)
+	var am := _weapon.attachment_manager
+	var guard := 0
+	var progressed := true
+	while progressed and guard < 16:
+		guard += 1
+		progressed = false
+		var keys: Array[String] = []
+		for slot in am.get_slots():
+			keys.append((slot as AttachmentSlot).get_slot_key())
+		for key in keys:
+			var slot: AttachmentSlot = am.get_slot(key)
+			if not slot:
+				continue
+			var want: AttachmentConfig = attachment_state.get(key, null)
+			var have: AttachmentConfig = slot.current_attachment.config \
+				if slot.current_attachment else null
+			if want == have:
+				continue
+			if slot.current_attachment:
+				_weapon.detach_attachment(key)
+				progressed = true
+			if want:
+				if _weapon.equip_attachment(key, want):
+					progressed = true
+	for slot_name in rail_offsets:
+		_weapon.set_attachment_rail_offset(slot_name, float(rail_offsets[slot_name]))
 
 
 ## 还原配件。必须反复扫描：部分槽位是被别的配件带出来的

@@ -130,7 +130,7 @@ weapon_mod_menu.closed.connect(_on_mod_menu_closed)
 ## 添加可被界面发现的配件
 
 1. 创建一个 `AttachmentConfig` 的 `.tres` 或 `.res` 资源。
-2. 将资源放在 `res://res/config/weapons/attachments/` 或其子目录。
+2. 将资源放在 `res://assets/config/weapons/attachments/` 或其子目录。
 3. 确保目标 `AttachmentSlot.allowed_attachment_types` 接受该配件的 `attachment_type`。
 4. 若配件只能安装在特定实体槽位，填写 `preferred_slot_names`；目录会排除首选列表不包含当前槽名的资源。左右侧专用配件应明确指定对应槽位，例如右侧 AK-12 导轨使用 `SideRailRight`。
 5. 若配件可以沿导轨移动，启用 `rail_adjustable`，并设置 `rail_offset_min`、`rail_offset_max` 和默认 `rail_offset`（单位均为米）。

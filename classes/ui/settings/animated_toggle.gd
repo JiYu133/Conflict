@@ -24,12 +24,19 @@ func _ready() -> void:
 	queue_redraw()
 
 
+func set_toggle_value(enabled: bool) -> void:
+	set_pressed_no_signal(enabled)
+	_visual_progress = 1.0 if enabled else 0.0
+	queue_redraw()
+
+
 func _on_toggled(enabled: bool) -> void:
 	if _transition and _transition.is_valid():
 		_transition.kill()
 	_transition = create_tween()
 	_transition.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	_transition.tween_method(_set_visual_progress, _visual_progress, 1.0 if enabled else 0.0, TRANSITION_TIME)
+	queue_redraw()
 
 
 func _set_visual_progress(progress: float) -> void:

@@ -17,6 +17,7 @@ signal trigger_released()
 
 # 公开属性 ────────────────────────────────────────────────
 var config: WeaponConfig
+var current_fire_mode: String = "safe"
 
 # 私有属性 ────────────────────────────────────────────────
 var _trigger_reset: bool = true
@@ -33,20 +34,27 @@ func initialize(cfg: WeaponConfig) -> void:
 	GlobalLogger.debug("FireControl", "初始化完成")
 
 
+## 由 BaseWeapon 注入已经过武器/快慢机校验的模式。
+func set_fire_mode(mode: String) -> bool:
+	if not config or not config.fire_modes.has(mode):
+		return false
+	current_fire_mode = mode
+	return true
+
+
 # ============================================================
 # 扳机控制
 # ============================================================
 
 ## 扣下扳机
-## mode：当前射击模式
 ##   - "safe"：保险状态，任何击发请求都被忽略
 ##   - "semi"：半自动，只有扳机复位后才允许击发一次
 ##   - "auto"：全自动，按住扳机会持续击发（由上游的 _handle_cycle_complete 控制循环）
-func press_trigger(mode: String) -> void:
-	if mode == "safe":
+func press_trigger() -> void:
+	if current_fire_mode == "safe":
 		return
 
-	match mode:
+	match current_fire_mode:
 		"semi":
 			# 半自动：扳机未复位时不重复击发（防止按住一扣打一串）
 			if _trigger_reset:

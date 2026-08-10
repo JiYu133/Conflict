@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="StaminaConfig" format=3 uid="uid://c73ndg34785ob"]
+
+[ext_resource type="Script" uid="uid://vpccxvdior7v" path="res://classes/player/stamina_config.gd" id="1_cuauq"]
+
+[resource]
+script = ExtResource("1_cuauq")
+sprint_cost_per_sec = 15.0
+walk_cost_per_sec = 1.0
+jump_cost = 25.0
+carry_weight_reference_kg = 3.5
+carry_weight_cost_per_kg = 0.08
+carry_weight_max_multiplier = 2.0
