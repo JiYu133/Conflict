@@ -55,6 +55,8 @@ extends Resource
 @export_group("医疗配置")
 ## 医疗系统配置
 @export var health_config: HealthConfig
+## 死亡后渗血表现配置；为空时使用默认时序，但不会提供缺失的美术纹理。
+@export var blood_effect_config: BloodEffectConfig
 
 # 体力配置 ─────────────────────────────────────────────────
 @export_group("体力配置")
@@ -146,4 +148,3 @@ var collision_shape_y_offset: float:
 	get: return movement_config.collision_shape_y_offset if movement_config else 0.0
 var model_y_offset: float:
 	get: return movement_config.model_y_offset if movement_config else -0.5
-

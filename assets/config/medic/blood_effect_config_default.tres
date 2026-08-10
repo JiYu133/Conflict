@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="BloodEffectConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://classes/player/medical/blood_effect_config.gd" id="1_bloodfx"]
+
+[resource]
+script = ExtResource("1_bloodfx")
+pool_delay = 0.35
+pool_growth_duration = 4.0
+pool_start_size = Vector2(0.08, 0.08)
+pool_max_size = Vector2(2.2, 1.55)
+pool_alpha = 0.88
+ground_offset = 0.012
+drip_duration = 18.0
+drip_delay = 0.2
+drip_amount = 36
+drip_lifetime = 0.75
+drip_gravity = 9.8
+drip_size = 0.035
+drip_alpha = 0.75
+ground_ray_length = 8.0
+ground_collision_mask = 1

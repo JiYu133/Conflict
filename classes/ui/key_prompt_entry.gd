@@ -2,7 +2,7 @@ class_name KeyPromptEntry
 extends Resource
 
 @export_group("内容")
-## 按键图标贴图，建议 64×64 PNG，存放于 res://res/textures/ui/key_icons/
+## 按键图标贴图，建议 64×64 PNG，存放于 res://assets/textures/ui/key_icons/
 @export var key_icon: Texture2D
 ## 描述文字，如 "前进"、"跳跃"
 @export var label_text: String = ""

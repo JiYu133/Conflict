@@ -1,0 +1,11 @@
+[gd_scene format=3 uid="uid://dpj3dfhndc2fv"]
+
+[ext_resource type="Script" uid="uid://d3by0ot54w0n1" path="res://classes/weapon/weaponattachments/selector_switch.gd" id="1_selector"]
+[ext_resource type="PackedScene" uid="uid://dya4j6luga2jt" path="res://assets/models/attachments/selector_switches/ak12_selector_switch/ak12_selector_switch.glb" id="2_mesh"]
+
+[node name="SelectorSwitch" type="Node3D" unique_id=1881019192]
+script = ExtResource("1_selector")
+
+[node name="Mesh" parent="." unique_id=1839964201 instance=ExtResource("2_mesh")]
+
+[node name="SnapPoint" type="Marker3D" parent="." unique_id=837529541]

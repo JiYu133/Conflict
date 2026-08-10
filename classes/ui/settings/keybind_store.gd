@@ -36,6 +36,7 @@ const ACTIONS: Array[Dictionary] = [
 	{ "action": "toggle_free_cam", "display": SettingsText.ACTION_TOGGLE_FREE_CAM, "category": SettingsText.CATEGORY_DEBUG, "debug_only": true },
 	{ "action": "weapon_mod_menu", "display": SettingsText.ACTION_WEAPON_MOD_MENU, "category": SettingsText.CATEGORY_DEBUG, "debug_only": true },
 	{ "action": "debug_revive", "display": SettingsText.ACTION_DEBUG_REVIVE, "category": SettingsText.CATEGORY_DEBUG, "debug_only": true },
+	{ "action": "console", "display": SettingsText.ACTION_CONSOLE, "hint": SettingsText.ACTION_CONSOLE_HINT, "category": SettingsText.CATEGORY_DEBUG },
 ]
 
 static var _applied: bool = false

@@ -73,6 +73,50 @@ extends Resource
 ## 开火后残留烟雾（通用素材，留空则跳过）
 @export var smoke_scene: PackedScene
 
+# ── 枪口热浪 / Heat Haze ─────────────────────────────────────
+@export_group("枪口热浪 / Heat Haze")
+## 可选的自定义热浪场景；留空时由 WeaponFXController 创建局部折射面
+@export var heat_haze_scene: PackedScene
+## 热浪噪波贴图。留空时自动尝试加载 res://assets/textures/effects/noise/noise_heat_haze.tres
+@export var heat_haze_noise_texture: Texture2D
+## 热浪粒子材质；核心屏幕空间扭曲使用 ShaderMaterial，留空时加载默认材质。
+@export var heat_haze_material: Material
+## 是否启用枪口热浪
+@export var heat_haze_enabled: bool = true
+## 屏幕折射强度
+@export_range(0.0, 0.05, 0.001) var heat_haze_strength: float = 0.006
+## 热浪透明度；它只负责扭曲背景，不负责显示枪口焰
+@export_range(0.0, 1.0, 0.01) var heat_haze_opacity: float = 0.10
+## 每发增加的热量。连续射击会累积，单发不会瞬间达到最大强度。
+@export_range(0.01, 1.0, 0.01) var heat_haze_heat_per_shot: float = 0.12
+## 停火后的冷却速度；数值越低，枪口热浪残留越久。
+@export_range(0.01, 1.0, 0.01) var heat_haze_cooling_rate: float = 0.14
+## 热浪节点相对 HeatHaze Marker 沿枪口方向的偏移（米）。
+@export_range(0.0, 1.0, 0.01) var heat_haze_offset: float = 0.08
+## 热浪达到此热量后才显示，避免冷却末尾留下几乎不可见的采样开销。
+@export_range(0.0, 0.2, 0.005) var heat_haze_visibility_threshold: float = 0.01
+## 热浪最大热量，限制长时间连射的强度。
+@export_range(0.1, 2.0, 0.05) var heat_haze_max_heat: float = 1.0
+## 热浪局部平面尺寸（宽度、沿流动方向长度）
+@export var heat_haze_size: Vector2 = Vector2(0.22, 0.52)
+## 噪波流动速度
+@export_range(0.0, 2.0, 0.01) var heat_haze_flow_speed: float = 0.22
+## 噪波采样尺度；小于 1 表示更少、更大的热浪扰动区域
+@export var heat_haze_noise_scale: Vector2 = Vector2(0.65, 0.90)
+
+## GPU 热浪粒子数量；少量粒子避免全自动射击时堆积。
+@export_range(1, 8, 1) var heat_haze_particle_amount: int = 4
+## 单次热浪粒子生命周期（秒）。
+@export_range(0.05, 0.5, 0.01) var heat_haze_particle_lifetime: float = 0.20
+## 粒子最低初速度；方向由 HeatHaze Marker 的局部 Y 轴决定。
+@export var heat_haze_velocity_min: float = 0.5
+## 粒子最高初速度；每个粒子在范围内随机取值。
+@export var heat_haze_velocity_max: float = 1.5
+## 粒子扩散角度（度）。
+@export_range(0.0, 45.0, 1.0) var heat_haze_spread: float = 20.0
+## 粒子初始��最终尺寸的倍率范围，由粒子 Scale Curve 驱动。
+@export var heat_haze_particle_scale: Vector2 = Vector2(0.1, 3.0)
+
 
 ## 枪口形态枚举，供 FX 控制器选择素材
 enum MuzzleProfile {

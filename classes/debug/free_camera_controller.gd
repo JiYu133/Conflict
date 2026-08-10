@@ -14,8 +14,6 @@ var _pitch: float = 0.0
 var _yaw: float = 0.0
 var _player: BasePlayer
 var _camera_controller: PlayerCameraController
-var _was_controllable: bool = false
-
 # 准星 UI
 var _crosshair_canvas: CanvasLayer
 var _label_part: Label
@@ -44,6 +42,12 @@ func initialize(player: BasePlayer, camera_controller: PlayerCameraController) -
 	_player = player
 	_camera_controller = camera_controller
 	_build_crosshair()
+
+
+func _exit_tree() -> void:
+	if _active and _player:
+		_player.release_control_lock(BasePlayer.CONTROL_LOCK_FREE_CAMERA)
+		_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_FREE_CAMERA)
 
 
 func _build_crosshair() -> void:
@@ -153,8 +157,8 @@ func _set_head_mesh_shadow(mode: GeometryInstance3D.ShadowCastingSetting) -> voi
 
 func _enter() -> void:
 	_active = true
-	_was_controllable = _player.controllable
-	_player.set_controllable(false)
+	_player.acquire_control_lock(BasePlayer.CONTROL_LOCK_FREE_CAMERA)
+	_player.request_mouse_mode(BasePlayer.CONTROL_LOCK_FREE_CAMERA, Input.MOUSE_MODE_CAPTURED, 50)
 
 	# 自由视角下头部网格需要完全可见（含阴影）
 	_set_head_mesh_shadow(GeometryInstance3D.SHADOW_CASTING_SETTING_ON)
@@ -178,8 +182,6 @@ func _enter() -> void:
 		_free_cam.cull_mask = current_cam.cull_mask | 2
 	_player.add_child(_free_cam)
 	_free_cam.current = true
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
-
 	_crosshair_canvas.visible = true
 	GlobalLogger.info("FreeCam", "自由视角已启用，WASD/QE 移动，Shift 加速，左键/T/Y/U 射击，F 退出")
 
@@ -209,7 +211,8 @@ func _exit() -> void:
 		_free_cam.queue_free()
 	_free_cam = null
 
-	_player.set_controllable(_was_controllable and _player.is_alive)
+	_player.release_control_lock(BasePlayer.CONTROL_LOCK_FREE_CAMERA)
+	_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_FREE_CAMERA)
 
 	# 恢复动画
 	var animator := _player.model_manager.animator if _player.model_manager else null
@@ -251,7 +254,7 @@ func _fire_hitscan(energy: float, dmg_type: MedicalEnums.DamageType, forced_part
 	var forward := -_free_cam.global_transform.basis.z
 
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + forward * 2000.0)
-	query.collision_mask = 2
+	query.collision_mask = PhysicsLayers.CHARACTER
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
 	query.exclude = [_player.get_rid()]
@@ -322,7 +325,7 @@ func _physics_process(_delta: float) -> void:
 	var origin  := _free_cam.global_position
 	var forward := -_free_cam.global_transform.basis.z
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + forward * 2000.0)
-	query.collision_mask = 2
+	query.collision_mask = PhysicsLayers.CHARACTER
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
 	query.exclude = [_player.get_rid()]
@@ -391,10 +394,6 @@ func _input_blocked() -> bool:
 	if not _active or not _free_cam:
 		return true
 	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
-		return true
-	if _player and _player.pause_menu and _player.pause_menu.is_open():
-		return true
-	if _player and _player.settings_menu and _player.settings_menu.is_open():
 		return true
 	return false
 

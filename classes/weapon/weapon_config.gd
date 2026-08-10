@@ -95,6 +95,13 @@ extends Resource
 @export var ads_center_offset: Vector3 = Vector3(0.0, -0.1, -0.05)
 @export var ads_fov_override: float = -1.0
 
+# 掉落物理 ─────────────────────────────────────────────────
+@export_group("掉落物理")
+## 死亡脱手时交给 RigidBody3D 使用的预制碰撞形状；为空时保持原挂载状态。
+@export var dropped_collision_shape: Shape3D
+## 碰撞形状相对武器根节点的局部偏移。
+@export var dropped_collision_offset: Vector3 = Vector3.ZERO
+
 # 握持 IK ─────────────────────────────────────────────────
 @export_group("握持 IK")
 ## 持枪姿态修正角（欧拉角，度）。武器默认按自身 RightHandGrip 标记对齐到右手骨骼；

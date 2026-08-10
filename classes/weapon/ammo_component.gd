@@ -103,6 +103,10 @@ func get_current_magazine_count() -> int:
 		return magazines[current_magazine].size()
 	return 0
 
+
+func get_capacity() -> int:
+	return _capacity
+
 ## 备用弹匣总弹数（不含当前在用的弹匣）
 func get_reserve_count() -> int:
 	var total = 0
@@ -151,6 +155,9 @@ func should_hold_open() -> bool:
 ## 仅清空托弹准备状态，新弹匣的顶弹在 reload() 流程中由 prepare_next_round()/chamber_round() 重新进膛
 func swap_magazine() -> void:
 	_next_round_ready = false
+	if magazines.is_empty():
+		current_magazine = 0
+		return
 
 	for i in magazines.size():
 		var idx = (current_magazine + 1 + i) % magazines.size()
@@ -184,15 +191,41 @@ func apply_magazine_attachments(am: AttachmentManager) -> void:
 ## 因此必须按容量重新填充，只遍历现有元素赋值是补不回来的。
 func refill_all() -> void:
 	var cap: int = maxi(_capacity, 1)
-	for mag in magazines:
-		mag.clear()
-		for _i in range(cap):
-			mag.append(null)   # null = 标准弹，与 reconfigure() 的填充方式一致
+	var reserve_rounds := cap * maxi(magazines.size() - 1, 0)
+	debug_set_ammo(cap, reserve_rounds, true)
+	GlobalLogger.debug("AmmoComponent", "弹药已重置：%d 个弹匣各 %d 发并已上膛" % [magazines.size(), cap])
+
+
+## 调试：按“当前弹匣余弹 / 备用弹总数 / 膛内是否有弹”重建弹药状态。
+## current_mag_count = 当前弹匣剩余发数
+## reserve_rounds     = 备用弹匣总弹数
+## chambered          = 膛内是否额外有一发
+func debug_set_ammo(current_mag_count: int, reserve_rounds: int, chambered: bool = true) -> void:
+	var cap: int = maxi(_capacity, 1)
+	var current_fill := clampi(current_mag_count, 0, cap)
+	var carry_over := maxi(current_mag_count - current_fill, 0)
+	var reserve_total := maxi(reserve_rounds, 0) + carry_over
+
+	magazines.clear()
+	magazines.append(_make_magazine(current_fill))
+
+	var remaining := reserve_total
+	while remaining > 0:
+		var mag_count := mini(remaining, cap)
+		magazines.append(_make_magazine(mag_count))
+		remaining -= mag_count
+
 	current_magazine = 0
-	chambered_round = true
+	chambered_round = chambered
 	_next_round_ready = false
 	ammo_count_changed.emit(get_current_magazine_count(), get_reserve_count())
-	GlobalLogger.debug("AmmoComponent", "弹药已重置：%d 个弹匣各 %d 发并已上膛" % [magazines.size(), cap])
+
+
+func _make_magazine(round_count: int) -> Array:
+	var mag: Array = []
+	for _i in range(maxi(round_count, 0)):
+		mag.append(null)   # null = 标准弹，与 reconfigure() 的填充方式一致
+	return mag
 
 
 func reconfigure(mag_cfg: MagazineConfig) -> void:
@@ -213,6 +246,14 @@ func reconfigure(mag_cfg: MagazineConfig) -> void:
 	_next_round_ready = false
 	# 膛内弹状态保留（玩家换弹匣不清空膛内）
 	ammo_count_changed.emit(get_current_magazine_count(), get_reserve_count())
+
+
+## 拆下枪上弹匣：清除弹匣池，但保留膛内已有子弹。
+func clear_magazine() -> void:
+	magazines.clear()
+	current_magazine = 0
+	_next_round_ready = false
+	ammo_count_changed.emit(0, 0)
 ## base_cap：武器基础容量；bonus：扩容弹匣额外容量
 ## 扩容时追加 null（标准弹）；缩容时直接截断尾部，不区分实弹/空位
 ## 注意：缩容会删除弹匣尾部子弹，这是换装容量变小的预期行为

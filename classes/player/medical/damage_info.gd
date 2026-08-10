@@ -31,6 +31,10 @@ var is_penetrating: bool = false
 ## 命中时的弹头速度（m/s）；由 Ballistics 填入，供伤口严重程度细分
 var impact_velocity: float = 0.0
 
+## 命中时的弹头质量（kg）；由 Combat 层填入，供通用冲击响应计算动量。
+## 0 表示该伤害没有可用的实体质量（例如控制台/脚本伤害）。
+var impact_mass_kg: float = 0.0
+
 # ── 伤道局部信息（P2 解剖模型；由 HitResolver 填入）──────────
 # 仅存活时命中 BodyHitbox 才有值；anchor_bone 为空 = 无伤道信息，
 # AnatomySolver 走盲判回退路径（爆炸/调试注入/布娃娃命中）。

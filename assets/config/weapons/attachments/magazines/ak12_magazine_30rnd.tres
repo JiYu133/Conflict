@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MagazineConfig" format=3 uid="uid://k12mag01"]
+
+[ext_resource type="Script" uid="uid://675qrb7v1o63" path="res://classes/weapon/weaponattachments/magazine_config.gd" id="1_a"]
+[ext_resource type="PackedScene" uid="uid://db0gue6c3fq7k" path="res://assets/models/attachments/magazines/magazine_30rnd_box/magazine_30rnd_box.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_a")
+reserve_magazines = 5
+reload_time = 2.6
+reload_empty_time = 3.5
+attachment_name = "30发方形弹匣"
+attachment_type = 3
+allowed_slot = 11
+weight_kg = 0.23
+attachment_scene = ExtResource("2_scene")

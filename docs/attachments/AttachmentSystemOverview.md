@@ -7,7 +7,7 @@
 ## 文件结构
 
 ```
-res/models/attachments/        ← 所有配件的 3D 场景，按类型分子目录
+assets/models/attachments/     ← 所有配件的 3D 场景，按类型分子目录
 ├── receivers/                 ← 机匣（BaseWeapon 根节点）
 │   └── ak12_receiver/
 │       ├── ak12_receiver.glb
@@ -25,7 +25,7 @@ res/models/attachments/        ← 所有配件的 3D 场景，按类型分子�
 ├── triggers/                  ← 纯数值配件，no_visual = true
 └── ammo/                      ← 弹壳视觉
 
-res/config/weapons/attachments/
+assets/config/weapons/attachments/
 ├── barrel_assemblies/         ← 枪管 .tres
 ├── bolt_carriers/             ← 枪机框 .tres
 ├── handguards/                ← 护木 .tres

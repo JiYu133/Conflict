@@ -3,30 +3,19 @@ extends Resource
 
 # ============================================================
 # 布娃娃物理配置
-# 功能：定义布娃娃系统的全部物理参数，包括骨骼碰撞体尺寸、
-#       刚体阻尼、死亡动画过渡时间、冲击力大小及碰撞层。
+# 功能：定义预制布娃娃的运行时参数，包括死亡动画过渡、
+#       动能传递、碰撞层和自碰撞策略。
 # 用法：在 Godot 编辑器中创建 .tres 资源，填入具体数值，
 #       然后挂载到 PlayerConfig.ragdoll_config。
 # ============================================================
 
-# 物理骨骼参数 ─────────────────────────────────────────────────
-@export_group("物理骨骼参数", "物理骨骼")
-## 碰撞形状半径缩放系数，相对于父骨骼长度 / Collision shape radius scale factor relative to bone length
-@export var bone_radius_scale: float = 0.3
-## 小骨骼碰撞体的最小半径，避免手腕/脚踝等细胶囊穿透环境
-@export var minimum_bone_radius: float = 0.025
-## 主要躯干碰撞半径（米）
-@export var torso_radius: float = 0.13
-## 骨盆碰撞半径（米）
-@export var pelvis_radius: float = 0.14
-## 头部球形碰撞半径（米）
-@export var head_radius: float = 0.11
-## 线速度阻尼，控制整体移动减速 / Linear damping applied to each physical bone
-@export var linear_damping: float = 5.0
-## 角速度阻尼，控制旋转减速 / Angular damping applied to each physical bone
-@export var angular_damping: float = 8.0
-## 每块物理骨骼的质量（kg）/ Mass per physical bone in kg
-@export var mass: float = 1.0
+@export_group("物理骨骼参数")
+## 每块预制物理骨骼的基础质量（kg）。当前模型约 11 块骨骼，4 kg 约等于 44 kg 的布娃娃总质量。
+@export_range(0.1, 20.0, 0.1) var mass: float = 4.0
+## 骨骼线速度阻尼；越高越不容易被冲击持续推走。
+@export_range(0.0, 20.0, 0.1) var linear_damping: float = 2.0
+## 骨骼角速度阻尼；越高越不容易被踢得翻滚。
+@export_range(0.0, 20.0, 0.1) var angular_damping: float = 5.0
 ## 启用非相邻身体部位之间的碰撞，防止手臂穿过并卡入躯干
 @export var enable_self_collision: bool = true
 
@@ -37,34 +26,26 @@ extends Resource
 ## 死亡动画播放后到启动布娃娃物理的等待时间（秒）；仅在 play_death_animation 为 true 时生效 / Seconds to wait after death anim starts before enabling ragdoll physics
 @export var death_anim_to_ragdoll_time: float = 0.5
 
-# 冲击力参数 ─────────────────────────────────────────────────
-@export_group("冲击力参数")
-## 默认死亡冲击力（牛顿）/ Default death impact force in Newtons
-@export var default_impact_force: float = 80.0
-## 冲击力持续的物理帧数；枪击测试通常为 1，最多建议 2
-@export_range(1, 2, 1) var impact_force_frames: int = 1
-## 爆头额外冲击力倍率 / Headshot force multiplier applied on top of default
-@export var headshot_force_multiplier: float = 2.5
-## 爆炸冲击力（牛顿）/ Explosion force in Newtons
-@export var explosion_force: float = 300.0
+# 动能传递参数 ─────────────────────────────────────────────────
+@export_group("动能传递参数")
+## 命中动能中转化为布娃娃冲量的比例；子弹的动量由 sqrt(2*m*E) 计算。
+@export_range(0.0, 1.0, 0.01) var impact_energy_transfer: float = 0.35
+## 爆头通常有更集中的局部响应，因此使用更高的能量传递比例。
+@export_range(0.0, 1.0, 0.01) var headshot_energy_transfer: float = 0.50
+## 非弹道伤害没有弹头质量时使用的等效质量（kg），仅用于爆炸/近战等通用伤害。
+@export_range(0.01, 20.0, 0.01) var fallback_impact_mass_kg: float = 1.0
+## 爆炸伤害的能量传递比例；爆炸的 amount 仍由伤害来源提供，不在布娃娃中硬编码力。
+@export_range(0.0, 1.0, 0.01) var explosion_energy_transfer: float = 0.20
+## 爆头额外集中到头部的冲量比例（相对于本次总冲量）。
+@export_range(0.0, 1.0, 0.01) var headshot_extra_impulse_ratio: float = 0.25
 
 # 碰撞层 ─────────────────────────────────────────────────
 @export_group("碰撞层")
 ## 布娃娃骨骼碰撞层 / Physics layer for ragdoll bones
-@export_flags_3d_physics var ragdoll_collision_layer: int = 2
-## 布娃娃碰撞掩码 / Ragdoll collision mask — 必须与地图 StaticBody3D 的 layer 互相匹配
-## （骨骼在 layer 2，地图 layer 1，骨骼 mask 包含 1，骨骼间不互相碰撞）
-## 默认碰撞所有常用层；相邻骨骼通过 collision exception 避免互相弹飞。
-@export_flags_3d_physics var ragdoll_collision_mask: int = 0x7FFFFFFF
-
-# 骨骼过滤 ─────────────────────────────────────────────────
-@export_group("骨骼过滤")
-## 排除骨骼名关键词，匹配任一关键词的骨骼不会被创建物理骨骼 / Bone name keywords excluded from physical bone creation
-@export var exclude_bone_keywords: Array[String] = [
-	"IK", "_End", "Toe_End", "Hand_End", "Toe",
-	"Thumb", "Index", "Middle", "Ring", "Pinky",
-	"Eye", "Weapon", "Armature", "Root"
-]
+@export_flags_3d_physics var ragdoll_collision_layer: int = PhysicsLayers.CHARACTER
+## 布娃娃默认与环境、其他角色及掉落武器碰撞，但不接触弹壳或未来新增层。
+## 相邻骨骼通过 collision exception 避免互相弹飞。
+@export_flags_3d_physics var ragdoll_collision_mask: int = PhysicsLayers.RAGDOLL_DEFAULT_MASK
 
 # 冲击力目标 ─────────────────────────────────────────────────
 @export_group("冲击力目标")
@@ -72,14 +53,3 @@ extends Resource
 @export var upper_body_keywords: Array[String] = [
 	"Spine", "Neck", "Head", "Shoulder", "Arm"
 ]
-
-# 骨骼权重覆盖 ─────────────────────────────────────────────────
-@export_group("骨骼权重覆盖")
-## 按骨骼名关键词覆盖质量（kg）。key = 骨骼名关键词（如 "Head"、"UpLeg"），value = 质量。
-## 匹配第一个关键词即应用，不匹配则使用全局 mass 值。
-## 示例：{"Head": 2.0, "UpLeg": 3.0, "Foot": 0.5}
-@export var bone_mass_overrides: Dictionary = {}
-## 按骨骼名关键词覆盖线速度阻尼。不匹配则使用全局 linear_damping。
-@export var bone_linear_damping_overrides: Dictionary = {}
-## 按骨骼名关键词覆盖角速度阻尼。不匹配则使用全局 angular_damping。
-@export var bone_angular_damping_overrides: Dictionary = {}

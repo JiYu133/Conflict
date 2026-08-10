@@ -3,7 +3,7 @@ extends CanvasLayer
 # 死亡后逐渐黑屏+模糊，进入自由视角时恢复
 # 作为 Autoload 注册，名称 DeathScreen
 
-const BLUR_SHADER_PATH := "res://res/shaders/death_blur.gdshader"
+const BLUR_SHADER_PATH := "res://assets/shaders/death_blur.gdshader"
 
 ## 黑屏动画总时长（秒）
 @export var fade_duration: float = 3.0

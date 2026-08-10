@@ -2,15 +2,15 @@ class_name Projectile
 extends RefCounted
 
 # ============================================================
-# 弹丸发射器（P1 hitscan 实现）
+# 瞬时 hitscan 回退发射器
 # 功能：从枪口发射射线，计算命中，构建 DamageInfo 交给目标 HealthSystem。
 # 使用 RefCounted 避免 Node 开销；fire_hitscan() 同步执行。
-# P2+ 可扩展为物理弹丸 Node3D。
+# 真实飞行弹道由 BallisticProjectileSystem 承担。
 # ============================================================
 
 ## 发射一发 hitscan 射线
-## origin: 射线起点世界坐标（推荐使用摄像机位置，避免枪口视差）
-## target_dir: 弹头飞行方向（归一化）
+## origin: 射线起点世界坐标（应使用枪口位置）
+## target_dir: 枪口决定的弹头飞行方向（归一化）
 ## config: 武器配置（提供 bullet_mass_g 和 muzzle_velocity）
 ## source: 开火的武器节点（用于 DamageInfo.source）
 ## world: World3D 引用（用于射线查询）
@@ -29,6 +29,8 @@ static func fire_hitscan(
 		return
 	var mass_kg: float = config.bullet_mass_g / 1000.0
 	var velocity: float = config.muzzle_velocity
+	if config.charge_variation > 0.0:
+		velocity *= 1.0 + randf_range(-config.charge_variation, config.charge_variation)
 	var energy: float = Ballistics.kinetic_energy(mass_kg, velocity)
 
 	# 射线查询（最大 2000m）
@@ -37,7 +39,7 @@ static func fire_hitscan(
 	var query := PhysicsRayQueryParameters3D.create(
 		origin,
 		origin + target_dir.normalized() * 2000.0,
-		1 | 2,
+		PhysicsLayers.BALLISTIC_TARGETS,
 		exclude
 	)
 	query.collide_with_areas = true
@@ -65,7 +67,11 @@ static func fire_hitscan(
 		return
 
 	# 构建 DamageInfo 并提交
-	var info := HitResolver.resolve(result, energy, MedicalEnums.DamageType.BULLET, source)
+	var info := HitResolver.resolve(
+		result, energy, MedicalEnums.DamageType.BULLET, source, target_dir.normalized()
+	)
+	info.impact_velocity = velocity
+	info.impact_mass_kg = mass_kg
 	var health_system := player_node.get_node("HealthSystem") as HealthSystem
 	health_system.apply_damage(info)
 

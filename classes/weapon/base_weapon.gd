@@ -67,7 +67,7 @@ signal malfunction_cleared()
 # 公开属性
 # ============================================================
 var config: WeaponConfig                       # 武器配置
-var current_fire_mode: String = "semi"         # 当前射击模式
+var current_fire_mode: String = "safe"         # 当前射击模式
 
 # 枪机循环状态 ──────────────────────────────
 var is_cycling: bool = false
@@ -191,15 +191,46 @@ func _connect_internal_signals() -> void:
 ## 完整初始化流程：创建组件 → 注入配置 → 连接信号
 func initialize(cfg: WeaponConfig) -> void:
 	config = cfg
+	current_fire_mode = _resolve_initial_fire_mode()
 	_initialize_components()
 	_setup_from_config()
 	_connect_internal_signals()
 	# 让配件管理器扫描本节点下的所有 AttachmentSlot
 	# 这样玩家后续调用 equip_to_slot() 才能找到槽位
 	attachment_manager.initialize(self, self)
+	attachment_manager.attachment_equipped.connect(_on_attachment_equipped)
+	attachment_manager.attachment_detached.connect(_on_attachment_detached)
+	attachment_manager.attachments_changed.connect(_on_attachment_cache_changed)
 	# 初始时无配件，capacity bonus 为 0；attachments_changed 会在装/卸配件后重算
 	ammo_component.apply_magazine_attachments(attachment_manager)
-	attachment_manager.attachments_changed.connect(_on_attachments_changed)
+	fire_control.set_fire_mode(current_fire_mode)
+
+
+func _resolve_initial_fire_mode() -> String:
+	if not config or config.fire_modes.is_empty():
+		return "safe"
+	if config.fire_modes.has(config.default_fire_mode):
+		return config.default_fire_mode
+	return config.fire_modes[0]
+
+
+## 返回武器本体加当前已装备配件的总重量（kg）。
+func get_total_weight() -> float:
+	if not config:
+		return 0.0
+	return maxf(config.weight, 0.0) + (attachment_manager.get_total_attachment_weight() if attachment_manager else 0.0)
+
+
+func has_chambered_round() -> bool:
+	return ammo_component != null and ammo_component.has_chambered_round()
+
+
+func get_current_magazine_count() -> int:
+	return ammo_component.get_current_magazine_count() if ammo_component else 0
+
+
+func get_reserve_ammo_count() -> int:
+	return ammo_component.get_reserve_count() if ammo_component else 0
 
 ## 按下扳机
 func press_trigger() -> void:
@@ -208,7 +239,7 @@ func press_trigger() -> void:
 	if not _check_required_attachments():
 		return
 	trigger_held = true
-	fire_control.press_trigger(current_fire_mode)
+	fire_control.press_trigger()
 
 ## 松开扳机
 func release_trigger() -> void:
@@ -216,6 +247,78 @@ func release_trigger() -> void:
 	if not config or not config.logic_enabled:
 		return
 	fire_control.release_trigger()
+
+
+## 释放空仓挂机枪机，由武器协调弹药、枪机和循环状态。
+func release_bolt() -> bool:
+	if not bolt_component or not bolt_component.is_held_open():
+		return false
+	if not ammo_component or not ammo_component.has_ammo():
+		return false
+	ammo_component.prepare_next_round()
+	bolt_component.release_bolt()
+	is_cycling = true
+	cycle_phase = "moving_forward"
+	bolt_position = 1.0
+	bolt_component.on_bolt_start_forward()
+	return true
+
+
+## 武器级配件门面：所有装卸请求统一从这里进入。
+func equip_attachment(slot_name: String, cfg: AttachmentConfig) -> bool:
+	if not attachment_manager or not cfg:
+		return false
+	var att := AttachmentFactory.create(cfg, self)
+	if not att:
+		return false
+	if attachment_manager.equip_to_slot(att, slot_name):
+		return true
+	att.queue_free()
+	return false
+
+
+func equip_attachment_auto(cfg: AttachmentConfig) -> bool:
+	if not attachment_manager or not cfg:
+		return false
+	var slot := attachment_manager.find_first_available_slot_for(cfg)
+	return slot != null and equip_attachment(slot.get_slot_key(), cfg)
+
+
+func detach_attachment(slot_name: String) -> BaseAttachment:
+	if not attachment_manager:
+		return null
+	return attachment_manager.detach_from_slot(slot_name)
+
+
+func set_attachment_rail_offset(slot_name: String, offset: float) -> void:
+	if attachment_manager:
+		attachment_manager.set_rail_offset(slot_name, offset)
+
+
+func get_attachment_rail_offset(slot_name: String) -> float:
+	return attachment_manager.get_rail_offset(slot_name) if attachment_manager else 0.0
+
+## 调试用：直接设置弹匣/备用弹/膛内弹，并可将枪机恢复到可击发状态。
+## 不清除故障；misfire / stovepipe / double-feed 仍需走排障流程。
+func debug_set_ammo_state(current_mag_count: int, reserve_rounds: int, chambered: bool = true, release_bolt: bool = true) -> void:
+	if not ammo_component:
+		return
+	ammo_component.debug_set_ammo(current_mag_count, reserve_rounds, chambered)
+	if not release_bolt or not bolt_component:
+		return
+
+	is_cycling = false
+	cycle_phase = "idle"
+	cycle_timer = 0.0
+	bolt_position = 0.0
+	bolt_component.debug_force_locked()
+	bolt_moving.emit(bolt_position)
+
+
+## 调试用：补满弹药并保留在武器门面内，避免外部系统直接操作 AmmoComponent。
+func debug_refill_ammo() -> void:
+	if ammo_component:
+		ammo_component.refill_all()
 
 ## 执行换弹
 ##
@@ -225,6 +328,9 @@ func release_trigger() -> void:
 ## 3. 非空仓换弹（弹匣空了但枪机没被挂起，边缘情况）→ 换弹匣 + 手动上膛
 func reload() -> void:
 	if not config or not config.logic_enabled:
+		return
+	if _get_attachment_config_of_type(MagazineConfig) == null:
+		GlobalLogger.warn("BaseWeapon", "[%s] 未装弹匣，无法换弹" % config.weapon_name)
 		return
 	if is_reloading or is_cycling:
 		return
@@ -347,17 +453,87 @@ func _run_reload_stage(stage: ReloadStage, duration: float) -> bool:
 
 ## 切换射击模式
 ## 按 config.fire_modes 列表的顺序循环
-func cycle_fire_mode() -> void:
-	if not config or not config.logic_enabled:
-		return
-	var modes = config.fire_modes
+func cycle_fire_mode() -> bool:
+	var modes := get_available_fire_modes()
 	if modes.size() == 0:
-		return
-
+		return false
 	var idx = modes.find(current_fire_mode)
 	idx = (idx + 1) % modes.size()
-	current_fire_mode = modes[idx]
+	return set_fire_mode(modes[idx])
+
+
+func get_available_fire_modes() -> Array[String]:
+	if not config or not config.logic_enabled or not attachment_manager:
+		return []
+	var selector := attachment_manager.get_attachment_of_type(AttachmentConfig.AttachmentType.SELECTOR_SWITCH)
+	if not selector or not selector.has_method("can_switch_fire_mode") or not selector.can_switch_fire_mode():
+		return []
+	var result: Array[String] = []
+	for mode in config.fire_modes:
+		result.append(mode)
+	return result
+
+
+func set_fire_mode(mode: String) -> bool:
+	var modes := get_available_fire_modes()
+	if not modes.has(mode) or not fire_control:
+		return false
+	if not fire_control.set_fire_mode(mode):
+		return false
+	current_fire_mode = mode
+	var selector := attachment_manager.get_attachment_of_type(AttachmentConfig.AttachmentType.SELECTOR_SWITCH)
+	if selector and selector.has_method("on_fire_mode_changed"):
+		selector.on_fire_mode_changed(current_fire_mode)
 	fire_mode_changed.emit(current_fire_mode)
+	return true
+
+
+func _on_attachment_equipped(_slot: AttachmentSlot, attachment: BaseAttachment) -> void:
+	if attachment.config and attachment.config.attachment_type == AttachmentConfig.AttachmentType.SELECTOR_SWITCH:
+		if attachment.has_method("on_fire_mode_changed"):
+			attachment.on_fire_mode_changed(current_fire_mode)
+	_apply_attachment_change(attachment.config, true)
+
+
+func _on_attachment_detached(_slot: AttachmentSlot, attachment: BaseAttachment) -> void:
+	if attachment:
+		_apply_attachment_change(attachment.config, false)
+
+
+## 只更新受变更配件影响的底层组件。
+func _apply_attachment_change(attachment_cfg: AttachmentConfig, equipped: bool) -> void:
+	if not attachment_cfg:
+		return
+	var script : Script = attachment_cfg.get_script()
+	if script == BarrelConfig:
+		var barrel := attachment_cfg as BarrelConfig
+		if equipped:
+			gas_component.reconfigure(barrel)
+			ejection_component.reconfigure(barrel)
+			bolt_component.set_muzzle_velocity(barrel.muzzle_velocity)
+		else:
+			var current_barrel := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
+			if current_barrel:
+				_apply_attachment_change(current_barrel, true)
+	if script == BoltCarrierConfig:
+		var bolt := attachment_cfg as BoltCarrierConfig
+		if equipped:
+			bolt_component.reconfigure(bolt)
+			ejection_component.reconfigure_bolt(bolt)
+			malfunction_component.reconfigure_bolt(bolt)
+		else:
+			var current_bolt := _get_attachment_config_of_type(BoltCarrierConfig) as BoltCarrierConfig
+			if current_bolt:
+				_apply_attachment_change(current_bolt, true)
+	if script == MagazineConfig:
+		if equipped:
+			ammo_component.reconfigure(attachment_cfg as MagazineConfig)
+		else:
+			ammo_component.clear_magazine()
+	if script == BarrelConfig or script == BoltCarrierConfig:
+		bolt_component.configure_cycle_rate(config.cycle_rate, gas_component.get_delay_time(), 0.005)
+	if recoil_component:
+		recoil_component.rebuild_physics()
 
 ## 获取当前散布值
 ## 区分腰射和机瞄，返回武器基础散布 + 所有附件的散布修正
@@ -403,7 +579,7 @@ func get_stats_snapshot() -> Dictionary:
 		"recoil_recovery_stiffness": physics.get("control_stiffness", 0.0),
 		"recoil_recovery_damping": physics.get("control_damping", 0.0),
 		"ads_time": get_effective_ads_time(),
-		"weight": config.weight + (attachment_manager.get_total_attachment_weight() if attachment_manager else 0.0),
+		"weight": get_total_weight(),
 		"suppressed": attachment_manager.suppresses_sound() if attachment_manager else false,
 		"fov_override": get_effective_fov_override(),
 	}
@@ -599,9 +775,7 @@ func _get_control_multiplier() -> float:
 
 
 ## 发射弹丸
-## 弹道模拟开启（WeaponConfig.use_ballistic_simulation）：弹丸从枪口射出，
-##   初始方向指向"摄像机准星射线的命中点"（瞄准收敛），之后受重力/阻力支配。
-## 关闭时回退 P1 hitscan：射线从摄像机沿准星方向瞬时判定（无下坠、满动能）。
+## 弹道模拟和 hitscan 都从枪口位置沿枪口轴线发射；摄像机不参与弹道计算。
 func _spawn_projectile() -> void:
 	var world := get_world_3d()
 	if not world:
@@ -609,17 +783,6 @@ func _spawn_projectile() -> void:
 		return
 
 	var exclusions := _collect_shooter_exclusions()
-	var camera := get_viewport().get_camera_3d()
-
-	# 摄像机准星射线（无摄像机时回退武器朝向）
-	var aim_origin: Vector3
-	var aim_dir: Vector3
-	if camera:
-		aim_origin = camera.global_position
-		aim_dir = -camera.global_basis.z
-	else:
-		aim_origin = _get_muzzle_position()
-		aim_dir = -global_basis.z
 
 	# 弹道参数（初速/弹头质量/弹道系数）已迁移到枪管配件，
 	# 从已装 BarrelConfig 读取；没装枪管时不应该走到这里（_check_required_attachments 已拦），
@@ -629,39 +792,36 @@ func _spawn_projectile() -> void:
 		GlobalLogger.warn("BaseWeapon", "[%s] 未装枪管，无法计算弹道" % config.weapon_name)
 		return
 
+	var muzzle := _get_muzzle_position()
+	var shot_dir := _get_muzzle_direction()
+
 	if config and config.use_ballistic_simulation:
-		# 瞄准收敛：先用准星射线找到玩家实际瞄准的点，
-		# 弹丸再从枪口朝该点飞行，消除枪口/准星视差
-		var aim_point := _resolve_aim_point(aim_origin, aim_dir, world, exclusions)
-		var muzzle := _get_muzzle_position()
 		BallisticProjectileSystem.get_or_create(get_tree()).spawn(
-			muzzle, aim_point - muzzle, barrel, self, exclusions, world
+			muzzle, shot_dir, barrel, self, exclusions, world
 		)
 	else:
-		Projectile.fire_hitscan(aim_origin, aim_dir, barrel, self, world, exclusions)
+		Projectile.fire_hitscan(muzzle, shot_dir, barrel, self, world, exclusions)
 
 
 ## 枪口世界坐标（武器局部 -Z 方向延伸 weapon_length）
 func _get_muzzle_position() -> Vector3:
+	var muzzle_marker := find_child("Muzzle", true, false) as Node3D
+	if muzzle_marker:
+		return muzzle_marker.global_position
 	var muzzle_offset: float = config.weapon_length if config else 0.7
 	return global_position + global_basis.z * -muzzle_offset
 
 
-## 沿准星射线查找瞄准点（环境或目标）；未命中时取 2000m 远点
-func _resolve_aim_point(origin: Vector3, dir: Vector3, world: World3D, exclusions: Array[RID]) -> Vector3:
-	var far_point := origin + dir.normalized() * 2000.0
-	var space_state := world.direct_space_state
-	if not space_state:
-		return far_point
-	var query := PhysicsRayQueryParameters3D.create(origin, far_point, 1 | 2, exclusions)
-	query.collide_with_areas = true
-	query.collide_with_bodies = true
-	var result := space_state.intersect_ray(query)
-	return result.get("position", far_point) if not result.is_empty() else far_point
+## 枪口方向完全由枪口 Marker 的 -Z 轴决定；没有 Marker 时使用武器根节点 -Z 轴。
+func _get_muzzle_direction() -> Vector3:
+	var muzzle_marker := find_child("Muzzle", true, false) as Node3D
+	if muzzle_marker:
+		return (-muzzle_marker.global_basis.z).normalized()
+	return (-global_basis.z).normalized()
 
 
 ## 收集射手自身的物理 RID（胶囊体 + 全部 BodyHitbox），
-## 供 hitscan 射线排除，防止摄像机起点的射线命中自己的头部/手臂 hitbox
+## 供枪口起点的射线排除，防止射线命中自己的身体/手臂 hitbox
 func _collect_shooter_exclusions() -> Array[RID]:
 	var rids: Array[RID] = []
 	var node: Node = self
@@ -773,32 +933,15 @@ func _restore_after_clearance() -> void:
 # 配件变更回调
 # ============================================================
 
-## attachment_manager.attachments_changed 触发后重算弹匣容量并通知外部
-func _on_attachments_changed() -> void:
-	if not config or not ammo_component or not attachment_manager:
+## AttachmentManager 先重建通用缓存，再在此处理扩容弹匣等派生数值。
+func _on_attachment_cache_changed() -> void:
+	if not ammo_component or not attachment_manager:
 		return
-	_reconfigure_from_attachments()
-
-
-## 从已装配件中提取专属配置，更新各物理组件参数
-func _reconfigure_from_attachments() -> void:
-	var barrel := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
-	var bolt   := _get_attachment_config_of_type(BoltCarrierConfig) as BoltCarrierConfig
-	var mag    := _get_attachment_config_of_type(MagazineConfig) as MagazineConfig
-
-	if barrel:
-		gas_component.reconfigure(barrel)
-		ejection_component.reconfigure(barrel)
-		bolt_component.set_muzzle_velocity(barrel.muzzle_velocity)
-	if bolt:
-		bolt_component.reconfigure(bolt)
-		ejection_component.reconfigure_bolt(bolt)
-		malfunction_component.reconfigure_bolt(bolt)
+	var mag := _get_attachment_config_of_type(MagazineConfig) as MagazineConfig
 	if mag:
-		ammo_component.reconfigure(mag)
-
-	if recoil_component:
-		recoil_component.rebuild_physics()
+		var target_capacity := mag.magazine_capacity + attachment_manager.get_total_magazine_capacity_bonus()
+		if ammo_component.get_capacity() != target_capacity:
+			ammo_component.recalculate_capacity(mag.magazine_capacity, attachment_manager.get_total_magazine_capacity_bonus())
 
 
 ## 遍历所有已装配件，返回第一个 config 类型匹配的实例

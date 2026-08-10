@@ -1,0 +1,12 @@
+[gd_scene format=3 uid="uid://d0tbwswl3tlfm"]
+
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_8ko8n"]
+[ext_resource type="PackedScene" uid="uid://b1wyey0qt85r2" path="res://assets/models/attachments/side_rails/AK12_SideRail.glb" id="2_tx6sd"]
+
+[node name="SideRailPicatinny_Right" type="Node3D" unique_id=1314077844]
+transform = Transform3D(1, 0, -1.7484555e-07, 0, 1, 0, 1.7484555e-07, 0, 1, 0, 0, 0)
+script = ExtResource("1_8ko8n")
+
+[node name="Mesh" parent="." unique_id=699477859 instance=ExtResource("2_tx6sd")]
+
+[node name="SnapPoint" type="Marker3D" parent="." unique_id=735906444]

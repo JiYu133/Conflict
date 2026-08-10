@@ -31,6 +31,7 @@ var _velocity: Vector3
 var _is_running: bool = false
 var _is_sprinting: bool = false
 var _was_on_floor: bool = true
+var _was_controllable: bool = true
 
 var _gait_phase: float = 0.0
 var _burst_timer: float = 0.0
@@ -40,6 +41,9 @@ var _shift_held_time: float = 0.0
 var _shift_was_held: bool = false
 
 var _camera_controller: PlayerCameraController = null
+## Debug-only Bot motion override. It still uses CharacterBody3D.move_and_slide().
+var _test_motion_active: bool = false
+var _test_motion_velocity: Vector3 = Vector3.ZERO
 
 
 func is_running() -> bool:
@@ -71,16 +75,48 @@ func initialize(player: BasePlayer, config: PlayerConfig, camera_controller: Pla
 	_camera_controller = camera_controller
 	_velocity = Vector3.ZERO
 
+func set_test_motion_velocity(world_velocity: Vector3) -> void:
+	_test_motion_active = true
+	_test_motion_velocity = world_velocity
+	_velocity = world_velocity
+	if _player:
+		_player.velocity = world_velocity
+
+func clear_test_motion() -> void:
+	_test_motion_active = false
+	_test_motion_velocity = Vector3.ZERO
+	_velocity.x = 0.0
+	_velocity.z = 0.0
+	if _player:
+		_player.velocity.x = 0.0
+		_player.velocity.z = 0.0
+
+func is_test_motion_active() -> bool:
+	return _test_motion_active
+
 
 func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
 	if not _player.controllable:
-		clear_locomotion_state()
+		if _was_controllable:
+			clear_locomotion_state()
+		_was_controllable = false
 		# 死亡或布娃娃激活时停止所有物理移动，让布娃娃自己处理物理
 		if not _player.is_alive or _player.is_ragdolled:
 			_velocity = Vector3.ZERO
 			_player.velocity = Vector3.ZERO
+			return
+		if _test_motion_active and _player.is_bot:
+			if not _player.is_on_floor():
+				_velocity.y -= _config.gravity * delta
+			else:
+				_velocity.y = _config.floor_snap_velocity
+			_velocity.x = _test_motion_velocity.x
+			_velocity.z = _test_motion_velocity.z
+			_player.velocity = _velocity
+			_player.move_and_slide()
+			_velocity = _player.velocity
 			return
 		# 存活但不可控（菜单/自由视角）：应用重力 + 制动滑停，不瞬间清零
 		if not _player.is_on_floor():
@@ -95,6 +131,7 @@ func _physics_process(delta: float) -> void:
 		_player.move_and_slide()
 		_velocity = _player.velocity
 		return
+	_was_controllable = true
 
 	# ──────────────────────────────────────────────────────
 	# 1. 读取输入方向
@@ -160,7 +197,7 @@ func _physics_process(delta: float) -> void:
 			speed *= _player.health_system.get_movement_speed_multiplier()
 
 		if has_input:
-			var basis := _player.transform.basis
+			var basis := _player.global_basis
 			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()
 
 			# 3b. 方向速度上限：横向 80%、后退 70%
@@ -233,7 +270,7 @@ func _physics_process(delta: float) -> void:
 		# ──────────────────────────────────────────────────
 		# 4. 空中水平速度（保持原有空气阻力手感）
 		# ──────────────────────────────────────────────────
-		var basis := _player.transform.basis
+		var basis := _player.global_basis
 		var target_velocity := Vector3.ZERO
 		if has_input:
 			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()
@@ -374,8 +411,12 @@ func _update_collision_shape(stance: float) -> void:
 		return
 
 	var shape := collision_shape.shape as CapsuleShape3D
-	var target_height : float = lerp(_config.collision_shape_height, _config.crouch_capsule_height, stance)
+	var standing_height: float = _config.collision_shape_height
+	var target_height: float = lerp(standing_height, _config.crouch_capsule_height, stance)
 	shape.height = target_height
+	# 胶囊体底部保持在站立时的高度，避免蹲下时碰撞体整体抬高。
+	collision_shape.position.y = _config.collision_shape_y_offset \
+		+ (standing_height - target_height) * 0.5
 
 
 func _update_model_offset(stance: float) -> void:

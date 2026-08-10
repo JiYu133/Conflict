@@ -1,9 +1,9 @@
 extends RefCounted
 
-## 配件目录：扫描 res://res/config/weapons/attachments/ 下的全部 AttachmentConfig 资源。
+## 配件目录：扫描 res://assets/config/weapons/attachments/ 下的全部 AttachmentConfig 资源。
 ## 改装 UI 用它列出「某个槽位可以装什么」。新增 .tres 无需改代码，重进游戏即可出现。
 
-const CATALOG_ROOT := "res://res/config/weapons/attachments"
+const CATALOG_ROOT := "res://assets/config/weapons/attachments"
 
 static var _cache: Array[AttachmentConfig] = []
 static var _scanned := false

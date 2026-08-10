@@ -3,8 +3,8 @@ extends Node
 
 # ============================================================
 # 布娃娃物理系统
-# 功能：管理玩家的布娃娃物理效果。在模型加载时自动为骨骼创建
-#       PhysicalBone3D 节点；死亡时播放死亡动画后切换到物理模拟；
+# 功能：管理玩家的布娃娃物理效果。PhysicalBone3D 和关节由角色场景预制，
+#       系统只负责筛选、配置碰撞层并在死亡时启动模拟；
 #       复活时停止模拟并恢复动画系统。
 # 用法：由 BasePlayer 在 _on_model_loaded() 中初始化。
 # ============================================================
@@ -65,16 +65,28 @@ var _config: RagdollConfig
 var _weapon_mount: Node3D  # 死亡时需要隐藏的武器挂载点
 var _fp_hidden_meshes: Array[MeshInstance3D] = []  # 第一人称隐藏的头部 mesh（layer 2）
 
-## 已创建的物理骨骼列表。每项存储 {"bone": PhysicalBone3D, "bone_idx": int}
+## 场景预制的物理骨骼列表。每项存储 {"bone": PhysicalBone3D, "bone_idx": int}
 var _physical_bone_entries: Array = []
 
 ## 死亡动画到物理阶段的倒计时（秒）
 var _death_anim_timer: float = 0.0
 
-## 待施加的冲击力方向（物理阶段启动时使用）
+## 待施加的冲击方向（物理阶段启动时使用）
 var _pending_impact_direction: Vector3 = Vector3.ZERO
 
-## 待施加冲击力的死亡类型
+## 最后一次命中的动能（J）；由 HealthSystem 传入，布娃娃系统不读取武器
+var _pending_impact_energy_j: float = 0.0
+
+## 最后一次命中的弹头/等效质量（kg）
+var _pending_impact_mass_kg: float = 0.0
+
+## 最后一次命中的通用伤害类型
+var _pending_impact_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BULLET
+
+## CharacterBody3D 在死亡瞬间的世界速度；用于保留移动中的尸体惯性。
+var _pending_inherited_velocity: Vector3 = Vector3.ZERO
+
+## 待施加冲击的死亡类型
 var _pending_death_type: DeathType = DeathType.GENERIC
 
 ## 布娃娃激活前保存的骨骼全局变换（用于复活恢复）
@@ -107,7 +119,7 @@ func _process(delta: float) -> void:
 # 初始化 ────────────────────────────────────────────────────
 
 ## 初始化布娃娃系统
-## skeleton:      模型中的 Skeleton3D，用于创建物理骨骼和启动模拟
+## skeleton:      模型中的 Skeleton3D，用于查找预制物理骨骼和启动模拟
 ## animator:      模型中的 AnimationPlayer，用于播放死亡动画
 ## animation_tree:模型中的 AnimationTree，启用布娃娃时需要关闭
 ## config:        布娃娃配置资源，为 null 时使用代码默认值
@@ -139,7 +151,7 @@ func initialize(
 	if not _skeleton:
 		GlobalLogger.warn("RagdollSystem", "Initialized without skeleton; ragdoll disabled.")
 		return
-	_disable_authored_physics_bones()
+	_prepare_authored_physics_bones()
 	GlobalLogger.info("RagdollSystem", "Initialized with skeleton: %s" % _skeleton.name)
 
 ## 清除仅属于旧模型骨骼的缓存。模型热重载时 initialize() 会再次调用。
@@ -147,7 +159,6 @@ func _reset_skeleton_state() -> void:
 	if is_instance_valid(_physical_simulator):
 		if _physical_simulator.is_simulating_physics():
 			_physical_simulator.physical_bones_stop_simulation()
-		_physical_simulator.queue_free()
 	_physical_simulator = null
 	_physical_bone_entries.clear()
 	_saved_bone_poses.clear()
@@ -158,25 +169,69 @@ func _reset_skeleton_state() -> void:
 	set_process(false)
 
 
-## 模型场景可能带有编辑器生成的 PhysicalBoneSimulator3D。
-## 本系统在死亡时动态创建并配置自己的物理骨骼；两套骨骼同时拥有默认碰撞
-## 会让正常玩家胶囊体与模型骨骼互相干扰，表现为无输入滑行或被地面推走。
-func _disable_authored_physics_bones() -> void:
+## 只使用角色场景中预制的物理骨骼。关节、碰撞形状和骨骼范围由场景资产控制，
+## 代码不再创建第二套 PhysicalBone3D。
+func _prepare_authored_physics_bones() -> void:
 	if not is_instance_valid(_skeleton):
 		return
-	var simulators := _skeleton.find_children("*", "PhysicalBoneSimulator3D", true, false)
+	_physical_bone_entries.clear()
+	var simulators: Array[PhysicalBoneSimulator3D] = _collect_simulators(_skeleton)
 	for simulator_node in simulators:
 		var simulator := simulator_node as PhysicalBoneSimulator3D
-		if not simulator or simulator == _physical_simulator:
+		if not simulator:
 			continue
 		if simulator.is_simulating_physics():
 			simulator.physical_bones_stop_simulation()
-		simulator.active = false
-		for bone_node in simulator.find_children("*", "PhysicalBone3D", true, false):
-			var bone := bone_node as PhysicalBone3D
-			if bone:
-				bone.collision_layer = 0
-				bone.collision_mask = 0
+		if is_instance_valid(_physical_simulator):
+			GlobalLogger.error("RagdollSystem", "Model must contain exactly one PhysicalBoneSimulator3D.")
+			_physical_simulator = null
+			_physical_bone_entries.clear()
+			return
+		_physical_simulator = simulator
+		simulator.active = true
+
+		for bone in _collect_physical_bones(simulator):
+			bone.collision_layer = _config.ragdoll_collision_layer
+			# 弹壳永远不能参与尸体接触求解。这里再次强制排除，避免旧的
+			# RagdollConfig 资源保存了“全部层”后覆盖代码默认值。
+			bone.collision_mask = _config.ragdoll_collision_mask & ~PhysicsLayers.SHELL_CASING
+			bone.collision_priority = 5.0
+			# PhysicalBone3D 的质量和阻尼默认由引擎决定；若不覆盖，
+			# 预制骨骼会过轻，普通枪击也会把尸体明显踢飞。
+			bone.mass = maxf(_config.mass, 0.1)
+			bone.linear_damp = maxf(_config.linear_damping, 0.0)
+			bone.angular_damp = maxf(_config.angular_damping, 0.0)
+			var bone_idx := _skeleton.find_bone(bone.bone_name)
+			if bone_idx >= 0:
+				_physical_bone_entries.append({"bone": bone, "bone_idx": bone_idx, "physical_parent_idx": _skeleton.get_bone_parent(bone_idx)})
+
+	if not is_instance_valid(_physical_simulator):
+		GlobalLogger.error("RagdollSystem", "No authored PhysicalBoneSimulator3D found; dynamic creation is disabled.")
+		return
+	_configure_self_collision_exceptions()
+	GlobalLogger.info("RagdollSystem", "Using authored simulator '%s' with %d physical bones (%d bound to Skeleton)." % [
+		_physical_simulator.name,
+		_collect_physical_bones(_physical_simulator).size(),
+		_physical_bone_entries.size()
+	])
+
+
+func _collect_simulators(root: Node) -> Array[PhysicalBoneSimulator3D]:
+	var result: Array[PhysicalBoneSimulator3D] = []
+	for child in root.get_children():
+		if child is PhysicalBoneSimulator3D:
+			result.append(child)
+		result.append_array(_collect_simulators(child))
+	return result
+
+
+func _collect_physical_bones(root: Node) -> Array[PhysicalBone3D]:
+	var result: Array[PhysicalBone3D] = []
+	for child in root.get_children():
+		if child is PhysicalBone3D:
+			result.append(child)
+		result.append_array(_collect_physical_bones(child))
+	return result
 
 ## 设置武器挂载点（死亡时隐藏、复活时恢复）
 ## 挂载点在 initialize() 之后才由 BasePlayer 查找到，因此单独提供设置入口
@@ -188,16 +243,24 @@ func set_weapon_mount(weapon_mount: Node3D) -> void:
 ## 启动死亡流程
 ## 依序执行：保存当前骨骼姿态 → 播放死亡动画 → 等待过渡时间 → 启动物理模拟
 ## death_type:       死亡类型，决定动画选择和冲击力默认方向
-## impact_direction: 冲击力方向（世界空间），Vector3.ZERO 时使用类型对应的默认方向
-func enable(death_type: DeathType = DeathType.GENERIC, impact_direction: Vector3 = Vector3.ZERO) -> void:
+## impact_direction: 冲击方向（世界空间），Vector3.ZERO 时使用类型对应的默认方向
+## impact_energy_j / impact_mass_kg: 通用命中物理数据，不依赖武器实现。
+func enable(
+	death_type: DeathType = DeathType.GENERIC,
+	impact_direction: Vector3 = Vector3.ZERO,
+	impact_energy_j: float = 0.0,
+	impact_mass_kg: float = 0.0,
+	impact_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BULLET,
+	inherited_velocity: Vector3 = Vector3.ZERO
+) -> void:
 	if _is_active or not _skeleton:
 		return
 
-	_is_active = true
+	if not is_instance_valid(_physical_simulator):
+		GlobalLogger.error("RagdollSystem", "Cannot start ragdoll without authored PhysicalBoneSimulator3D.")
+		return
 
-	# 首次调用时惰性创建物理骨骼
-	if _physical_bone_entries.is_empty():
-		_create_physical_bones()
+	_is_active = true
 
 	# JiYu 的稳定 IK 使用 persistent 骨骼覆盖。死亡后 BasePlayer 停止更新 IK，
 	# 此处一次性释放最后一帧覆盖，再将骨骼所有权交给死亡动画/物理模拟。
@@ -212,6 +275,10 @@ func enable(death_type: DeathType = DeathType.GENERIC, impact_direction: Vector3
 
 	# Step 3: 选择并播放死亡动画（仅在配置启用时）
 	_pending_impact_direction = impact_direction
+	_pending_impact_energy_j = maxf(impact_energy_j, 0.0)
+	_pending_impact_mass_kg = maxf(impact_mass_kg, 0.0)
+	_pending_impact_damage_type = impact_damage_type
+	_pending_inherited_velocity = inherited_velocity
 	_pending_death_type = death_type
 	_current_phase = RagdollPhase.DEATH_ANIMATION
 
@@ -277,109 +344,6 @@ func disable() -> void:
 	ragdoll_disabled.emit()
 	GlobalLogger.info("RagdollSystem", "Ragdoll disabled")
 
-# 私有 — 物理骨骼创建 ──────────────────────────────────────
-
-## 为骨骼系统中的每一块有效骨骼创建 PhysicalBone3D 并添加胶囊碰撞体
-## 过滤手指、IK 辅助骨骼、端点等不需要物理模拟的骨骼
-func _create_physical_bones() -> void:
-	_physical_bone_entries.clear()
-	var bone_count := _skeleton.get_bone_count()
-	var simulated_bones: Dictionary = {}
-	for i in bone_count:
-		var candidate_name := _skeleton.get_bone_name(i)
-		if _is_bone_excluded(candidate_name):
-			continue
-		if _get_bone_segment(i).length() >= 0.001:
-			simulated_bones[i] = true
-
-	_physical_simulator = PhysicalBoneSimulator3D.new()
-	_physical_simulator.name = "RagdollPhysicalBoneSimulator"
-	_skeleton.add_child(_physical_simulator)
-	_physical_simulator.active = true
-
-	for i in bone_count:
-		var bone_name: String = _skeleton.get_bone_name(i)
-
-		# 过滤排除关键词
-		if _is_bone_excluded(bone_name):
-			continue
-
-		if not simulated_bones.has(i):
-			continue
-
-		var physical_parent_idx := _find_physical_parent(i, simulated_bones)
-		var bone_segment := _get_bone_segment(i)
-		var bone_length: float = bone_segment.length()
-
-		# 骨骼长度过短（如 0 长度 IK 辅助骨骼）跳过
-		if bone_length < 0.001:
-			continue
-
-		# 创建 PhysicalBone3D
-		var phys_bone := PhysicalBone3D.new()
-		phys_bone.name = "PhysBone_" + bone_name
-
-		# 先添加到骨骼系统，部分属性需要在场景树中才能设置
-		_physical_simulator.add_child(phys_bone)
-
-		# 指定绑定的骨骼名
-		phys_bone.bone_name = bone_name
-
-		# 无物理父节点的骨骼成为自由根；其余节点使用有限 Cone 关节。
-		# Cone 不依赖模型特定的铰链轴，同时阻止 Pin 关节无限折叠成团。
-		if physical_parent_idx < 0:
-			phys_bone.joint_type = PhysicalBone3D.JOINT_TYPE_NONE
-		else:
-			_configure_cone_joint(phys_bone, bone_name)
-
-		# 刚体阻尼（增大防止骨骼过度震荡）
-		phys_bone.set("linear_damp", _get_bone_override(_config.bone_linear_damping_overrides, bone_name, _config.linear_damping))
-		phys_bone.set("angular_damp", _get_bone_override(_config.bone_angular_damping_overrides, bone_name, _config.angular_damping))
-
-		# 质量
-		phys_bone.set("mass", _get_bone_override(_config.bone_mass_overrides, bone_name, _config.mass))
-
-		# 碰撞层：骨骼只在第2层，不与第1层（含玩家胶囊体）碰撞
-		# 仅与第1层环境几何体碰撞
-		phys_bone.set("collision_layer", _config.ragdoll_collision_layer)
-		phys_bone.set("collision_mask", _config.ragdoll_collision_mask)
-		phys_bone.collision_priority = 5.0
-
-		# 创建胶囊碰撞形状
-		var collision_shape: Shape3D
-		var body_center := bone_segment * 0.5
-		if "Head" in bone_name:
-			var sphere := SphereShape3D.new()
-			sphere.radius = _config.head_radius
-			collision_shape = sphere
-			body_center = bone_segment * 0.25
-		else:
-			var capsule := CapsuleShape3D.new()
-			var capsule_radius := _get_collider_radius(bone_name, bone_length)
-			capsule.radius = capsule_radius
-			capsule.height = max(bone_length, capsule_radius * 2.0)
-			collision_shape = capsule
-
-		# PhysicalBone 位于关节处；刚体中心应在关节与子骨骼之间，并沿实际骨段方向旋转。
-		var align_to_segment := Quaternion(Vector3.UP, bone_segment.normalized())
-		phys_bone.body_offset = Transform3D(Basis(align_to_segment), body_center)
-
-		var col_shape := CollisionShape3D.new()
-		col_shape.shape = collision_shape
-		col_shape.name = "CollisionShape"
-
-		phys_bone.add_child(col_shape)
-		_physical_bone_entries.append({
-			"bone": phys_bone,
-			"bone_idx": i,
-			"physical_parent_idx": physical_parent_idx,
-		})
-
-	_configure_self_collision_exceptions()
-
-	GlobalLogger.info("RagdollSystem", "Created %d physical bones (skipped %d excluded/root/tiny)." % \
-		[_physical_bone_entries.size(), bone_count - _physical_bone_entries.size()])
-
 ## 非相邻部位互相碰撞以阻止穿模；关节邻居、同父兄弟和祖孙骨骼保持例外，
 ## 避免静止姿态中本就重叠的胶囊体产生巨大分离冲量。
 func _configure_self_collision_exceptions() -> void:
@@ -417,91 +381,17 @@ func _is_close_ancestor(ancestor_idx: int, bone_idx: int, max_steps: int) -> boo
 		current = _skeleton.get_bone_parent(current)
 	return false
 
-## 找到最近的已生成物理祖先，避免被过滤的辅助骨骼打断关节拓扑。
-func _find_physical_parent(bone_idx: int, simulated_bones: Dictionary) -> int:
-	var parent_idx := _skeleton.get_bone_parent(bone_idx)
-	while parent_idx >= 0:
-		if simulated_bones.has(parent_idx):
-			return parent_idx
-		parent_idx = _skeleton.get_bone_parent(parent_idx)
-	return -1
-
-## 无需模型特定轴向的保守人体关节限制。
-func _configure_cone_joint(physical_bone: PhysicalBone3D, bone_name: String) -> void:
-	physical_bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
-	var swing_span := 45.0
-	var twist_span := 25.0
-	if "Foot" in bone_name:
-		swing_span = 20.0
-		twist_span = 5.0
-	elif "ForeArm" in bone_name or "Leg" in bone_name and not "UpLeg" in bone_name:
-		swing_span = 35.0
-		twist_span = 12.0
-	elif "Shoulder" in bone_name or "Arm" in bone_name or "UpLeg" in bone_name:
-		swing_span = 70.0
-		twist_span = 35.0
-	elif "Spine" in bone_name or "Neck" in bone_name or "Head" in bone_name:
-		swing_span = 30.0
-		twist_span = 20.0
-	physical_bone.set("joint_constraints/swing_span", swing_span)
-	physical_bone.set("joint_constraints/twist_span", twist_span)
-	physical_bone.set("joint_constraints/softness", 0.8)
-	physical_bone.set("joint_constraints/relaxation", 1.0)
-
-func _get_collider_radius(bone_name: String, bone_length: float) -> float:
-	if "Hips" in bone_name:
-		return _config.pelvis_radius
-	if "Spine" in bone_name or "Shoulder" in bone_name:
-		return _config.torso_radius
-	if "UpLeg" in bone_name:
-		return maxf(0.09, _config.minimum_bone_radius)
-	if "Leg" in bone_name:
-		return maxf(0.07, _config.minimum_bone_radius)
-	if "Arm" in bone_name:
-		return maxf(0.055, _config.minimum_bone_radius)
-	if "Hand" in bone_name or "Foot" in bone_name:
-		return maxf(0.06, _config.minimum_bone_radius)
-	return maxf(bone_length * _config.bone_radius_scale, _config.minimum_bone_radius)
-
-## 返回从当前骨骼关节到一个有效子骨骼的局部向量。
-## 叶骨骼回退为指向父关节的半段，避免手、脚末端产生零尺寸刚体。
-func _get_bone_segment(bone_idx: int) -> Vector3:
-	var children := _skeleton.get_bone_children(bone_idx)
-	var longest := Vector3.ZERO
-	for child_idx in children:
-		var child_name := _skeleton.get_bone_name(child_idx)
-		if _is_bone_excluded(child_name):
-			continue
-		var candidate: Vector3 = _skeleton.get_bone_rest(child_idx).origin
-		if candidate.length_squared() > longest.length_squared():
-			longest = candidate
-	if not longest.is_zero_approx():
-		return longest
-
-	var parent_idx := _skeleton.get_bone_parent(bone_idx)
-	if parent_idx < 0:
-		return Vector3.ZERO
-	var rest := _skeleton.get_bone_rest(bone_idx)
-	return rest.basis.inverse() * -rest.origin * 0.5
-
-## 检查骨骼名是否匹配任一排除关键词
-func _is_bone_excluded(bone_name: String) -> bool:
-	for keyword in _config.exclude_bone_keywords:
-		if bone_name.contains(keyword):
-			return true
-	return false
-
-## 从覆盖字典中按骨骼名关键词查找覆盖值，未匹配则返回 default_value
-func _get_bone_override(overrides: Dictionary, bone_name: String, default_value: float) -> float:
-	for keyword in overrides:
-		if bone_name.contains(str(keyword)):
-			return float(overrides[keyword])
-	return default_value
-
 # 私有 — 阶段切换 ──────────────────────────────────────────
 
 ## 从死亡动画切换到物理模拟阶段
 func _start_physics_phase() -> void:
+	if not is_instance_valid(_physical_simulator):
+		GlobalLogger.error("RagdollSystem", "Cannot start physics without PhysicalBoneSimulator3D")
+		_is_active = false
+		_current_phase = RagdollPhase.INACTIVE
+		set_process(false)
+		return
+
 	_current_phase = RagdollPhase.RAGDOLL_PHYSICS
 
 	# 停止 AnimationPlayer（动画已播完）
@@ -512,38 +402,78 @@ func _start_physics_phase() -> void:
 	if is_instance_valid(_weapon_mount):
 		_weapon_mount.visible = false
 
-	# 死亡物理阶段：头部 mesh 切回仅 layer 2，摄像机不可见（跟第一人称逻辑一致）
+	# 本地玩家的头部只保留第一人称隐藏层；Bot 没有本地摄像机，必须继续对世界摄像机可见。
+	var player := get_parent()
+	var belongs_to_bot: bool = bool(player.get("is_bot")) if player else false
 	for mesh in _fp_hidden_meshes:
 		if is_instance_valid(mesh):
-			mesh.layers = 2
+			mesh.layers = 3 if belongs_to_bot else 2
 
-	# 启动物理骨骼模拟
-	if not is_instance_valid(_physical_simulator):
-		GlobalLogger.error("RagdollSystem", "Cannot start physics without PhysicalBoneSimulator3D")
-		return
+	# 物理骨架已经由场景资产完整定义，直接启动该模拟器下的全部预制骨骼。
 	_physical_simulator.physical_bones_start_simulation()
+	_apply_inherited_velocity()
 
-	# 施加冲击力
-	_apply_impact_force(_pending_death_type, _pending_impact_direction)
+	# 用命中能量和质量计算动量后施加冲量
+	_apply_impact_impulse(
+		_pending_death_type,
+		_pending_impact_direction,
+		_pending_impact_energy_j,
+		_pending_impact_mass_kg,
+		_pending_impact_damage_type
+	)
 
 	set_process(false)
 	ragdoll_physics_started.emit()
 	GlobalLogger.info("RagdollSystem", "Physics simulation started")
 
-# 私有 — 冲击力 ──────────────────────────────────────────────
+## 将死亡瞬间 CharacterBody3D 的速度复制到全部物理骨骼。
+## 这是速度继承，不属于枪械命中冲量；枪械冲量仍由 _apply_impact_impulse() 计算。
+func _apply_inherited_velocity() -> void:
+	if _pending_inherited_velocity.length_squared() <= 0.0001:
+		return
+	for entry in _physical_bone_entries:
+		var bone := entry["bone"] as PhysicalBone3D
+		if is_instance_valid(bone):
+			bone.linear_velocity = _pending_inherited_velocity
 
-## 根据死亡类型和方向对上身骨骼施加冲击力
-func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
-	# 确定冲击力大小
-	var force_magnitude := _config.default_impact_force
+# 私有 — 动能冲量 ────────────────────────────────────────────
+
+## 根据命中动能计算弹头动量，再按骨骼质量比例分配总冲量。
+## p = m*v = sqrt(2*m*E)，因此这里没有固定的牛顿力或固定击飞力。
+func _apply_impact_impulse(
+	death_type: DeathType,
+	direction: Vector3,
+	impact_energy_j: float,
+	impact_mass_kg: float,
+	impact_damage_type: MedicalEnums.DamageType
+) -> void:
+	if impact_energy_j <= 0.0:
+		# 控制台直接 die()、失血死亡等没有命中能量，不制造虚假飞行动量。
+		return
+
+	var effective_mass := impact_mass_kg
+	if effective_mass <= 0.0:
+		# 普通子弹/破片没有质量就无法从能量唯一确定动量；不猜一个质量，
+		# 防止调试伤害被误当成重物产生异常尸体飞行。
+		if impact_damage_type == MedicalEnums.DamageType.BULLET or \
+				impact_damage_type == MedicalEnums.DamageType.FRAGMENT:
+			return
+		effective_mass = _config.fallback_impact_mass_kg
+	effective_mass = maxf(effective_mass, 0.001)
+
 	var is_headshot: bool = death_type in [
 		DeathType.FRONT_HEADSHOT, DeathType.BACK_HEADSHOT, DeathType.CROUCHING_HEADSHOT
 	]
-
+	var transfer_ratio := _config.impact_energy_transfer
 	if is_headshot:
-		force_magnitude *= _config.headshot_force_multiplier
-	elif death_type == DeathType.EXPLOSION:
-		force_magnitude = _config.explosion_force
+		transfer_ratio = _config.headshot_energy_transfer
+	elif death_type == DeathType.EXPLOSION or impact_damage_type == MedicalEnums.DamageType.EXPLOSION:
+		transfer_ratio = _config.explosion_energy_transfer
+	transfer_ratio = clampf(transfer_ratio, 0.0, 1.0)
+
+	var total_impulse := sqrt(2.0 * effective_mass * impact_energy_j) * transfer_ratio
+	if total_impulse <= 0.0:
+		return
 
 	# 默认方向：死亡类型推断
 	if direction == Vector3.ZERO:
@@ -551,8 +481,9 @@ func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
 
 	var dir_normalized := direction.normalized()
 
-	# 收集受力骨骼。force_magnitude 表示整个身体的总冲量，不能对每块骨骼重复全额施加。
+	# 收集受力骨骼；总冲量不能对每块骨骼重复全额施加。
 	var targets: Array[PhysicalBone3D] = []
+	var total_target_mass := 0.0
 	for entry in _physical_bone_entries:
 		var pb: PhysicalBone3D = entry["bone"]
 		if not is_instance_valid(pb):
@@ -567,29 +498,30 @@ func _apply_impact_force(death_type: DeathType, direction: Vector3) -> void:
 			continue
 
 		targets.append(pb)
+		total_target_mass += maxf(pb.mass, 0.001)
 
-	# 配置使用牛顿，而 apply_central_impulse() 使用 N·s。将 1~2 个物理帧的
-	# 短时力转换为一次等效冲量，避免把 500 N 错当成 500 N·s 发射角色。
-	var physics_hz := maxf(float(Engine.physics_ticks_per_second), 1.0)
-	var impact_duration := float(_config.impact_force_frames) / physics_hz
-	var total_impulse := force_magnitude * impact_duration
-	var impulse_per_bone := total_impulse / maxf(float(targets.size()), 1.0)
+	if targets.is_empty() or total_target_mass <= 0.0:
+		return
+
+	# 质量越大的骨骼获得的冲量份额越大，使同一组骨骼的初始速度响应一致。
 	for target in targets:
-		target.apply_central_impulse(dir_normalized * impulse_per_bone)
+		var mass_share := maxf(target.mass, 0.001) / total_target_mass
+		target.apply_central_impulse(dir_normalized * total_impulse * mass_share)
 
-	# 爆头：对头部骨骼额外施加更大的力
+	# 爆头：在已经按能量计算的总冲量之外，将少量动量集中到头部。
 	if is_headshot:
 		for entry in _physical_bone_entries:
 			var pb: PhysicalBone3D = entry["bone"]
 			if not is_instance_valid(pb):
 				continue
 			if "Head" in pb.bone_name:
-				pb.apply_central_impulse(dir_normalized * total_impulse * 0.5)
-				GlobalLogger.debug("RagdollSystem", "Headshot extra impulse on %s: %.2f N*s" % [pb.bone_name, total_impulse * 0.5])
+				var extra_impulse := total_impulse * clampf(_config.headshot_extra_impulse_ratio, 0.0, 1.0)
+				pb.apply_central_impulse(dir_normalized * extra_impulse)
+				GlobalLogger.debug("RagdollSystem", "Headshot extra impulse on %s: %.2f kg*m/s" % [pb.bone_name, extra_impulse])
 				break
 
-	GlobalLogger.info("RagdollSystem", "Applied %.1f N for %d physics frame(s) = %.2f N*s across %d bones (dir: %s)" % \
-		[force_magnitude, _config.impact_force_frames, total_impulse, targets.size(), dir_normalized])
+	GlobalLogger.info("RagdollSystem", "Applied kinetic impulse %.2f kg*m/s (E=%.1f J, m=%.5f kg, transfer=%.2f) across %d bones (dir: %s)" % \
+		[total_impulse, impact_energy_j, effective_mass, transfer_ratio, targets.size(), dir_normalized])
 
 ## 根据死亡类型推断默认的冲击力方向（世界空间）
 func _get_default_impact_direction(death_type: DeathType) -> Vector3:
