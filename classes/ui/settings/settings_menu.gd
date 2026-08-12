@@ -62,7 +62,13 @@ var _listening_action := ""
 var _listening_slot := -1
 var _listen_button: Button
 var _listen_frame := 0
-var _pending_event: InputEvent
+var _listening_event: InputEvent
+var _listening_key_code := 0
+var _listening_mouse_button := -1
+var _listening_modifier_mask := 0
+var _listening_modifier_candidate := 0
+var _listening_combo: Array = []
+var _pending_event
 var _pending_action := ""
 var _pending_slot := -1
 var _value_label_tweens: Dictionary = {}
@@ -164,29 +170,104 @@ func _input(event: InputEvent) -> void:
 func _handle_listen_input(event: InputEvent) -> void:
 	if Engine.get_process_frames() == _listen_frame:
 		return
-	if event is InputEventKey and event.pressed and not event.echo \
-			and (event as InputEventKey).physical_keycode == KEY_ESCAPE:
-		_cancel_listening()
-		get_viewport().set_input_as_handled()
+	if event is InputEventKey and not event.echo:
+		var key_event := event as InputEventKey
+		var key_code := _key_code(key_event)
+		if key_event.pressed and key_code == KEY_ESCAPE:
+			_cancel_listening()
+			get_viewport().set_input_as_handled()
+			return
+		if key_event.pressed:
+			_add_listening_token(key_code)
+			get_viewport().set_input_as_handled()
+			return
+		if key_code in _listening_combo:
+			_finish_listen(_listening_combo.duplicate())
+			get_viewport().set_input_as_handled()
+			return
 		return
-	var input_event: InputEvent
-	if event is InputEventKey and event.pressed and not event.echo:
-		input_event = event.duplicate()
-	elif event is InputEventMouseButton and event.pressed:
-		input_event = event.duplicate()
-	else:
+	if event is InputEventMouseButton:
+		var mouse_event := event as InputEventMouseButton
+		if mouse_event.pressed:
+			_add_listening_token("mouse:%d" % mouse_event.button_index)
+			get_viewport().set_input_as_handled()
+		elif ("mouse:%d" % mouse_event.button_index) in _listening_combo:
+			_finish_listen(_listening_combo.duplicate())
+			get_viewport().set_input_as_handled()
+
+
+func _add_listening_token(token) -> void:
+	if token in _listening_combo:
 		return
+	_listening_combo.append(token)
+	if _listening_combo.size() > 2:
+		_listening_combo.pop_front()
+
+
+func _finish_listen(input_binding) -> void:
 	var action := _listening_action
 	var slot := _listening_slot
 	_cancel_listening()
-	var conflicts: Array[String] = KeybindStore.find_event_conflicts(input_event, action)
+	var conflicts: Array[String] = KeybindStore.find_event_conflicts(input_binding, action)
 	if conflicts.is_empty():
-		KeybindStore.rebind_action_slot(action, slot, input_event, false)
+		KeybindStore.rebind_action_slot(action, slot, input_binding, false)
 		_mark_dirty()
 		_refresh_bindings()
 	else:
-		_show_conflict(action, slot, input_event, conflicts)
-	get_viewport().set_input_as_handled()
+		_show_conflict(action, slot, input_binding, conflicts)
+
+
+func _key_code(event: InputEventKey) -> int:
+	return event.keycode if event.keycode != 0 else event.physical_keycode
+
+
+func _is_modifier_only_key(event: InputEventKey) -> bool:
+	return _key_code(event) in [KEY_CTRL, KEY_ALT, KEY_SHIFT, KEY_META]
+
+
+func _modifier_mask(key_code: int) -> int:
+	match key_code:
+		KEY_CTRL: return 1
+		KEY_ALT: return 2
+		KEY_SHIFT: return 4
+		KEY_META: return 8
+	return 0
+
+
+func _modifier_mask_from_key_event(event: InputEventKey) -> int:
+	var mask := 0
+	if event.ctrl_pressed:
+		mask |= _modifier_mask(KEY_CTRL)
+	if event.alt_pressed:
+		mask |= _modifier_mask(KEY_ALT)
+	if event.shift_pressed:
+		mask |= _modifier_mask(KEY_SHIFT)
+	if event.meta_pressed:
+		mask |= _modifier_mask(KEY_META)
+	return mask
+
+
+func _apply_modifier_mask(input_event: InputEvent) -> void:
+	for key_code in [KEY_CTRL, KEY_ALT, KEY_SHIFT, KEY_META]:
+		if _listening_modifier_mask & _modifier_mask(key_code):
+			_apply_modifier(input_event, key_code, true)
+
+
+func _apply_modifier(input_event: InputEvent, key_code: int, enabled: bool) -> void:
+	if input_event is InputEventKey:
+		var key_event := input_event as InputEventKey
+		match key_code:
+			KEY_CTRL: key_event.ctrl_pressed = enabled
+			KEY_ALT: key_event.alt_pressed = enabled
+			KEY_SHIFT: key_event.shift_pressed = enabled
+			KEY_META: key_event.meta_pressed = enabled
+	elif input_event is InputEventMouseButton:
+		var mouse_event := input_event as InputEventMouseButton
+		match key_code:
+			KEY_CTRL: mouse_event.ctrl_pressed = enabled
+			KEY_ALT: mouse_event.alt_pressed = enabled
+			KEY_SHIFT: mouse_event.shift_pressed = enabled
+			KEY_META: mouse_event.meta_pressed = enabled
 
 
 func _build_ui() -> void:
@@ -244,8 +325,8 @@ func _fit_panel_to_viewport() -> void:
 		return
 	var viewport_size := get_viewport().get_visible_rect().size
 	_panel.custom_minimum_size = Vector2(
-		maxf(0.0, minf(1080.0, viewport_size.x - 40.0)),
-		maxf(0.0, minf(650.0, viewport_size.y - 40.0))
+		maxf(0.0, minf(1160.0, viewport_size.x - 40.0)),
+		maxf(0.0, minf(700.0, viewport_size.y - 40.0))
 	)
 	_panel.reset_size()
 	_panel.position = (viewport_size - _panel.size) * 0.5
@@ -500,8 +581,10 @@ func _build_controls_page() -> void:
 	_content_subtitle.text = SettingsText.CONTROLS_SUBTITLE
 	_add_section(SettingsText.SECTION_MOUSE_AND_OPTICS)
 	_add_slider_row(SettingsText.CONTROL_SENSITIVITY, SettingsText.CONTROL_SENSITIVITY_HINT, "controls/sensitivity", 0.10, 3.00, 0.05)
+	_add_slider_row(SettingsText.CONTROL_RADIAL_MENU_HOLD, SettingsText.CONTROL_RADIAL_MENU_HOLD_HINT, "controls/radial_menu_hold_threshold", 0.10, 1.00, 0.05)
 	_add_toggle_row(SettingsText.CONTROL_INVERT_Y, SettingsText.CONTROL_INVERT_Y_HINT, "controls/invert_y")
-	_add_section(SettingsText.SECTION_KEYBINDS)
+	_add_section(SettingsText.SECTION_KEYBINDS, SettingsText.SECTION_KEYBINDS_HINT)
+	_add_binding_header()
 	var current_category := ""
 	for entry in KeybindStore.ACTIONS:
 		if entry.get("debug_only", false) and not OS.is_debug_build():
@@ -528,6 +611,21 @@ func _build_video_page() -> void:
 	_add_toggle_row(SettingsText.VIDEO_MUZZLE_FLASH, SettingsText.VIDEO_MUZZLE_FLASH_HINT, "graphics/muzzle_flash")
 	_add_toggle_row(SettingsText.VIDEO_MUZZLE_LIGHT, SettingsText.VIDEO_MUZZLE_LIGHT_HINT, "graphics/muzzle_light")
 	_add_toggle_row(SettingsText.VIDEO_HEAT_HAZE, SettingsText.VIDEO_HEAT_HAZE_HINT, "graphics/heat_haze")
+	_add_section(SettingsText.SECTION_WEAPON_VISIBILITY)
+	_add_slider_row(SettingsText.VIDEO_MUZZLE_FLASH_DISTANCE, SettingsText.VIDEO_MUZZLE_FLASH_DISTANCE_HINT, "graphics/muzzle_flash_distance", 20.0, 300.0, 10.0)
+	_add_slider_row(SettingsText.VIDEO_MUZZLE_LIGHT_DISTANCE, SettingsText.VIDEO_MUZZLE_LIGHT_DISTANCE_HINT, "graphics/muzzle_light_distance", 5.0, 100.0, 5.0)
+	_add_toggle_row(SettingsText.VIDEO_MUZZLE_FLASH_OFFSCREEN_CULLING, SettingsText.VIDEO_MUZZLE_FLASH_OFFSCREEN_CULLING_HINT, "graphics/muzzle_flash_offscreen_culling")
+	_add_section(SettingsText.SECTION_WEAPON_PERFORMANCE)
+	_add_option_row(
+		SettingsText.VIDEO_MUZZLE_FLASH_QUALITY,
+		SettingsText.VIDEO_MUZZLE_FLASH_QUALITY_HINT,
+		"graphics/muzzle_flash_quality",
+		[
+			{"label": SettingsText.QUALITY_LOW, "value": "low"},
+			{"label": SettingsText.QUALITY_MEDIUM, "value": "medium"},
+			{"label": SettingsText.QUALITY_HIGH, "value": "high"},
+		]
+	)
 	_add_section(SettingsText.SECTION_BLOOD_EFFECTS)
 	_add_toggle_row(SettingsText.VIDEO_BLOOD_EFFECTS, SettingsText.VIDEO_BLOOD_EFFECTS_HINT, "graphics/blood_effects")
 
@@ -542,7 +640,7 @@ func _build_placeholder_page(category: String) -> void:
 	_content_rows.add_child(label)
 
 
-func _add_section(text: String) -> void:
+func _add_section(text: String, description: String = "") -> void:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", 14)
@@ -553,6 +651,12 @@ func _add_section(text: String) -> void:
 	margin.add_theme_constant_override("margin_bottom", 4)
 	margin.add_child(label)
 	_content_rows.add_child(margin)
+	if description != "":
+		var hint := Label.new()
+		hint.text = description
+		hint.add_theme_font_size_override("font_size", 12)
+		hint.add_theme_color_override("font_color", COL_MUTED)
+		_content_rows.add_child(hint)
 
 
 func _add_binding_group(text: String) -> void:
@@ -565,6 +669,24 @@ func _add_binding_group(text: String) -> void:
 	margin.add_theme_constant_override("margin_bottom", 2)
 	margin.add_child(label)
 	_content_rows.add_child(margin)
+
+
+func _add_binding_header() -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	row.custom_minimum_size = Vector2(0, 24)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(spacer)
+	for label_text in [SettingsText.BIND_PRIMARY, SettingsText.BIND_SECONDARY]:
+		var label := Label.new()
+		label.text = label_text
+		label.custom_minimum_size = Vector2(145, 0)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_font_size_override("font_size", 12)
+		label.add_theme_color_override("font_color", COL_MUTED)
+		row.add_child(label)
+	_content_rows.add_child(row)
 
 
 func _add_slider_row(title: String, description: String, key: String, minimum: float, maximum: float, step: float) -> void:
@@ -610,6 +732,28 @@ func _add_window_mode_row() -> void:
 	option.select(1 if current_mode == "fullscreen" else 0)
 	option.item_selected.connect(func(index: int):
 		_settings_service.set_value("graphics/window_mode", option.get_item_metadata(index))
+		_mark_dirty()
+	)
+	row.add_child(option)
+
+
+func _add_option_row(title: String, description: String, key: String, items: Array) -> void:
+	var row := _new_row()
+	_add_row_labels(row, title, description)
+	var option := OptionButton.new()
+	option.custom_minimum_size = Vector2(170, 34)
+	option.focus_mode = Control.FOCUS_ALL
+	var current_value := String(_settings_service.get_value(key))
+	var selected_index := 0
+	for index in items.size():
+		var item: Dictionary = items[index]
+		option.add_item(String(item["label"]))
+		option.set_item_metadata(index, String(item["value"]))
+		if String(item["value"]) == current_value:
+			selected_index = index
+	option.select(selected_index)
+	option.item_selected.connect(func(index: int):
+		_settings_service.set_value(key, option.get_item_metadata(index))
 		_mark_dirty()
 	)
 	row.add_child(option)
@@ -729,7 +873,7 @@ func _add_bind_row(entry: Dictionary) -> void:
 	row.add_child(name)
 	for slot in 2:
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(135, 34)
+		button.custom_minimum_size = Vector2(145, 36)
 		button.focus_mode = Control.FOCUS_ALL
 		button.tooltip_text = SettingsText.BIND_TOOLTIP
 		button.pressed.connect(_begin_listen.bind(action, slot, button))
@@ -780,6 +924,12 @@ func _begin_listen(action: String, slot: int, button: Button) -> void:
 	_listening_slot = slot
 	_listen_button = button
 	_listen_frame = Engine.get_process_frames()
+	_listening_event = null
+	_listening_key_code = 0
+	_listening_mouse_button = -1
+	_listening_modifier_mask = 0
+	_listening_modifier_candidate = 0
+	_listening_combo.clear()
 	_listen_button.text = SettingsText.BIND_LISTENING
 	_style_key_button(_listen_button, true, false)
 
@@ -792,6 +942,11 @@ func _cancel_listening() -> void:
 	_listening_action = ""
 	_listening_slot = -1
 	_listen_button = null
+	_listening_event = null
+	_listening_key_code = 0
+	_listening_mouse_button = -1
+	_listening_modifier_mask = 0
+	_listening_modifier_candidate = 0
 	var button: Button = _key_buttons.get(_button_id(action, slot))
 	if button:
 		_refresh_key_button(action, slot, button)

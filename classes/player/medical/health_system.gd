@@ -68,15 +68,12 @@ func initialize(player: BasePlayer, config: HealthConfig) -> void:
 	# 监听模型加载完成，创建 hitbox
 	if _player.model_manager:
 		_player.model_manager.model_loaded.connect(_on_model_loaded)
-		GlobalLogger.info("HealthSystem", "Listening for model_loaded signal")
 	else:
 		GlobalLogger.warn("HealthSystem", "No model_manager found!")
 
 	# 死亡时销毁 hitbox（命中检测交给布娃娃 PhysicalBone3D）；复活时重建并重置生理状态
 	_player.died.connect(_on_player_died)
 	_player.revived.connect(_on_player_revived)
-
-	GlobalLogger.info("HealthSystem", "Initialized for player: %s" % player.name)
 
 # 生命周期 ──────────────────────────────────────────────────
 
@@ -114,8 +111,86 @@ func apply_damage(info: DamageInfo) -> void:
 
 ## 应用治疗（P3 实现；P1 存根返回 false）
 func apply_treatment(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartId) -> bool:
-	GlobalLogger.debug("HealthSystem", "Treatment not yet implemented (P3)")
-	return false
+	if _is_dead or not vitals:
+		return false
+	var region := vitals.get_region(part)
+	if not region:
+		return false
+	var treated := false
+	match t:
+		MedicalEnums.TreatmentType.BANDAGE:
+			for wound in region.wounds:
+				if wound.bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_bandaged and wound.bleed_rate <= MedicalEnums.BleedRate.VENOUS:
+					wound.is_bandaged = true
+					treated = true
+		MedicalEnums.TreatmentType.TOURNIQUET:
+			if _is_limb_part(part):
+				for wound in region.wounds:
+					if wound.bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_tourniqueted:
+						wound.is_tourniqueted = true
+						treated = true
+		MedicalEnums.TreatmentType.CHEST_SEAL:
+			if part == MedicalEnums.BodyPartId.TORSO:
+				for wound in region.wounds:
+					if wound.internal_bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_packed:
+						wound.is_packed = true
+						treated = true
+		MedicalEnums.TreatmentType.SPLINT:
+			for bone in region.fractured_bones:
+				if not region.is_splinted(bone):
+					region.splinted_bones.append(bone)
+					treated = true
+		MedicalEnums.TreatmentType.MORPHINE:
+			for wound in region.wounds:
+				if wound.pain_contribution > 0.0:
+					wound.pain_contribution *= 0.5
+					treated = true
+	if treated:
+		vitals.recompute_pain()
+		bleeding_changed.emit(vitals.total_bleed_rate())
+		pain_changed.emit(vitals.pain_level)
+		_evaluate_state(Vector3.ZERO, false)
+	return treated
+
+func get_first_treatable_part(t: MedicalEnums.TreatmentType) -> int:
+	if _is_dead or not vitals:
+		return -1
+	for part_id in vitals.regions:
+		var part: MedicalEnums.BodyPartId = int(part_id)
+		var region := vitals.regions[part_id] as BodyRegion
+		match t:
+			MedicalEnums.TreatmentType.BANDAGE:
+				for wound in region.wounds:
+					if wound.bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_bandaged and wound.bleed_rate <= MedicalEnums.BleedRate.VENOUS:
+						return part
+			MedicalEnums.TreatmentType.TOURNIQUET:
+				if _is_limb_part(part):
+					for wound in region.wounds:
+						if wound.bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_tourniqueted:
+							return part
+			MedicalEnums.TreatmentType.CHEST_SEAL:
+				if part == MedicalEnums.BodyPartId.TORSO:
+					for wound in region.wounds:
+						if wound.internal_bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_packed:
+							return part
+			MedicalEnums.TreatmentType.SPLINT:
+				if not region.fractured_bones.is_empty():
+					for bone in region.fractured_bones:
+						if not region.is_splinted(bone):
+							return part
+			MedicalEnums.TreatmentType.MORPHINE:
+				for wound in region.wounds:
+					if wound.pain_contribution > 0.0:
+						return part
+	return -1
+
+func _is_limb_part(part: MedicalEnums.BodyPartId) -> bool:
+	return part in [
+		MedicalEnums.BodyPartId.LEFT_UPPER_ARM, MedicalEnums.BodyPartId.LEFT_FOREARM,
+		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM, MedicalEnums.BodyPartId.RIGHT_FOREARM,
+		MedicalEnums.BodyPartId.LEFT_THIGH, MedicalEnums.BodyPartId.LEFT_CALF,
+		MedicalEnums.BodyPartId.RIGHT_THIGH, MedicalEnums.BodyPartId.RIGHT_CALF,
+	]
 
 ## 返回血量百分比（0.0–1.0）
 func get_blood_pct() -> float:
@@ -134,6 +209,25 @@ func get_part_health(part: MedicalEnums.BodyPartId) -> float:
 ## 返回当前生理状态
 func get_state() -> MedicalEnums.HealthState:
 	return current_state
+
+## 为新一局出生重置医疗状态。不是救助或治疗 API。
+func reset_for_spawn() -> void:
+	if not vitals:
+		return
+	vitals.initialize(_config)
+	_last_hit_direction = Vector3.ZERO
+	_last_hit_energy_j = 0.0
+	_last_hit_mass_kg = 0.0
+	_last_hit_damage_type = MedicalEnums.DamageType.BULLET
+	_lethal_organ_destroyed = false
+	_is_dead = false
+	_tick_timer = 0.0
+	current_state = MedicalEnums.HealthState.HEALTHY
+	state_changed.emit(current_state)
+	blood_changed.emit(vitals.get_blood_pct())
+	bleeding_changed.emit(0.0)
+	pain_changed.emit(0.0)
+	_create_hitboxes()
 
 ## 切换碰撞体可视化（调试用）
 func set_hitboxes_visible(visible: bool) -> void:
@@ -303,14 +397,6 @@ func _apply_structural_damage(info: DamageInfo) -> void:
 	vitals.blood_volume_ml = maxf(0.0, vitals.blood_volume_ml - immediate_loss)
 
 	bleeding_changed.emit(vitals.total_bleed_rate())
-	GlobalLogger.debug("HealthSystem", "Damage on %s: %.1f J → severity %.2f, wound #%d, bleed %s/int %s" % [
-		MedicalEnums.BodyPartId.keys()[info.body_part],
-		info.amount,
-		severity,
-		wound.wound_id,
-		MedicalEnums.BleedRate.keys()[wound.bleed_rate],
-		MedicalEnums.BleedRate.keys()[wound.internal_bleed_rate]
-	])
 
 
 ## P2：沿伤道求解内部结构损伤，并将结果写回伤口/部位状态。
@@ -443,13 +529,12 @@ func _evaluate_state(last_hit_direction: Vector3, include_impact_data: bool = tr
 	if new_state != current_state:
 		current_state = new_state
 		state_changed.emit(current_state)
-		GlobalLogger.debug("HealthSystem", "State → " + MedicalEnums.HealthState.keys()[current_state])
 
 	match current_state:
 		MedicalEnums.HealthState.DEAD:
 			_trigger_death(last_hit_direction, include_impact_data)
 		MedicalEnums.HealthState.UNCONSCIOUS:
-			if _player.controllable or _player.is_bot:
+			if _player.controllable or _player.is_ai_player:
 				went_unconscious.emit()
 				var impact_energy := _last_hit_energy_j if include_impact_data else 0.0
 				var impact_mass := _last_hit_mass_kg if include_impact_data else 0.0
@@ -580,7 +665,6 @@ func _on_player_revived() -> void:
 
 ## 接收 model_loaded 信号后，触发 hitbox 创建流程。
 func _on_model_loaded(_model: Node3D) -> void:
-	GlobalLogger.info("HealthSystem", "model_loaded signal received, creating hitboxes...")
 	_create_hitboxes()
 
 
@@ -596,16 +680,9 @@ func _create_hitboxes() -> void:
 		return
 
 	var skeleton := _player.model_manager.skeleton
-	GlobalLogger.info("HealthSystem", "Skeleton found: " + skeleton.name)
-
-	# 调试：列出所有骨骼名称
-	GlobalLogger.info("HealthSystem", "Total bones: " + str(skeleton.get_bone_count()))
-	for i in range(min(skeleton.get_bone_count(), 20)):  # 只显示前20个
-		GlobalLogger.debug("HealthSystem", "Bone[%d]: %s" % [i, skeleton.get_bone_name(i)])
 
 	# 获取碰撞体配置（优先使用 HealthConfig 中的配置，否则使用默认）
 	var hitbox_cfg := _config.hitbox_config if _config.hitbox_config else HitboxConfig.new()
-	GlobalLogger.info("HealthSystem", "Using HitboxConfig: " + ("custom" if _config.hitbox_config else "default"))
 
 	# 骨骼名称 → 身体部位映射（使用实际骨骼名称：mixamorig_）
 	# 扩展：躯干分为胸部和腹部，手臂和腿分为前后两段
@@ -630,8 +707,6 @@ func _create_hitboxes() -> void:
 		if bone_idx < 0:
 			GlobalLogger.warn("HealthSystem", "Bone not found: " + bone_name)
 			continue
-
-		GlobalLogger.info("HealthSystem", "Creating hitbox for: " + bone_name + " (bone index: " + str(bone_idx) + ")")
 
 		# 创建 BoneAttachment3D 作为 hitbox 的父节点
 		var bone_attach := BoneAttachment3D.new()
@@ -661,9 +736,6 @@ func _create_hitboxes() -> void:
 			)
 
 		_hitboxes.append(hitbox)
-
-	GlobalLogger.info("HealthSystem", "Created %d hitboxes" % _hitboxes.size())
-
 
 ## 内部结构可视化配色：器官红、骨骼白、血管深红
 func _anatomy_debug_color(type: MedicalEnums.StructureType) -> Color:
@@ -711,9 +783,6 @@ func debug_add_wound(part: MedicalEnums.BodyPartId, severity: float, bleed_overr
 	region.add_wound(w)
 	wound_added.emit(w)
 	bleeding_changed.emit(vitals.total_bleed_rate())
-	GlobalLogger.debug("HealthSystem", "[DEBUG] Wound injected: %s severity %.2f bleed %s" % [
-		MedicalEnums.BodyPartId.keys()[part], severity, MedicalEnums.BleedRate.keys()[w.bleed_rate]
-	])
 	_evaluate_state(Vector3.ZERO)
 
 
@@ -723,7 +792,6 @@ func debug_set_blood_pct(pct: float) -> void:
 		return
 	vitals.blood_volume_ml = clampf(pct, 0.0, 1.0) * vitals.max_blood_volume_ml
 	blood_changed.emit(vitals.get_blood_pct())
-	GlobalLogger.debug("HealthSystem", "[DEBUG] Blood set to %.0f%%" % (pct * 100.0))
 	_evaluate_state(Vector3.ZERO)
 
 
@@ -737,8 +805,8 @@ func debug_clear_wounds() -> void:
 		region.wounds.clear()
 		region.organ_damage.clear()
 		region.fractured_bones.clear()
+		region.splinted_bones.clear()
 	vitals.breathing_effectiveness = 1.0
 	_lethal_organ_destroyed = false
 	bleeding_changed.emit(0.0)
-	GlobalLogger.debug("HealthSystem", "[DEBUG] All wounds and structural damage cleared")
 	_evaluate_state(Vector3.ZERO)

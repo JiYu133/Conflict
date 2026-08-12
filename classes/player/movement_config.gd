@@ -53,6 +53,19 @@ extends Resource
 ## 转向减速强度（0=不减速，1=完全余弦削减）
 @export var turn_decel_factor: float = 0.85
 
+@export_group("Turn In Place")
+@export var turn_in_place_enabled: bool = true
+@export_range(0.0, 180.0, 0.5) var turn_trigger_angle_degrees: float = 40.0
+@export_range(0.0, 180.0, 0.5) var turn_view_limit_degrees: float = 90.0
+@export_range(0.0, 1.0, 0.01) var turn_view_min_sensitivity_ratio: float = 0.25
+@export_range(1.0, 180.0, 0.5) var turn_clip_authored_angle_degrees: float = 90.0
+## Normal clip rate. Increase to shorten each turn without changing its angle.
+@export_range(0.1, 3.0, 0.01) var turn_min_playback_speed: float = 1.25
+@export_range(0.1, 3.0, 0.01) var turn_max_playback_speed: float = 1.5
+@export_range(0.0, 1.0, 0.01) var turn_constrained_speed_ratio: float = 0.25
+@export_range(0.0, 1.0, 0.01) var turn_constrained_acceleration_ratio: float = 0.25
+@export_range(0.0, 1.0, 0.01) var turn_transition_time: float = 0.12
+
 # 运动手感 ────────────────────────────────────────────────────
 @export_group("运动手感")
 ## 起步峰值速度倍率

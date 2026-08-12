@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="EncounterConfig" format=3 uid="uid://djk4rpnu326px"]
+
+[ext_resource type="Script" uid="uid://c0p5p4cxpebhv" path="res://classes/encounter/encounter_config.gd" id="1_config"]
+[ext_resource type="Resource" path="res://assets/config/ai/ai_recruit.tres" id="10_ai_recruit"]
+[ext_resource type="Resource" path="res://assets/config/ai/ai_friendly_regular.tres" id="11_ai_friendly"]
+[ext_resource type="Resource" path="res://assets/config/ai/ai_enemy_regular.tres" id="12_ai_enemy"]
+[ext_resource type="Resource" path="res://assets/config/ai/ai_veteran.tres" id="13_ai_veteran"]
+[ext_resource type="Script" path="res://classes/bot/ai_config.gd" id="14_ai_config_script"]
+
+[resource]
+script = ExtResource("1_config")
+friendly_ai_config = ExtResource("11_ai_friendly")
+enemy_ai_config = ExtResource("12_ai_enemy")
+friendly_ai_configs = Array[ExtResource("14_ai_config_script")]([ExtResource("10_ai_recruit"), ExtResource("11_ai_friendly"), ExtResource("13_ai_veteran")])
+enemy_ai_configs = Array[ExtResource("14_ai_config_script")]([ExtResource("10_ai_recruit"), ExtResource("12_ai_enemy"), ExtResource("13_ai_veteran")])

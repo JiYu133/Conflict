@@ -2,8 +2,10 @@ extends CanvasLayer
 
 const RadialMenuOptionScript := preload("res://classes/ui/radial_menu_option.gd")
 const RadialMenuScript := preload("res://classes/ui/radial_menu.gd")
+const RadialMenuConfigScript := preload("res://classes/ui/radial_menu_config.gd")
+const RADIAL_MENU_CONFIG: RadialMenuConfig = preload("res://assets/config/ui/radial_menu_config.tres")
 const HOLD_THRESHOLD := 0.25
-const CONTROL_LOCK_OWNER := "radial_menu"
+const HOLD_THRESHOLD_SETTING := "controls/radial_menu_hold_threshold"
 const MOUSE_OWNER := "radial_menu"
 
 var _wheels: Dictionary = {}
@@ -24,6 +26,7 @@ func _ready() -> void:
 	_menu = RadialMenuScript.new() as RadialMenu
 	_menu.name = "RadialMenu"
 	_menu.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_menu.configure(RADIAL_MENU_CONFIG if RADIAL_MENU_CONFIG else RadialMenuConfigScript.new() as RadialMenuConfig)
 	add_child(_menu)
 	set_process_input(true)
 
@@ -87,16 +90,17 @@ func is_open() -> bool:
 
 
 func _process(delta: float) -> void:
+	var hold_threshold: float = _get_hold_threshold()
 	if _pending_action_id != "":
 		var pending: Dictionary = _wheels.get(_pending_action_id, {})
 		var action := String(pending.get("input_action", ""))
 		if action.is_empty() or not Input.is_action_pressed(action):
-			# Release events normally finish this path in _input. This fallback
-			# prevents a lost event from leaving a pending short press behind.
+			# 正常情况下由 _input 处理松开事件；这里作为兜底，防止事件丢失后
+			# 一直保留未完成的短按状态。
 			_pending_action_id = ""
 		else:
 			_pending_time += delta
-			if _pending_time >= HOLD_THRESHOLD:
+			if _pending_time >= hold_threshold:
 				var action_id := _pending_action_id
 				_pending_action_id = ""
 				_open_wheel(action_id)
@@ -120,6 +124,10 @@ func _input(event: InputEvent) -> void:
 			close(false)
 			get_viewport().set_input_as_handled()
 			return
+		# 轮盘打开时只阻断鼠标，键盘仍继续传给玩家控制逻辑。
+		if event is InputEventMouseButton:
+			get_viewport().set_input_as_handled()
+			return
 		if event is InputEventMouseMotion:
 			_last_mouse_position = event.position
 			_menu.update_pointer(event.position)
@@ -133,7 +141,8 @@ func _input(event: InputEvent) -> void:
 					_menu.move_selection(1)
 				_:
 					pass
-			get_viewport().set_input_as_handled()
+			if event.keycode in [KEY_LEFT, KEY_UP, KEY_RIGHT, KEY_DOWN]:
+				get_viewport().set_input_as_handled()
 			return
 
 	for action_id in _wheels:
@@ -148,7 +157,7 @@ func _input(event: InputEvent) -> void:
 		if event.is_action_released(action):
 			if _pending_action_id == action_id:
 				_pending_action_id = ""
-				if _pending_time < HOLD_THRESHOLD:
+				if _pending_time < _get_hold_threshold():
 					var callback: Callable = wheel.short_press
 					if callback.is_valid():
 						callback.call()
@@ -164,6 +173,13 @@ func _can_start_wheel() -> bool:
 	return _player and is_instance_valid(_player) and _player.is_alive and _player.controllable
 
 
+func _get_hold_threshold() -> float:
+	if _player and is_instance_valid(_player) and _player.settings_service:
+		var configured: Variant = _player.settings_service.get_value(HOLD_THRESHOLD_SETTING, HOLD_THRESHOLD)
+		return clampf(float(configured), 0.10, 1.00)
+	return HOLD_THRESHOLD
+
+
 func _open_wheel(action_id: String) -> bool:
 	if _open or not _wheels.has(action_id) or not _can_start_wheel():
 		return false
@@ -176,7 +192,6 @@ func _open_wheel(action_id: String) -> bool:
 	_page_index = 0
 	_page_count = maxi(ceili(float(_all_options.size()) / 6.0), 1) if _all_options.size() > 8 else 1
 	_open = true
-	_player.acquire_control_lock(CONTROL_LOCK_OWNER)
 	_player.request_mouse_mode(MOUSE_OWNER, Input.MOUSE_MODE_VISIBLE, 120)
 	if _player.weapon_manager:
 		_player.weapon_manager.release_trigger()
@@ -240,5 +255,4 @@ func _finish_close() -> void:
 	_active_action_id = ""
 	_menu.hide_menu()
 	if _player and is_instance_valid(_player):
-		_player.release_control_lock(CONTROL_LOCK_OWNER)
 		_player.release_mouse_mode(MOUSE_OWNER)

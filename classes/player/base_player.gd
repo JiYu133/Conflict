@@ -19,11 +19,14 @@ const WEAPON_DROP_SYSTEM_SCRIPT := preload("res://classes/player/weapon_drop_sys
 
 @export_group("Configuration")
 @export var player_config: PlayerConfig
+## AIPlayer 使用的完整 AI 配置包。
+@export var ai_config: AIConfig
+## 旧资源兼容字段；新玩法配置应使用 ai_config。
 
 @export_group("State")
-@export var is_bot: bool = false
-@export var bot_id: int = -1
-@export var bot_display_name: String = ""
+@export var is_ai_player: bool = false
+@export var ai_player_id: int = -1
+@export var ai_display_name: String = ""
 @export var is_alive: bool = true: # 玩家存活状态设置
 	set(value):
 		if _is_alive == value:
@@ -62,6 +65,7 @@ const CONTROL_LOCK_SETTINGS := "settings_menu"
 const MOUSE_OWNER_CAMERA := "player_camera"
 const CONTROL_LOCK_CONSOLE := "console"
 const CONTROL_LOCK_RADIAL_MENU := "radial_menu"
+const CONTROL_LOCK_MEDICAL := "medical_treatment"
 
 var control_state: PlayerControlState
 var _controllable_fallback: bool = true
@@ -78,9 +82,11 @@ var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
 var foot_ik_controller: FootIKController
 var hand_ik_controller: HandIKController
+var spine_aim_controller: SpineAimController
 var weapon_manager: WeaponManager
 var weapon_drop_system: WeaponDropSystem
 var animation_controller: PlayerAnimationController
+var turn_controller: PlayerTurnController
 var health_system: HealthSystem
 var death_blood_effect: DeathBloodEffect
 var stamina_system: StaminaSystem
@@ -92,6 +98,7 @@ var weapon_mod_menu
 var free_camera_controller: FreeCameraController
 var console_system: ConsoleSystem
 var radial_menu_service
+var medical_treatment_component: MedicalTreatmentComponent
 
 # 信号
 
@@ -137,9 +144,11 @@ func _initialize_subsystems() -> void:
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
+	spine_aim_controller = _create_subsystem(SpineAimController.new(), "SpineAimController")
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
 	weapon_drop_system = _create_subsystem(WEAPON_DROP_SYSTEM_SCRIPT.new(), "WeaponDropSystem") as WeaponDropSystem
 	animation_controller = _create_subsystem(PlayerAnimationController.new(), "AnimationController")
+	turn_controller = _create_subsystem(PlayerTurnController.new(), "TurnController")
 	health_system = _create_subsystem(HealthSystem.new(), "HealthSystem")
 	stamina_system = _create_subsystem(StaminaSystem.new(), "StaminaSystem")
 
@@ -154,7 +163,7 @@ func _initialize_subsystems() -> void:
 		player_config.model_config if player_config else null,
 		player_config.camera_config if player_config else null,
 		settings_service,
-		not is_bot
+		not is_ai_player
 		)
 
 	movement_controller.initialize(
@@ -191,7 +200,7 @@ func _initialize_subsystems() -> void:
 
 	stamina_system.initialize(self, player_config.stamina_config if player_config else null)
 
-	if not is_bot:
+	if not is_ai_player:
 		screen_effects = _create_subsystem(PlayerScreenEffects.new(), "ScreenEffects")
 		screen_effects.initialize(self, settings_service)
 
@@ -223,6 +232,20 @@ func _initialize_subsystems() -> void:
 			"cycle_fire_mode",
 			func(): weapon_manager.cycle_fire_mode(),
 			_get_fire_mode_wheel_options
+		)
+		medical_treatment_component = _create_subsystem(preload("res://classes/encounter/medical_treatment_component.gd").new(), "MedicalTreatment") as MedicalTreatmentComponent
+		medical_treatment_component.initialize(self)
+		radial_menu_service.register_wheel(
+			"medical",
+			"medical_radial",
+			func(): medical_treatment_component.begin_treatment(MedicalEnums.TreatmentType.BANDAGE),
+			medical_treatment_component.get_wheel_options
+		)
+		radial_menu_service.register_wheel(
+			"squad_command",
+			"squad_command_radial",
+			func(): _issue_squad_command(AIBlackboard.SquadCommand.FOLLOW_PLAYER),
+			_get_squad_command_options
 		)
 
 		if OS.is_debug_build():
@@ -296,8 +319,15 @@ func _on_model_loaded(_model: Node3D) -> void:
 	if is_instance_valid(model_manager.animation_tree):
 		model_manager.animation_tree.active = true
 	animation_controller.initialize(self, movement_controller, model_manager, player_config)
+	turn_controller.initialize(self, camera_controller, movement_controller, animation_controller, player_config.movement_config if player_config else null)
+	spine_aim_controller.setup(
+		model_manager.skeleton,
+		self,
+		camera_controller,
+		player_config.spine_aim_config if player_config else null
+	)
 	hand_ik_controller.setup(model_manager.skeleton, player_config.hand_ik_config if player_config else null)
-	if not is_bot:
+	if not is_ai_player:
 		camera_controller._find_camera_nodes()
 		camera_controller.enable_camera()
 	else:
@@ -382,8 +412,10 @@ func _sync_weapon_weight_to_stamina() -> void:
 
 
 func _process(delta: float) -> void:
-	if is_alive:
-		hand_ik_controller.process_ik(delta)
+	var procedural_animation_active := is_alive and not is_ragdolled
+	spine_aim_controller.process_aim(delta, procedural_animation_active)
+	hand_ik_controller.process_ik(delta, procedural_animation_active)
+	if procedural_animation_active:
 		foot_ik_controller.process_ik(delta)
 
 
@@ -437,7 +469,7 @@ func _input(event: InputEvent) -> void:
 			KEY_T:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.TORSO)
-			KEY_Y:
+			KEY_I:
 				if free_camera_controller:
 					free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.HEAD)
 			KEY_U:
@@ -466,8 +498,6 @@ func _get_fire_mode_wheel_options() -> Array[RadialMenuOption]:
 		var option := RadialMenuOption.new()
 		option.id = mode
 		option.title = _fire_mode_display(mode)
-		option.description = "Current mode" if mode == weapon.current_fire_mode else "Select fire mode"
-		option.icon = _fire_mode_icon(mode)
 		option.is_current = mode == weapon.current_fire_mode
 		option.is_enabled = available.has(mode)
 		option.disabled_reason = "Selector switch unavailable" if not option.is_enabled else ""
@@ -489,13 +519,42 @@ func _fire_mode_display(mode: String) -> String:
 		_: return mode.to_upper()
 
 
-func _fire_mode_icon(mode: String) -> String:
-	match mode:
-		"safe": return "S"
-		"semi": return "1"
-		"auto": return "A"
-		"burst": return "3"
-		_: return "*"
+func _get_squad_command_options() -> Array[RadialMenuOption]:
+	var result: Array[RadialMenuOption] = []
+	var commands := [
+		[AIBlackboard.SquadCommand.FOLLOW_PLAYER, "跟随我", "跟随玩家移动"],
+		[AIBlackboard.SquadCommand.MOVE_TO_OBJECTIVE, "前往目标", "移动并占领目标区"],
+		[AIBlackboard.SquadCommand.ADVANCE, "推进", "向敌情或目标方向推进"],
+		[AIBlackboard.SquadCommand.HOLD, "坚守", "原地警戒并保持阵地"],
+		[AIBlackboard.SquadCommand.FALL_BACK, "撤回", "撤回到玩家附近"],
+		[AIBlackboard.SquadCommand.ATTACK, "攻击", "攻击当前共享敌情"],
+	]
+	var director := _get_encounter_bot_director()
+	for entry in commands:
+		var option := RadialMenuOption.new()
+		option.id = AIBlackboard.command_name(entry[0])
+		option.title = entry[1]
+		option.description = entry[2]
+		option.is_enabled = director != null
+		option.disabled_reason = "当前没有可指挥的队友" if not director else ""
+		option.execute = _make_squad_command_callback(entry[0])
+		result.append(option)
+	return result
+
+
+func _issue_squad_command(command: AIBlackboard.SquadCommand) -> void:
+	var director := _get_encounter_bot_director()
+	if director:
+		director.issue_player_command(command, self)
+
+
+func _make_squad_command_callback(command: AIBlackboard.SquadCommand) -> Callable:
+	return func(): _issue_squad_command(command)
+
+
+func _get_encounter_bot_director() -> EncounterAIDirector:
+	var scene := get_tree().current_scene if get_tree() else null
+	return scene.find_child("EncounterAIDirector", true, false) as EncounterAIDirector if scene else null
 
 
 ## 调试用弹药重置：补满当前武器全部弹匣并上膛
@@ -563,9 +622,9 @@ func regain_consciousness() -> void:
 	global_position = pos
 	is_ragdolled = false
 	release_control_lock(CONTROL_LOCK_UNCONSCIOUS)
-	if not is_bot:
+	if not is_ai_player:
 		set_controllable(true)
-	if not is_bot:
+	if not is_ai_player:
 		camera_controller.enable_camera()
 	_set_collision_enabled(true)
 	if screen_effects:
@@ -613,7 +672,7 @@ func _activate_ragdoll(
 	# 轻微上移玩家原点，给物理骨骼初始位置留出与地面的间隙，
 	# 防止 Jolt 检测到初始穿插后将骨骼向下弹出
 	global_position.y += 0.05
-	if not is_bot and camera_controller:
+	if not is_ai_player and camera_controller:
 		camera_controller.disable_camera(model_manager.skeleton)
 		camera_controller.set_ragdoll_camera_shake(true)
 		if not ragdoll_system.ragdoll_physics_started.is_connected(camera_controller.on_ragdoll_physics_started):
@@ -639,7 +698,7 @@ func revive() -> void:
 	# 恢复到死亡时的位置
 	global_position = revive_position
 
-	if not is_bot:
+	if not is_ai_player:
 		camera_controller.enable_camera()
 	# 恢复玩家碰撞体
 	_set_collision_enabled(true)
@@ -654,26 +713,100 @@ func revive() -> void:
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
 
 
+## 初始化遭遇战出生状态，清理死亡、昏迷、布娃娃和控制锁残留。
+func prepare_for_encounter_spawn(spawn_transform: Transform3D) -> void:
+	if not is_alive:
+		revive()
+	elif health_system:
+		health_system.reset_for_spawn()
+
+	if ragdoll_system and is_ragdolled:
+		ragdoll_system.disable()
+	is_ragdolled = false
+	velocity = Vector3.ZERO
+	clear_ai_motion()
+	clear_ai_input()
+	if movement_controller:
+		movement_controller.clear_locomotion_state()
+	_set_collision_enabled(true)
+
+	_controllable_fallback = true
+	if control_state:
+		control_state.reset_for_spawn()
+	else:
+		controllable = true
+	if not is_ai_player:
+		request_mouse_mode(MOUSE_OWNER_CAMERA, Input.MOUSE_MODE_CAPTURED, 0)
+		if camera_controller:
+			camera_controller.enable_camera()
+	global_transform = spawn_transform
+
+
 func set_controllable(enabled: bool) -> void:
 	controllable = enabled
 	GlobalLogger.info("Player", "Controller of player " + get_parent().name + " has been" + ("ENABLED" if enabled else "DISABLED"))
 
 ## Debug-only Bot motion bridge. The actual movement remains in the normal
 ## CharacterBody3D movement controller and is therefore visible to ragdoll.
-func set_bot_test_motion(world_velocity: Vector3) -> bool:
-	if not is_bot or not movement_controller or not is_alive:
+func set_ai_player_test_motion(world_velocity: Vector3) -> bool:
+	if not is_ai_player or not movement_controller or not is_alive:
 		return false
 	movement_controller.set_test_motion_velocity(world_velocity)
 	return true
 
-func stop_bot_test_motion() -> bool:
-	if not is_bot or not movement_controller:
+func stop_ai_player_test_motion() -> bool:
+	if not is_ai_player or not movement_controller:
 		return false
 	movement_controller.clear_test_motion()
 	return true
 
 func is_bot_test_motion_active() -> bool:
-	return is_bot and movement_controller and movement_controller.is_test_motion_active()
+	return is_ai_player and movement_controller and movement_controller.is_test_motion_active()
+
+
+## Runtime AI movement bridge. This is separate from the console-only test
+## motion bridge, while still using the normal CharacterBody3D movement path.
+func set_ai_motion(world_velocity: Vector3) -> bool:
+	if not is_ai_player or not movement_controller or not is_alive:
+		return false
+	movement_controller.set_ai_motion_velocity(world_velocity)
+	return true
+
+
+## Runtime AI virtual input. Movement is calculated by the same locomotion
+## path used by the player, including stance, stamina, injury and acceleration.
+func set_ai_input(world_direction: Vector3, running: bool = false, sprinting: bool = false) -> bool:
+	if not is_ai_player or not movement_controller or not is_alive:
+		return false
+	movement_controller.set_ai_input(world_direction, running, sprinting)
+	return true
+
+
+func clear_ai_input() -> void:
+	if movement_controller:
+		movement_controller.clear_ai_input()
+
+
+func set_ai_fire_input(pressed: bool) -> void:
+	if not is_ai_player or not weapon_manager:
+		return
+	if pressed:
+		weapon_manager.press_trigger()
+	else:
+		weapon_manager.release_trigger()
+
+
+## AIPlayer 姿态输入，复用与玩家 C 键/滚轮相同的 StanceController。
+func set_ai_stance(crouching: bool) -> bool:
+	if not is_ai_player or not stance_controller or not is_alive:
+		return false
+	stance_controller.set_stance(1.0 if crouching else 0.0)
+	return true
+
+
+func clear_ai_motion() -> void:
+	if movement_controller:
+		movement_controller.clear_ai_motion()
 
 
 ## 由需要临时接管输入的组件持有独立锁，避免互相覆盖控制状态。

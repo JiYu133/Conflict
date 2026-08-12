@@ -7,7 +7,7 @@ const KeybindStore = preload("res://classes/ui/settings/keybind_store.gd")
 const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
 
 const SAVE_PATH := "user://settings.cfg"
-const VERSION := 3
+const VERSION := 4
 
 const GRAPHICS_DEFAULTS_V3 := {
 	"graphics/hit_camera_impact": 1.0,
@@ -21,8 +21,16 @@ const GRAPHICS_DEFAULTS_V3 := {
 	"graphics/blood_effects": true,
 }
 
+const GRAPHICS_DEFAULTS_V4 := {
+	"graphics/muzzle_flash_distance": 120.0,
+	"graphics/muzzle_light_distance": 35.0,
+	"graphics/muzzle_flash_offscreen_culling": true,
+	"graphics/muzzle_flash_quality": "medium",
+}
+
 const DEFAULTS := {
 	"controls/sensitivity": 1.0,
+	"controls/radial_menu_hold_threshold": 0.25,
 	"controls/invert_y": false,
 	"graphics/window_mode": "fullscreen",
 	"graphics/hit_camera_impact": 1.0,
@@ -31,6 +39,10 @@ const DEFAULTS := {
 	"graphics/death_effect": true,
 	"graphics/death_camera_shake": 1.0,
 	"graphics/muzzle_flash": true,
+	"graphics/muzzle_flash_distance": 120.0,
+	"graphics/muzzle_light_distance": 35.0,
+	"graphics/muzzle_flash_offscreen_culling": true,
+	"graphics/muzzle_flash_quality": "medium",
 	"graphics/muzzle_light": true,
 	"graphics/heat_haze": true,
 	"graphics/blood_effects": true,
@@ -110,8 +122,12 @@ func load_settings() -> void:
 	# 升级时统一恢复为设计默认值；之后玩家的主动修改会正常持久化。
 	if saved_version < VERSION:
 		_settings_were_migrated = true
+	if saved_version < 3:
 		for key in GRAPHICS_DEFAULTS_V3:
 			_values[key] = GRAPHICS_DEFAULTS_V3[key]
+	if saved_version < 4:
+		for key in GRAPHICS_DEFAULTS_V4:
+			_values[key] = GRAPHICS_DEFAULTS_V4[key]
 
 
 func save_settings() -> Error:
@@ -129,6 +145,8 @@ func _normalize_value(key: String, value: Variant) -> Variant:
 	match key:
 		"controls/sensitivity":
 			return clampf(float(value), 0.10, 3.00)
+		"controls/radial_menu_hold_threshold":
+			return clampf(float(value), 0.10, 1.00)
 		"controls/invert_y":
 			return bool(value)
 		"graphics/window_mode":
@@ -136,8 +154,16 @@ func _normalize_value(key: String, value: Variant) -> Variant:
 			return mode if mode in ["windowed", "fullscreen"] else DEFAULTS[key]
 		"graphics/hit_camera_impact", "graphics/damage_blur", "graphics/death_camera_shake":
 			return clampf(float(value), 0.0, 1.0)
+		"graphics/muzzle_flash_distance":
+			return clampf(float(value), 20.0, 300.0)
+		"graphics/muzzle_light_distance":
+			return clampf(float(value), 5.0, 100.0)
+		"graphics/muzzle_flash_quality":
+			var quality := String(value)
+			return quality if quality in ["low", "medium", "high"] else DEFAULTS[key]
 		"graphics/coma_effect", "graphics/death_effect", "graphics/muzzle_flash", \
-			"graphics/muzzle_light", "graphics/heat_haze", "graphics/blood_effects":
+			"graphics/muzzle_light", "graphics/heat_haze", "graphics/blood_effects", \
+			"graphics/muzzle_flash_offscreen_culling":
 			return bool(value)
 	return value
 

@@ -1,0 +1,94 @@
+extends Node
+
+
+func _ready() -> void:
+	_run.call_deferred()
+
+
+func _run() -> void:
+	var scene := load("res://assets/map/TestMap.tscn") as PackedScene
+	if not _check(scene != null, "TestMap scene loads"):
+		return
+
+	var map := scene.instantiate()
+	get_tree().root.add_child(map)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var player := map.get_node_or_null("CharacterBody3D") as BasePlayer
+	if not _check(player != null, "player initializes"):
+		return
+	var skeleton := player.model_manager.skeleton
+	var spine := player.spine_aim_controller
+	var hand_ik := player.hand_ik_controller
+	if not _check(skeleton != null and spine._modifier != null, "spine modifier initializes"):
+		return
+	if not _check(hand_ik._target_modifier != null and hand_ik._ik_node != null, "hand IK modifiers initialize"):
+		return
+
+	if not _check(
+		spine._modifier.get_index() < hand_ik._target_modifier.get_index()
+		and hand_ik._target_modifier.get_index() < hand_ik._ik_node.get_index(),
+		"modifier order is spine -> hand target -> IK"
+	):
+		return
+
+	var upper_spine_idx := skeleton.find_bone("mixamorig_Spine2")
+	if not _check(upper_spine_idx != -1, "upper spine bone exists"):
+		return
+	var before_basis := skeleton.get_bone_global_pose(upper_spine_idx).basis.orthonormalized()
+	var weapon_attachment := _find_parent_bone_attachment(hand_ik._left_hand_grip)
+	if not _check(weapon_attachment != null, "weapon grip has a bone attachment parent"):
+		return
+	var attachment_before := weapon_attachment.global_transform
+
+	player.camera_controller._vertical_angle = deg_to_rad(35.0)
+	spine.process_aim(1.0, true)
+	hand_ik.process_ik(1.0, true)
+	# SkeletonModifier 的结果只在骨架更新阶段生效，帧末会恢复动画基姿态。
+	# 在同一阶段手动执行两个修饰器，验证实际参与 IK 求解的姿态和目标。
+	spine._modifier._process_modification()
+
+	var after_basis := skeleton.get_bone_global_pose(upper_spine_idx).basis.orthonormalized()
+	var spine_change := before_basis.get_rotation_quaternion().angle_to(after_basis.get_rotation_quaternion())
+	if not _check(spine_change > deg_to_rad(2.0), "view pitch changes the spine pose"):
+		return
+	hand_ik._target_modifier._process_modification()
+	if not _check(attachment_before.origin.distance_to(weapon_attachment.global_position) > 0.001, "weapon attachment refreshes after spine aim"):
+		return
+	player.camera_controller._view_yaw = player.rotation.y + deg_to_rad(30.0)
+	player.turn_controller._turning = true
+	spine.process_aim(1.0, true)
+	if not _check(absf(spine._modifier.yaw_radians) > deg_to_rad(20.0), "view yaw continues to drive the spine during a turn"):
+		return
+	player.turn_controller._turning = false
+
+	var grip_xf := hand_ik._get_current_grip_transform()
+	var expected_target := grip_xf.origin \
+		+ grip_xf.basis.orthonormalized() * hand_ik._config.grip_position_offset
+	var target_error := hand_ik._hand_target.global_position.distance_to(expected_target)
+	if not _check(target_error < 0.002, "hand target follows the current-frame weapon grip"):
+		return
+
+	print("spine_hand_ik_check=ok spine_change_deg=%.2f target_error_mm=%.3f" % [
+		rad_to_deg(spine_change), target_error * 1000.0
+	])
+	get_tree().quit(0)
+
+
+func _find_parent_bone_attachment(node: Node) -> BoneAttachment3D:
+	var current := node
+	while current:
+		if current is BoneAttachment3D:
+			return current as BoneAttachment3D
+		current = current.get_parent()
+	return null
+
+
+func _check(condition: bool, message: String) -> bool:
+	if condition:
+		return true
+	push_error(message)
+	get_tree().quit(1)
+	return false

@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://cumd76b2e0fn" path="res://classes/weapon/weapon_config.gd" id="1_cfg"]
 [ext_resource type="PackedScene" uid="uid://c8jcutg7au4g0" path="res://assets/models/weapons/ak74m/ak_74m.tscn" id="2_ixgqf"]
+[ext_resource type="Resource" uid="uid://beil2jopxanyq" path="res://assets/config/weapons/fx/weapon_fx_config.tres" id="3_fx"]
 
 [sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_dropped_weapon"]
 points = PackedVector3Array(-0.02, 0.015, -0.4715, 0.02, 0.015, -0.4715, -0.06, -0.085, -0.36, 0.06, -0.085, -0.36, -0.06, 0.06, -0.36, 0.06, 0.06, -0.36, -0.055, -0.085, 0.35, 0.055, -0.085, 0.35, -0.055, 0.06, 0.35, 0.055, 0.06, 0.35, -0.018, 0, 0.4715, 0.018, 0, 0.4715)
@@ -20,6 +21,7 @@ hipfire_spread = 3.2
 ads_spread = 0.12
 weight = 3.6
 weapon_scene = ExtResource("2_ixgqf")
+fx_config = ExtResource("3_fx")
 weapon_length = 0.943
 dropped_collision_shape = SubResource("ConvexPolygonShape3D_dropped_weapon")
 bolt_travel_m = 0.075

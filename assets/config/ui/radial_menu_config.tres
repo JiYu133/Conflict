@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="RadialMenuConfig" format=3]
+
+[ext_resource type="Script" path="res://classes/ui/radial_menu_config.gd" id="1_radial_config"]
+
+[resource]
+script = ExtResource("1_radial_config")
+menu_radius_ratio = 0.2
+inner_radius_ratio = 0.64
+label_radius_ratio = 0.82
+sector_gap = 0.06
+side_flatten_angle = 0.06
+selected_scale = 1.045
+label_size = Vector2(136, 30)
+label_font_size = 14
+panel_color = Color(0.25, 0.25, 0.25, 0.44)
+panel_selected_color = Color(0.82, 0.82, 0.82, 0.72)
+border_color = Color(0.96, 0.96, 0.96, 0.62)
+border_current_color = Color(0.9, 0.9, 0.9, 0.78)
+border_selected_color = Color(1, 1, 1, 0.98)
+text_color = Color(0.98, 0.98, 0.98, 1)
+disabled_color = Color(0.32, 0.32, 0.32, 0.3)
+disabled_text_color = Color(0.56, 0.56, 0.56, 0.78)
+show_icons = false
+icon_size = Vector2(24, 24)

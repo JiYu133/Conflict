@@ -1,50 +1,36 @@
 class_name RadialMenu
 extends Control
 
+const RadialMenuConfigScript := preload("res://classes/ui/radial_menu_config.gd")
 const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
-const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.24)
-const COL_PANEL := Color(0.10, 0.10, 0.10, 0.76)
-const COL_PANEL_SELECTED := Color(0.42, 0.42, 0.42, 0.86)
-const COL_BORDER := Color(0.78, 0.78, 0.78, 0.42)
-const COL_BORDER_SELECTED := Color(0.98, 0.98, 0.98, 0.96)
-const COL_TEXT := Color(0.94, 0.94, 0.94, 1.0)
-const COL_MUTED := Color(0.68, 0.68, 0.68, 1.0)
-const COL_DISABLED := Color(0.20, 0.20, 0.20, 0.58)
-const COL_DISABLED_TEXT := Color(0.46, 0.46, 0.46, 1.0)
-const RADIUS := 230.0
-const INNER_RADIUS := 92.0
-const LABEL_RADIUS := 158.0
 
 var options: Array[RadialMenuOption] = []
 var selected_index := -1
-var page_index := 0
-var page_count := 1
 var _labels: Array[Label] = []
-var _center_icon: Label
-var _center_title: Label
-var _center_description: Label
-var _center_reason: Label
-var _prompt: Label
-var _page_label: Label
+var _icons: Array[TextureRect] = []
 var _font: Font
+var _config: RadialMenuConfig
+
+
+## 注入由 .tres 提供的视觉参数；未注入时使用脚本默认配置。
+func configure(new_config: RadialMenuConfig) -> void:
+	_config = new_config if new_config else RadialMenuConfigScript.new() as RadialMenuConfig
 
 
 func _ready() -> void:
+	if not _config:
+		_config = RadialMenuConfigScript.new() as RadialMenuConfig
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if ResourceLoader.exists(FONT_PATH):
 		_font = load(FONT_PATH) as Font
-	_build_center_labels()
 	visible = false
 
 
-func show_options(new_options: Array[RadialMenuOption], new_page_index: int = 0, new_page_count: int = 1) -> void:
+func show_options(new_options: Array[RadialMenuOption], _new_page_index: int = 0, _new_page_count: int = 1) -> void:
 	options = new_options
-	page_index = new_page_index
-	page_count = max(new_page_count, 1)
 	selected_index = -1
 	visible = true
 	_rebuild_labels()
-	_update_center()
 	queue_redraw()
 
 
@@ -67,7 +53,7 @@ func update_pointer(pointer: Vector2) -> void:
 		return
 	var center := size * 0.5
 	var delta := pointer - center
-	if delta.length() < INNER_RADIUS:
+	if delta.length() < _inner_radius():
 		_set_selected(-1)
 		return
 	var angle := fposmod(atan2(delta.y, delta.x) + PI * 0.5, TAU)
@@ -76,7 +62,7 @@ func update_pointer(pointer: Vector2) -> void:
 
 func update_stick(stick: Vector2) -> void:
 	if stick.length() >= 0.25:
-		update_pointer(size * 0.5 + stick.normalized() * RADIUS)
+		update_pointer(size * 0.5 + stick.normalized() * _outer_radius())
 
 
 func move_selection(step: int) -> void:
@@ -92,56 +78,9 @@ func _set_selected(index: int) -> void:
 	if selected_index == index:
 		return
 	selected_index = index
-	_update_center()
+	_layout_labels()
 	_restyle_labels()
 	queue_redraw()
-
-
-func _build_center_labels() -> void:
-	_center_icon = _make_label(42, COL_TEXT)
-	_center_icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_center_icon.set_anchors_preset(Control.PRESET_CENTER)
-	_center_icon.position = Vector2(-42, -120)
-	_center_icon.size = Vector2(84, 58)
-	add_child(_center_icon)
-
-	_center_title = _make_label(22, COL_TEXT)
-	_center_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_center_title.set_anchors_preset(Control.PRESET_CENTER)
-	_center_title.position = Vector2(-150, -55)
-	_center_title.size = Vector2(300, 34)
-	add_child(_center_title)
-
-	_center_description = _make_label(13, COL_MUTED)
-	_center_description.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_center_description.set_anchors_preset(Control.PRESET_CENTER)
-	_center_description.position = Vector2(-170, -16)
-	_center_description.size = Vector2(340, 42)
-	_center_description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(_center_description)
-
-	_center_reason = _make_label(12, Color(0.95, 0.62, 0.38))
-	_center_reason.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_center_reason.set_anchors_preset(Control.PRESET_CENTER)
-	_center_reason.position = Vector2(-180, 25)
-	_center_reason.size = Vector2(360, 32)
-	_center_reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(_center_reason)
-
-	_prompt = _make_label(12, COL_MUTED)
-	_prompt.text = "Release to select  |  Esc / RMB to cancel  |  Center to cancel"
-	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt.set_anchors_preset(Control.PRESET_CENTER)
-	_prompt.position = Vector2(-310, 285)
-	_prompt.size = Vector2(620, 26)
-	add_child(_prompt)
-
-	_page_label = _make_label(12, COL_MUTED)
-	_page_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_page_label.set_anchors_preset(Control.PRESET_CENTER)
-	_page_label.position = Vector2(-100, 255)
-	_page_label.size = Vector2(200, 24)
-	add_child(_page_label)
 
 
 func _make_label(font_size: int, color: Color) -> Label:
@@ -160,15 +99,16 @@ func _rebuild_labels() -> void:
 	if count == 0:
 		return
 	for i in count:
-		var label := _make_label(15, COL_TEXT)
+		var label := _make_label(_config.label_font_size, _config.text_color)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.text = "%s\n%s" % [options[i].icon, options[i].title]
-		label.tooltip_text = options[i].disabled_reason if not options[i].is_enabled else options[i].description
-		label.position = size * 0.5 + Vector2.from_angle(-PI * 0.5 + (i + 0.5) * TAU / count) * LABEL_RADIUS - Vector2(72, 31)
-		label.size = Vector2(144, 62)
+		label.text = options[i].title.to_upper()
+		label.size = _config.label_size
+		label.pivot_offset = _config.label_size * 0.5
 		_labels.append(label)
 		add_child(label)
+		_add_icon_if_configured(options[i], label, i)
+	_layout_labels()
 	_restyle_labels()
 
 
@@ -177,56 +117,108 @@ func _clear_labels() -> void:
 		if is_instance_valid(label):
 			label.queue_free()
 	_labels.clear()
+	for icon in _icons:
+		if is_instance_valid(icon):
+			icon.queue_free()
+	_icons.clear()
+
+
+## 图标扩展点：配置 show_icons 且选项提供 icon_texture 后才会创建节点。
+func _add_icon_if_configured(option: RadialMenuOption, label: Label, label_index: int) -> void:
+	if not _config.show_icons or not option.icon_texture:
+		return
+	var icon := TextureRect.new()
+	icon.texture = option.icon_texture
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.size = _config.icon_size
+	icon.set_meta("label_index", label_index)
+	icon.position = label.position + Vector2((_config.label_size.x - _config.icon_size.x) * 0.5, -_config.icon_size.y - 2.0)
+	_icons.append(icon)
+	add_child(icon)
+
+
+func _layout_icons() -> void:
+	for icon in _icons:
+		var label_index := int(icon.get_meta("label_index", -1))
+		if label_index < 0 or label_index >= _labels.size():
+			continue
+		var item_scale := _config.selected_scale if label_index == selected_index else 1.0
+		icon.scale = Vector2.ONE * item_scale
+		icon.position = _labels[label_index].position + Vector2(
+			(_config.label_size.x - _config.icon_size.x) * 0.5,
+			-_config.icon_size.y - 2.0
+		) * item_scale
+
+
+func _layout_labels() -> void:
+	var count := options.size()
+	if count == 0:
+		return
+	var center := size * 0.5
+	for i in _labels.size():
+		var item_scale := _config.selected_scale if i == selected_index else 1.0
+		var direction := Vector2.from_angle(-PI * 0.5 + (i + 0.5) * TAU / count)
+		_labels[i].scale = Vector2.ONE * item_scale
+		_labels[i].position = center + direction * _label_radius() * item_scale - _config.label_size * 0.5
+	_layout_icons()
 
 
 func _restyle_labels() -> void:
 	for i in _labels.size():
 		var label := _labels[i]
 		var option := options[i]
-		var color := COL_DISABLED_TEXT if not option.is_enabled else (COL_TEXT if i != selected_index else Color.WHITE)
+		var color := _config.disabled_text_color if not option.is_enabled else (_config.text_color if i != selected_index else Color.WHITE)
 		label.add_theme_color_override("font_color", color)
-		label.modulate = Color(1.0, 1.0, 1.0, 0.72) if not option.is_enabled else (Color(0.82, 0.94, 1.0) if option.is_current else Color.WHITE)
+		label.modulate = Color(1.0, 1.0, 1.0, 0.72) if not option.is_enabled else (Color(0.82, 0.82, 0.82) if option.is_current and i != selected_index else Color.WHITE)
 
 
-func _update_center() -> void:
-	if not _center_icon:
-		return
-	var option := get_selected_option()
-	if not option:
-		_center_icon.text = "+"
-		_center_title.text = "RADIAL MENU"
-		_center_description.text = "Point to an option"
-		_center_reason.text = ""
-	else:
-		_center_icon.text = option.icon
-		_center_title.text = option.title
-		_center_description.text = option.description
-		_center_reason.text = option.disabled_reason if not option.is_enabled else ""
-	_page_label.text = "PAGE %d / %d" % [page_index + 1, page_count] if page_count > 1 else ""
+func _outer_radius() -> float:
+	return minf(size.x, size.y) * _config.menu_radius_ratio
+
+
+func _inner_radius() -> float:
+	return _outer_radius() * _config.inner_radius_ratio
+
+
+func _label_radius() -> float:
+	return _outer_radius() * _config.label_radius_ratio
+
+
+func _arc_points(center: Vector2, radius: float, start: float, finish: float, steps: int = 16) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for j in steps + 1:
+		points.append(center + Vector2.from_angle(lerpf(start, finish, float(j) / float(steps))) * radius)
+	return points
 
 
 func _draw() -> void:
 	if not visible:
 		return
-	draw_rect(Rect2(Vector2.ZERO, size), COL_BACKDROP)
 	var center := size * 0.5
-	draw_circle(center, RADIUS + 12.0, Color(0.01, 0.025, 0.04, 0.72))
-	draw_circle(center, INNER_RADIUS, COL_PANEL)
-	draw_arc(center, RADIUS + 12.0, 0.0, TAU, 96, COL_BORDER, 2.0, true)
-	draw_arc(center, INNER_RADIUS, 0.0, TAU, 64, COL_BORDER, 2.0, true)
+	var outer_radius := _outer_radius()
+	var inner_radius := _inner_radius()
 	var count := options.size()
 	if count == 0:
 		return
 	for i in count:
-		var start := -PI * 0.5 + i * TAU / count + 0.012
-		var finish := -PI * 0.5 + (i + 1) * TAU / count - 0.012
-		var points := PackedVector2Array([center + Vector2.from_angle(start) * INNER_RADIUS])
-		for j in 13:
-			points.append(center + Vector2.from_angle(lerpf(start, finish, float(j) / 12.0)) * RADIUS)
-		points.append(center + Vector2.from_angle(finish) * INNER_RADIUS)
+		var start := -PI * 0.5 + i * TAU / count + _config.sector_gap
+		var finish := -PI * 0.5 + (i + 1) * TAU / count - _config.sector_gap
+		var item_scale := _config.selected_scale if i == selected_index else 1.0
+		var item_outer_radius := outer_radius * item_scale
+		var item_inner_radius := inner_radius * item_scale
+		# 端面仍是直线，但内侧端点向模块中线收拢，减少“指向圆心”的倾斜感。
+		var inner_start := start + _config.side_flatten_angle
+		var inner_finish := finish - _config.side_flatten_angle
+		var points := _arc_points(center, item_outer_radius, start, finish)
+		var inner_points := _arc_points(center, item_inner_radius, inner_finish, inner_start)
+		points.append_array(inner_points)
 		var option := options[i]
-		var fill := COL_DISABLED if not option.is_enabled else (COL_PANEL_SELECTED if i == selected_index else COL_PANEL)
+		var fill := _config.disabled_color if not option.is_enabled else (_config.panel_selected_color if i == selected_index else _config.panel_color)
 		draw_colored_polygon(points, fill)
-		var edge := COL_BORDER_SELECTED if i == selected_index else (Color(0.86, 0.86, 0.86, 0.78) if option.is_current else COL_BORDER)
-		draw_polyline(PackedVector2Array([center + Vector2.from_angle(start) * INNER_RADIUS, center + Vector2.from_angle(start) * RADIUS]), edge, 2.0, true)
-		draw_arc(center, RADIUS, start, finish, 24, edge, 2.0, true)
+		var edge := _config.border_selected_color if i == selected_index else (_config.border_current_color if option.is_current else _config.border_color)
+		draw_polyline(_arc_points(center, item_outer_radius, start, finish), edge, 1.0, true)
+		draw_polyline(_arc_points(center, item_inner_radius, inner_finish, inner_start), edge, 1.0, true)
+		draw_line(center + Vector2.from_angle(inner_start) * item_inner_radius, center + Vector2.from_angle(start) * item_outer_radius, edge, 1.0, true)
+		draw_line(center + Vector2.from_angle(inner_finish) * item_inner_radius, center + Vector2.from_angle(finish) * item_outer_radius, edge, 1.0, true)

@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://dqt48xyctgcbr" path="res://classes/ui/medical_debug_hud.gd" id="6_medical_hud"]
 [ext_resource type="Script" uid="uid://dtgqrshx3beik" path="res://classes/ui/top_right_notification_manager.gd" id="7_notification"]
 [ext_resource type="Resource" uid="uid://ke76oc81381y" path="res://assets/config/ui/notifications/tutorial.tres" id="8_tutorial"]
-[ext_resource type="Script" uid="uid://vgyo4ucos8q2" path="res://classes/bot/bot_manager.gd" id="9_bot_manager"]
+[ext_resource type="Script" path="res://classes/bot/ai_player_manager.gd" id="9_ai_player_manager"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_jq8tk"]
 size = Vector3(1.0458984, 50, 0)
@@ -88,8 +88,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.627635, 0.8835354, -2.49873
 script = ExtResource("1_jkswc")
 player_config = ExtResource("5_config")
 
-[node name="BotManager" type="Node" parent="." unique_id=1703700006]
-script = ExtResource("9_bot_manager")
+[node name="AIPlayerManager" type="Node" parent="." unique_id=1703700006]
+script = ExtResource("9_ai_player_manager")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=1022232431]
 

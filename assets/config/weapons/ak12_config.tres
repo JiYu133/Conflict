@@ -16,6 +16,7 @@
 [ext_resource type="Resource" uid="uid://db82b8j843uii" path="res://assets/config/weapons/attachments/side_rails/ak12_side_rail_left.tres" id="13_y6xlr"]
 [ext_resource type="Resource" uid="uid://bfmsre0u1hpkw" path="res://assets/config/weapons/attachments/side_rails/ak12_side_rail_right.tres" id="14_xxkj3"]
 [ext_resource type="PackedScene" uid="uid://b15r8es3k4kf5" path="res://assets/models/attachments/receivers/ak12_receiver/ak12_receiver.tscn" id="16_y6xlr"]
+[ext_resource type="Resource" uid="uid://beil2jopxanyq" path="res://assets/config/weapons/fx/weapon_fx_config.tres" id="17_fx"]
 
 [sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_dropped_weapon"]
 points = PackedVector3Array(-0.02, 0.015, -0.4725, 0.02, 0.015, -0.4725, -0.06, -0.085, -0.36, 0.06, -0.085, -0.36, -0.06, 0.06, -0.36, 0.06, 0.06, -0.36, -0.055, -0.085, 0.35, 0.055, -0.085, 0.35, -0.055, 0.06, 0.35, 0.055, 0.06, 0.35, -0.018, 0, 0.4725, 0.018, 0, 0.4725)
@@ -37,6 +38,7 @@ shoulder_pivot_local = Vector3(0, -0.04, 0.38)
 recoil_control_stiffness = 130.0
 recoil_control_damping = 17.0
 weapon_scene = ExtResource("16_y6xlr")
+fx_config = ExtResource("17_fx")
 weapon_length = 0.945
 ads_time = 0.22
 dropped_collision_shape = SubResource("ConvexPolygonShape3D_dropped_weapon")

@@ -30,7 +30,6 @@ func setup(part_id: MedicalEnums.BodyPartId, shape: Shape3D = null, debug_color:
 
 		# 创建调试可视化网格（默认隐藏）
 		_create_debug_mesh(shape, debug_color)
-		GlobalLogger.debug("BodyHitbox", "Setup hitbox for part: " + MedicalEnums.BodyPartId.keys()[part_id])
 
 
 ## 供 HitResolver 查询部位 ID
@@ -42,7 +41,6 @@ func get_body_part_id() -> MedicalEnums.BodyPartId:
 func set_debug_visible(visible: bool) -> void:
 	if _debug_mesh:
 		_debug_mesh.visible = visible
-		GlobalLogger.debug("BodyHitbox", "%s debug mesh visibility: %s" % [name, visible])
 	for mesh in _anatomy_debug_meshes:
 		if is_instance_valid(mesh):
 			mesh.visible = visible

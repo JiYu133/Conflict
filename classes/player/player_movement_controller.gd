@@ -41,9 +41,20 @@ var _shift_held_time: float = 0.0
 var _shift_was_held: bool = false
 
 var _camera_controller: PlayerCameraController = null
+var _turn_constraint_active: bool = false
+var _turn_speed_ratio: float = 1.0
+var _turn_acceleration_ratio: float = 1.0
 ## Debug-only Bot motion override. It still uses CharacterBody3D.move_and_slide().
 var _test_motion_active: bool = false
 var _test_motion_velocity: Vector3 = Vector3.ZERO
+var _ai_motion_active: bool = false
+var _ai_motion_velocity: Vector3 = Vector3.ZERO
+## Virtual player input used by runtime AI. It feeds the same locomotion
+## calculation as keyboard input; it never writes a world velocity directly.
+var _ai_input_active: bool = false
+var _ai_input_direction: Vector3 = Vector3.ZERO
+var _ai_input_running: bool = false
+var _ai_input_sprinting: bool = false
 
 
 func is_running() -> bool:
@@ -51,6 +62,11 @@ func is_running() -> bool:
 
 func is_sprinting() -> bool:
 	return _is_sprinting
+
+func set_turn_constraint(active: bool, speed_ratio: float = 1.0, acceleration_ratio: float = 1.0) -> void:
+	_turn_constraint_active = active
+	_turn_speed_ratio = clampf(speed_ratio, 0.0, 1.0)
+	_turn_acceleration_ratio = clampf(acceleration_ratio, 0.0, 1.0)
 
 func get_max_speed() -> float:
 	if not _config:
@@ -91,6 +107,36 @@ func clear_test_motion() -> void:
 		_player.velocity.x = 0.0
 		_player.velocity.z = 0.0
 
+
+func set_ai_motion_velocity(world_velocity: Vector3) -> void:
+	_ai_motion_active = true
+	_ai_motion_velocity = world_velocity
+
+
+func clear_ai_motion() -> void:
+	_ai_motion_active = false
+	_ai_motion_velocity = Vector3.ZERO
+
+
+## Supplies virtual movement input to the normal player locomotion path.
+func set_ai_input(world_direction: Vector3, running: bool = false, sprinting: bool = false) -> void:
+	_ai_input_active = true
+	_ai_input_direction = world_direction
+	_ai_input_running = running
+	_ai_input_sprinting = sprinting
+
+
+func clear_ai_input() -> void:
+	_ai_input_active = false
+	_ai_input_direction = Vector3.ZERO
+	_ai_input_running = false
+	_ai_input_sprinting = false
+	clear_locomotion_state()
+
+
+func is_ai_motion_active() -> bool:
+	return _ai_motion_active
+
 func is_test_motion_active() -> bool:
 	return _test_motion_active
 
@@ -98,22 +144,24 @@ func is_test_motion_active() -> bool:
 func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
-	if not _player.controllable:
+	var ai_driving := _player.is_ai_player and _ai_input_active
+	if not _player.is_alive or _player.is_ragdolled:
+		clear_locomotion_state()
+		_velocity = Vector3.ZERO
+		_player.velocity = Vector3.ZERO
+		return
+	if not _player.controllable and not ai_driving:
 		if _was_controllable:
 			clear_locomotion_state()
 		_was_controllable = false
-		# 死亡或布娃娃激活时停止所有物理移动，让布娃娃自己处理物理
-		if not _player.is_alive or _player.is_ragdolled:
-			_velocity = Vector3.ZERO
-			_player.velocity = Vector3.ZERO
-			return
-		if _test_motion_active and _player.is_bot:
+		if _player.is_ai_player and (_test_motion_active or _ai_motion_active) and not ai_driving:
+			var requested := _test_motion_velocity if _test_motion_active else _ai_motion_velocity
 			if not _player.is_on_floor():
 				_velocity.y -= _config.gravity * delta
 			else:
 				_velocity.y = _config.floor_snap_velocity
-			_velocity.x = _test_motion_velocity.x
-			_velocity.z = _test_motion_velocity.z
+			_velocity.x = requested.x
+			_velocity.z = requested.z
 			_player.velocity = _velocity
 			_player.move_and_slide()
 			_velocity = _player.velocity
@@ -136,20 +184,29 @@ func _physics_process(delta: float) -> void:
 	# ──────────────────────────────────────────────────────
 	# 1. 读取输入方向
 	# ──────────────────────────────────────────────────────
-	var input_dir := Input.get_vector(
-		"move_left", "move_right",
-		"move_forward", "move_backward"
-	)
+	var input_dir: Vector2
+	var shift_held: bool
+	var has_forward: bool
+	if ai_driving:
+		var local_direction := _player.global_basis.inverse() * _ai_input_direction
+		input_dir = Vector2(local_direction.x, local_direction.z)
+		shift_held = _ai_input_running or _ai_input_sprinting
+		has_forward = input_dir.y < -_config.input_dead_zone
+		_set_ai_locomotion_state()
+	else:
+		input_dir = Input.get_vector(
+			"move_left", "move_right",
+			"move_forward", "move_backward"
+		)
+		shift_held = Input.is_action_pressed("sprint")
+		has_forward = Input.is_action_pressed("move_forward")
 	var has_input := input_dir.length() > _config.input_dead_zone
 
 	# ──────────────────────────────────────────────────────
 	# 2. Shift 按压检测：区分单击（切换 Run）和长按（Sprint）
 	# ──────────────────────────────────────────────────────
-	var shift_held := Input.is_action_pressed("sprint")
-	var has_forward := Input.is_action_pressed("move_forward")
-
 	# 下降沿：Shift 刚松开
-	if _shift_was_held and not shift_held:
+	if not ai_driving and _shift_was_held and not shift_held:
 		var threshold := _config.sprint_hold_threshold if _config else 0.25
 		if _shift_held_time < threshold:
 			# 短按 → 切换 Run（不触发 Sprint）
@@ -163,16 +220,17 @@ func _physics_process(delta: float) -> void:
 				_exit_sprint()
 		_shift_held_time = 0.0
 	# 上升沿：Shift 刚按下，重置计时
-	elif not _shift_was_held and shift_held:
+	elif not ai_driving and not _shift_was_held and shift_held:
 		_shift_held_time = 0.0
 	# 持续按住：累计时间，达到阈值后激活 Sprint
-	elif shift_held:
+	elif not ai_driving and shift_held:
 		_shift_held_time += delta
 		var threshold := _config.sprint_hold_threshold if _config else 0.25
 		if _shift_held_time >= threshold and has_forward and not _is_sprinting:
 			_enter_sprint()
 
-	_shift_was_held = shift_held
+	if not ai_driving:
+		_shift_was_held = shift_held
 
 	# Sprint 失去前进输入时自动退出
 	if _is_sprinting and not has_forward:
@@ -197,7 +255,7 @@ func _physics_process(delta: float) -> void:
 			speed *= _player.health_system.get_movement_speed_multiplier()
 
 		if has_input:
-			var basis := _player.global_basis
+			var basis := _camera_controller.get_view_basis() if _camera_controller else _player.global_basis
 			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()
 
 			# 3b. 方向速度上限：横向 80%、后退 70%
@@ -230,10 +288,13 @@ func _physics_process(delta: float) -> void:
 				burst_mult = 1.0 + (_config.burst_strength - 1.0) * (_burst_timer / _config.burst_duration)
 
 			# 3e. 用 move_toward 向目标速度加速
+			if _turn_constraint_active:
+				speed *= _turn_speed_ratio
 			var target_x := direction.x * speed * burst_mult
 			var target_z := direction.z * speed * burst_mult
-			_velocity.x = move_toward(_velocity.x, target_x, _config.ground_acceleration * delta)
-			_velocity.z = move_toward(_velocity.z, target_z, _config.ground_acceleration * delta)
+			var acceleration := _config.ground_acceleration * (_turn_acceleration_ratio if _turn_constraint_active else 1.0)
+			_velocity.x = move_toward(_velocity.x, target_x, acceleration * delta)
+			_velocity.z = move_toward(_velocity.z, target_z, acceleration * delta)
 
 			# 3f. 步态波动：在速度方向叠加 sin 波动，模拟重心摆动（±振幅）
 			var freq: float
@@ -283,7 +344,7 @@ func _physics_process(delta: float) -> void:
 	# ──────────────────────────────────────────────────────
 	# 5. 跳跃（不变）
 	# ──────────────────────────────────────────────────────
-	if Input.is_action_just_pressed("jump") and _player.is_on_floor():
+	if not ai_driving and Input.is_action_just_pressed("jump") and _player.is_on_floor():
 		# 腿骨折时禁止跳跃
 		var can_jump := true
 		if _player.health_system:
@@ -378,6 +439,22 @@ func clear_locomotion_state() -> void:
 	_shift_was_held = false
 	_burst_timer = 0.0
 	_gait_phase = 0.0
+	_ai_input_running = false
+	_ai_input_sprinting = false
+
+
+func _set_ai_locomotion_state() -> void:
+	if _ai_input_sprinting:
+		if not _is_sprinting:
+			_enter_sprint()
+		return
+	if _is_sprinting:
+		_exit_sprint()
+	if _ai_input_running:
+		if not _is_running:
+			_toggle_run()
+	elif _is_running:
+		_exit_run()
 	_had_input = false
 
 

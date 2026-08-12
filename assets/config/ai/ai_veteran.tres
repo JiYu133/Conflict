@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="AIConfig" format=3]
+
+; 老兵：感知和反应更快、瞄准更稳定、压制与追击能力更强。
+
+[ext_resource type="Script" path="res://classes/bot/ai_config.gd" id="1_config"]
+[ext_resource type="BehaviorTree" path="res://assets/config/ai/trees/ai_default_behavior_tree.tres" id="2_tree"]
+[ext_resource type="Resource" path="res://assets/config/ai/profiles/ai_veteran_profile.tres" id="3_profile"]
+
+[resource]
+script = ExtResource("1_config")
+config_name = "Veteran"
+selection_weight = 0.75
+behavior_tree = ExtResource("2_tree")
+calm_profile = ExtResource("3_profile")
+combat_profile = ExtResource("3_profile")
+suppress_profile = ExtResource("3_profile")
+retreat_profile = ExtResource("3_profile")

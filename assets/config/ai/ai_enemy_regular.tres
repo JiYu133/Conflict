@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="AIConfig" format=3]
+
+; 敌方普通兵：感知更远、进攻性更高、交战距离更长。
+
+[ext_resource type="Script" path="res://classes/bot/ai_config.gd" id="1_config"]
+[ext_resource type="BehaviorTree" path="res://assets/config/ai/trees/ai_default_behavior_tree.tres" id="2_tree"]
+[ext_resource type="Resource" path="res://assets/config/ai/profiles/ai_enemy_profile.tres" id="3_combat"]
+[ext_resource type="Resource" path="res://assets/config/ai/profiles/ai_default_profile.tres" id="4_retreat"]
+
+[resource]
+script = ExtResource("1_config")
+config_name = "Enemy Regular"
+selection_weight = 2.0
+behavior_tree = ExtResource("2_tree")
+calm_profile = ExtResource("3_combat")
+combat_profile = ExtResource("3_combat")
+suppress_profile = ExtResource("3_combat")
+retreat_profile = ExtResource("4_retreat")
