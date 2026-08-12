@@ -404,10 +404,10 @@ func _start_physics_phase() -> void:
 
 	# 本地玩家的头部只保留第一人称隐藏层；Bot 没有本地摄像机，必须继续对世界摄像机可见。
 	var player := get_parent()
-	var belongs_to_bot: bool = bool(player.get("is_bot")) if player else false
+	var belongs_to_ai_player: bool = bool(player.get("is_ai_player")) if player else false
 	for mesh in _fp_hidden_meshes:
 		if is_instance_valid(mesh):
-			mesh.layers = 3 if belongs_to_bot else 2
+			mesh.layers = 3 if belongs_to_ai_player else 2
 
 	# 物理骨架已经由场景资产完整定义，直接启动该模拟器下的全部预制骨骼。
 	_physical_simulator.physical_bones_start_simulation()

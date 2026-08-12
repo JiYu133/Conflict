@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="AIConfig" format=3]
+
+; 友方普通兵：偏向跟随指令、控点和稳定交战。
+
+[ext_resource type="Script" path="res://classes/bot/ai_config.gd" id="1_config"]
+[ext_resource type="BehaviorTree" path="res://assets/config/ai/trees/ai_default_behavior_tree.tres" id="2_tree"]
+[ext_resource type="Resource" path="res://assets/config/ai/profiles/ai_friendly_profile.tres" id="3_calm"]
+[ext_resource type="Resource" path="res://assets/config/ai/profiles/ai_default_profile.tres" id="4_retreat"]
+
+[resource]
+script = ExtResource("1_config")
+config_name = "Friendly Regular"
+selection_weight = 2.0
+behavior_tree = ExtResource("2_tree")
+calm_profile = ExtResource("3_calm")
+combat_profile = ExtResource("3_calm")
+suppress_profile = ExtResource("3_calm")
+retreat_profile = ExtResource("4_retreat")

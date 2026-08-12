@@ -18,6 +18,16 @@ func set_base_enabled(value: bool) -> void:
 	_base_enabled = value
 
 
+## 新一局出生时清理上一局遗留的输入锁和鼠标请求。
+## 仅由场景生命周期调用，不用于治疗或普通复活。
+func reset_for_spawn() -> void:
+	_alive = true
+	_base_enabled = true
+	_locks.clear()
+	_mouse_requests.clear()
+	_apply_mouse_mode()
+
+
 func acquire_lock(owner: String) -> void:
 	if not owner.is_empty():
 		_locks[owner] = true

@@ -42,13 +42,14 @@ const COMMANDS := {
 	"set_aiming": {"usage": "set_aiming <0|1>", "help": "切换武器举枪状态。仅 Debug 构建可用。", "debug_only": true},
 	"reload": {"usage": "reload", "help": "调用当前武器换弹流程。", "safe": true},
 	"teleport": {"usage": "teleport <x> <y> <z>", "help": "将玩家移动到当前世界坐标。仅 Debug 构建可用。", "debug_only": true},
-	"bot": {"usage": "bot add|list|move|velocity|stop|kill|remove ...", "help": "创建、查询、移动、击杀或删除地图内 Bot。", "safe": true},
+	"bot": {"usage": "bot add|list|config|move|velocity|stop|kill|remove ...", "help": "创建、配置、查询、移动、击杀或删除地图内 Bot。", "safe": true},
+	"encounter_start": {"usage": "encounter_start", "help": "进入 4v4 对称遭遇战原型。", "safe": true},
 }
 const COMMAND_ORDER := [
 	"help", "clear", "fps", "status", "timescale", "freecam", "revive", "kill",
 	"health", "clear_wounds", "clear_blood", "give_ammo", "press_trigger", "release_trigger",
 	"medical_wound", "medical_kill", "cycle_fire_mode", "bolt_release", "clear_malfunction",
-	"set_aiming", "reload", "teleport", "bot",
+	"set_aiming", "reload", "teleport", "bot", "encounter_start",
 ]
 
 var _player
@@ -389,15 +390,23 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 			return _ok_result("玩家已传送到 %s。" % str(_player.global_position))
 		"bot":
 			return _run_bot_command(args)
+		"encounter_start":
+			if not args.is_empty():
+				return _error_result("encounter_start 不接受参数。")
+			var scene := load("res://assets/map/encounter_prototype.tscn") as PackedScene
+			if not scene:
+				return _error_result("遭遇战场景加载失败。")
+			get_tree().change_scene_to_packed(scene)
+			return _ok_result("正在进入 4v4 对称遭遇战原型。")
 	return _error_result("命令尚未实现：%s。" % command)
 
 
 func _run_bot_command(args: Array[String]) -> Dictionary:
 	if args.is_empty():
-		return _error_result("参数错误：bot 子命令只能是 add、list、move、velocity、stop、kill 或 remove。")
+		return _error_result("参数错误：bot 子命令只能是 add、list、config、move、velocity、stop、kill 或 remove。")
 	var manager := _get_bot_manager()
 	if not manager:
-		return _error_result("当前系统不可用：BotManager 未初始化。")
+		return _error_result("当前系统不可用：AIPlayerManager 未初始化。")
 
 	var subcommand := args[0].to_lower()
 	match subcommand:
@@ -427,24 +436,26 @@ func _run_bot_command(args: Array[String]) -> Dictionary:
 					return _error_result(String(parsed_position["message"]))
 				position = parsed_position["position"]
 				use_position = true
-			var bot := manager.add_bot(bot_name, faction, position, use_position)
-			if not bot:
+			var ai_player := manager.add_ai_player(bot_name, faction, position, use_position)
+			if not ai_player:
 				return _error_result(manager.last_error)
 			return _ok_result("Bot 已创建：ID=%d，名称=%s，阵营=%s，位置=%s。" % [
-				bot.bot_id, bot.bot_display_name, _bot_faction_name(bot.faction), str(bot.global_position)
+				ai_player.ai_player_id, ai_player.ai_display_name, _bot_faction_name(ai_player.faction), str(ai_player.global_position)
 			])
 		"list":
 			if args.size() != 1:
 				return _error_result("参数数量错误：bot list 不接受参数。")
-			var bots := manager.get_bots()
+			var bots := manager.get_ai_players()
 			if bots.is_empty():
 				return _ok_result("当前没有 Bot。")
 			var lines: Array[String] = ["Bot 列表："]
 			for bot in bots:
-				lines.append("ID=%d 名称=%s 阵营=%s 位置=%s 存活=%s" % [
-					bot.bot_id, bot.bot_display_name, _bot_faction_name(bot.faction), str(bot.global_position), "是" if bot.is_alive else "否"
+				lines.append("ID=%d 名称=%s 阵营=%s 配置=%s 位置=%s 存活=%s" % [
+					bot.ai_player_id, bot.ai_display_name, _bot_faction_name(bot.faction), bot.ai_config.config_name if bot.ai_config else "未指定", str(bot.global_position), "是" if bot.is_alive else "否"
 				])
 			return _ok_result("\n".join(lines))
+		"config":
+			return _run_bot_config_command(manager, args)
 		"move":
 			return _run_bot_move_command(manager, args)
 		"velocity":
@@ -453,30 +464,48 @@ func _run_bot_command(args: Array[String]) -> Dictionary:
 			if args.size() != 2:
 				return _error_result("参数数量错误：bot stop 用法为 bot stop <id|all>。")
 			if args[1].to_lower() == "all":
-				return _ok_result("已停止 %d 个 Bot 的测试移动。" % manager.stop_all_bot_test_motion())
+				return _ok_result("已停止 %d 个 Bot 的测试移动。" % manager.stop_all_ai_player_test_motion())
 			if not args[1].is_valid_int() or int(args[1]) <= 0:
 				return _error_result("参数错误：Bot ID 必须是正整数或 all。")
-			if not manager.stop_bot_test_motion(int(args[1])):
+			if not manager.stop_ai_player_test_motion(int(args[1])):
 				return _error_result(manager.last_error)
 			return _ok_result("Bot ID=%d 已停止测试移动。" % int(args[1]))
 		"kill", "remove":
 			if args.size() != 2:
 				return _error_result("参数数量错误：bot %s 用法为 bot %s <id|all>。" % [subcommand, subcommand])
 			if args[1].to_lower() == "all":
-				var count := manager.kill_all() if subcommand == "kill" else manager.remove_all()
+				var count := manager.kill_all_ai_players() if subcommand == "kill" else manager.remove_all_ai_players()
 				return _ok_result("已%s %d 个 Bot。" % ["击杀" if subcommand == "kill" else "删除", count])
 			if not args[1].is_valid_int() or int(args[1]) <= 0:
 				return _error_result("参数错误：Bot ID 必须是正整数或 all。")
 			var bot_id := int(args[1])
-			var ok := manager.kill_bot(bot_id) if subcommand == "kill" else manager.remove_bot(bot_id)
+			var ok := manager.kill_ai_player(bot_id) if subcommand == "kill" else manager.remove_ai_player(bot_id)
 			if not ok:
 				return _error_result(manager.last_error)
 			return _ok_result("Bot ID=%d 已%s。" % [bot_id, "击杀" if subcommand == "kill" else "删除"])
 		_:
-			return _error_result("参数错误：未知 bot 子命令 %s，可用 add、list、move、velocity、stop、kill、remove。" % args[0])
+			return _error_result("参数错误：未知 bot 子命令 %s，可用 add、list、config、move、velocity、stop、kill、remove。" % args[0])
 
 
-func _run_bot_move_command(manager: BotManager, args: Array[String]) -> Dictionary:
+func _run_bot_config_command(manager: AIPlayerManager, args: Array[String]) -> Dictionary:
+	if args.size() != 3:
+		return _error_result("参数数量错误：用法为 bot config <id|all> <res://AIConfig.tres>。")
+	var target := args[1]
+	if target.to_lower() != "all" and (not target.is_valid_int() or int(target) <= 0):
+		return _error_result("参数错误：Bot ID 必须是正整数或 all。")
+	var resource_path := args[2]
+	if not resource_path.begins_with("res://"):
+		return _error_result("参数错误：AIConfig 必须使用 res:// 资源路径。")
+	var config := load(resource_path) as AIConfig
+	if not config:
+		return _error_result("无法加载 AIConfig：%s。请确认路径存在且资源类型为 AIConfig。" % resource_path)
+	var count := manager.set_all_ai_player_config(config) if target.to_lower() == "all" else 1
+	if target.to_lower() != "all" and not manager.set_ai_player_config(int(target), config):
+		return _error_result(manager.last_error)
+	return _ok_result("已为 %d 个 Bot 加载 AIConfig：%s。模型和初始武器仅在创建 Bot 时应用。" % [count, config.config_name])
+
+
+func _run_bot_move_command(manager: AIPlayerManager, args: Array[String]) -> Dictionary:
 	if args.size() != 4:
 		return _error_result("参数数量错误：用法为 bot move <id|all> <forward|back|left|right> <speed>。")
 	if not args[3].is_valid_float():
@@ -490,7 +519,7 @@ func _run_bot_move_command(manager: BotManager, args: Array[String]) -> Dictiona
 	return _set_bot_test_velocity(manager, args[1], direction * speed)
 
 
-func _run_bot_velocity_command(manager: BotManager, args: Array[String]) -> Dictionary:
+func _run_bot_velocity_command(manager: AIPlayerManager, args: Array[String]) -> Dictionary:
 	if args.size() != 5:
 		return _error_result("参数数量错误：用法为 bot velocity <id|all> <x> <y> <z>。")
 	for index in range(2, 5):
@@ -502,15 +531,15 @@ func _run_bot_velocity_command(manager: BotManager, args: Array[String]) -> Dict
 	return _set_bot_test_velocity(manager, args[1], velocity)
 
 
-func _set_bot_test_velocity(manager: BotManager, target: String, velocity: Vector3) -> Dictionary:
+func _set_bot_test_velocity(manager: AIPlayerManager, target: String, velocity: Vector3) -> Dictionary:
 	if target.to_lower() == "all":
 		return _ok_result("已为 %d 个 Bot 设置测试速度 %s m/s。" % [
-			manager.set_all_bot_test_motion(velocity), str(velocity)
+			manager.set_all_ai_player_test_motion(velocity), str(velocity)
 		])
 	if not target.is_valid_int() or int(target) <= 0:
 		return _error_result("参数错误：Bot ID 必须是正整数或 all。")
 	var bot_id := int(target)
-	if not manager.set_bot_test_motion(bot_id, velocity):
+	if not manager.set_ai_player_test_motion(bot_id, velocity):
 		return _error_result(manager.last_error)
 	return _ok_result("Bot ID=%d 测试速度已设置为 %s m/s。" % [bot_id, str(velocity)])
 
@@ -527,9 +556,9 @@ func _get_bot_test_direction(value: String) -> Vector3:
 	return Vector3.ZERO
 
 
-func _get_bot_manager() -> BotManager:
+func _get_bot_manager() -> AIPlayerManager:
 	var scene := get_tree().current_scene
-	return scene.find_child("BotManager", true, false) as BotManager if scene else null
+	return scene.find_child("AIPlayerManager", true, false) as AIPlayerManager if scene else null
 
 
 func _default_bot_faction() -> BasePlayer.Faction:
@@ -726,12 +755,14 @@ func _get_bot_parameter_hint(value: String) -> String:
 	var coords := str(_player.global_position) if _player else "(0, 0, 0)"
 	var tokens := value.strip_edges().split(" ", false)
 	if tokens.size() <= 1:
-		return "bot add|list|move|velocity|stop|kill|remove"
+		return "bot add|list|config|move|velocity|stop|kill|remove"
 	match String(tokens[1]).to_lower():
 		"add":
 			return "bot add [name] [faction] [x] [y] [z]  | 默认坐标：%s" % coords
 		"list":
 			return "bot list"
+		"config":
+			return "bot config <id|all> <res://AIConfig.tres>"
 		"move":
 			return "bot move <id|all> <forward|back|left|right> <speed>"
 		"velocity":
@@ -742,7 +773,7 @@ func _get_bot_parameter_hint(value: String) -> String:
 			return "bot kill <id|all>"
 		"remove":
 			return "bot remove <id|all>"
-	return "未知 bot 子命令；可用 add、list、move、velocity、stop、kill、remove"
+	return "未知 bot 子命令；可用 add、list、config、move、velocity、stop、kill、remove"
 
 
 func _open_completion() -> void:
@@ -800,7 +831,7 @@ func _get_bot_completion_items(value: String) -> Array[String]:
 		return candidates
 	if tokens.size() <= 1 or (tokens.size() == 2 and not trailing_space):
 		var prefix := String(tokens[1]).to_lower() if tokens.size() > 1 else ""
-		for subcommand in ["add", "list", "move", "velocity", "stop", "kill", "remove"]:
+		for subcommand in ["add", "list", "config", "move", "velocity", "stop", "kill", "remove"]:
 			if prefix.is_empty() or subcommand.begins_with(prefix):
 				candidates.append("bot " + subcommand)
 		return candidates
@@ -830,10 +861,10 @@ func _next_completion_bot_name() -> String:
 	var manager := _get_bot_manager()
 	if manager:
 		var index := 1
-		while not manager.is_name_available("Bot_%d" % index):
+		while not manager.is_name_available("AIPlayer_%d" % index):
 			index += 1
-		return "Bot_%d" % index
-	return "Bot_1"
+		return "AIPlayer_%d" % index
+	return "AIPlayer_1"
 
 
 func _refresh_completion_list() -> void:

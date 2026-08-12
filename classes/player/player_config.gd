@@ -46,6 +46,9 @@ extends Resource
 ## 左手 IK 参数
 @export var hand_ik_config: HandIKConfig
 
+## 脊柱随视角旋转参数
+@export var spine_aim_config: SpineAimConfig
+
 # 武器配置 ─────────────────────────────────────────────────
 @export_group("武器配置")
 ## 初始武器
@@ -64,14 +67,6 @@ extends Resource
 @export var stamina_config: StaminaConfig
 
 # 转身动画 ──────────────────────────────────────────────────
-@export_group("转身动画")
-## 是否启用转身动画
-@export var turn_in_place_enabled: bool = false
-## 触发转身动画的朝向差阈值（度）
-@export var turn_angle_threshold: float = 60.0
-## 低于此速度（m/s）时才能触发转身动画
-@export var turn_walk_speed_threshold: float = 1.2
-
 # ── 向后兼容：直接委托给 movement_config ──────────────────────
 # 以下属性供现有代码在 movement_config 迁移完成前继续使用。
 # 迁移完成后可以删除。

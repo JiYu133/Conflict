@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="AIConfig" format=3]
+
+; 新兵：感知和反应较慢、瞄准误差较大、撤退意愿较高。
+
+[ext_resource type="Script" path="res://classes/bot/ai_config.gd" id="1_config"]
+[ext_resource type="BehaviorTree" path="res://assets/config/ai/trees/ai_default_behavior_tree.tres" id="2_tree"]
+[ext_resource type="Resource" path="res://assets/config/ai/profiles/ai_recruit_profile.tres" id="3_profile"]
+
+[resource]
+script = ExtResource("1_config")
+config_name = "Recruit"
+selection_weight = 1.0
+behavior_tree = ExtResource("2_tree")
+calm_profile = ExtResource("3_profile")
+combat_profile = ExtResource("3_profile")
+suppress_profile = ExtResource("3_profile")
+retreat_profile = ExtResource("3_profile")

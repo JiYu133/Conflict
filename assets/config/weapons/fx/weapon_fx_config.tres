@@ -1,9 +1,45 @@
 [gd_resource type="Resource" script_class="WeaponFXConfig" format=3 uid="uid://beil2jopxanyq"]
 
-[ext_resource type="Script" uid="uid://dwaa1150fa0qv" path="res://classes/weapon/fx/weapon_fx_config.gd" id="1_am6k1"]
-[ext_resource type="Texture2D" uid="uid://bseg7ilftld2e" path="res://assets/textures/effects/noise/noise_heat_haze.tres" id="1_c2adb"]
+[ext_resource type="Script" uid="uid://dwaa1150fa0qv" path="res://classes/weapon/fx/weapon_fx_config.gd" id="1_config"]
+[ext_resource type="Texture2D" uid="uid://bseg7ilftld2e" path="res://assets/textures/effects/noise/noise_heat_haze.tres" id="2_noise"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/short/barrel_short_variant_01.tscn" id="3_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/short/barrel_short_variant_02.tscn" id="4_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/short/barrel_short_variant_03.tscn" id="5_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/standard/barrel_standard_variant_01.tscn" id="6_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/standard/barrel_standard_variant_02.tscn" id="7_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/standard/barrel_standard_variant_03.tscn" id="8_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/long/barrel_long_variant_01.tscn" id="9_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/long/barrel_long_variant_02.tscn" id="10_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/barrel/long/barrel_long_variant_03.tscn" id="11_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/short/muzzle_brake_short_variant_01.tscn" id="12_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/short/muzzle_brake_short_variant_02.tscn" id="13_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/short/muzzle_brake_short_variant_03.tscn" id="14_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/standard/muzzle_brake_standard_variant_01.tscn" id="15_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/standard/muzzle_brake_standard_variant_02.tscn" id="16_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/standard/muzzle_brake_standard_variant_03.tscn" id="17_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/long/muzzle_brake_long_variant_01.tscn" id="18_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/long/muzzle_brake_long_variant_02.tscn" id="19_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/muzzle_brake/long/muzzle_brake_long_variant_03.tscn" id="20_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/short/suppressor_short_variant_01.tscn" id="21_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/short/suppressor_short_variant_02.tscn" id="22_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/short/suppressor_short_variant_03.tscn" id="23_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/standard/suppressor_standard_variant_01.tscn" id="24_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/standard/suppressor_standard_variant_02.tscn" id="25_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/standard/suppressor_standard_variant_03.tscn" id="26_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/long/suppressor_long_variant_01.tscn" id="27_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/long/suppressor_long_variant_02.tscn" id="28_scene"]
+[ext_resource type="PackedScene" path="res://assets/config/weapons/muzzle_fx/suppressor/long/suppressor_long_variant_03.tscn" id="29_scene"]
 
 [resource]
-script = ExtResource("1_am6k1")
-heat_haze_noise_texture = ExtResource("1_c2adb")
+script = ExtResource("1_config")
+flash_scenes_short_barrel = Array[PackedScene]([ExtResource("3_scene"), ExtResource("4_scene"), ExtResource("5_scene")])
+flash_scenes_standard = Array[PackedScene]([ExtResource("6_scene"), ExtResource("7_scene"), ExtResource("8_scene")])
+flash_scenes_long_barrel = Array[PackedScene]([ExtResource("9_scene"), ExtResource("10_scene"), ExtResource("11_scene")])
+flash_scenes_muzzle_brake_short = Array[PackedScene]([ExtResource("12_scene"), ExtResource("13_scene"), ExtResource("14_scene")])
+flash_scenes_muzzle_brake_standard = Array[PackedScene]([ExtResource("15_scene"), ExtResource("16_scene"), ExtResource("17_scene")])
+flash_scenes_muzzle_brake_long = Array[PackedScene]([ExtResource("18_scene"), ExtResource("19_scene"), ExtResource("20_scene")])
+flash_scenes_suppressor_short = Array[PackedScene]([ExtResource("21_scene"), ExtResource("22_scene"), ExtResource("23_scene")])
+flash_scenes_suppressor_standard = Array[PackedScene]([ExtResource("24_scene"), ExtResource("25_scene"), ExtResource("26_scene")])
+flash_scenes_suppressor_long = Array[PackedScene]([ExtResource("27_scene"), ExtResource("28_scene"), ExtResource("29_scene")])
+heat_haze_noise_texture = ExtResource("2_noise")
 metadata/_custom_type_script = "uid://dwaa1150fa0qv"

@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/map/TestMap.tscn" id="1_map"]
+[ext_resource type="Script" path="res://classes/encounter/encounter_prototype.gd" id="2_script"]
+
+[node name="EncounterPrototype" type="Node3D"]
+script = ExtResource("2_script")
+
+[node name="TestMap" parent="." instance=ExtResource("1_map")]
+

@@ -49,6 +49,7 @@ var _bone_attachment: BoneAttachment3D
 
 var _mouse_sensitivity: float
 var _vertical_angle: float = 0.0
+var _view_yaw: float = 0.0
 var _max_vertical_angle: float
 
 # 弹簧系统 - 3 轴独立弹簧，对头部位置在玩家局部空间做低通滤波
@@ -124,6 +125,7 @@ func initialize(
 	_camera_config = camera_config if camera_config else CameraConfig.new()
 	_settings_service = settings_service
 	_player = player
+	_view_yaw = player.rotation.y if player else 0.0
 
 	_spring_x = CameraSpring1D.new()
 	_spring_y = CameraSpring1D.new()
@@ -436,7 +438,27 @@ func _input(event: InputEvent) -> void:
 		return
 	var unified_multiplier := float(_settings_service.get_value("controls/sensitivity", 1.0)) if _settings_service else 1.0
 	var invert_sign := -1.0 if _settings_service and bool(_settings_service.get_value("controls/invert_y", false)) else 1.0
-	_player.rotate_y(-event.relative.x * _mouse_sensitivity * unified_multiplier)
+	var input_yaw : float = -event.relative.x * _mouse_sensitivity * unified_multiplier
+	var body_offset := get_body_yaw_offset()
+	var movement_config := _player.player_config.movement_config if _player and _player.player_config else null
+	if movement_config and movement_config.turn_in_place_enabled:
+		var moving := _is_moving()
+		if moving:
+			# Turn-in-place limits only apply while stationary. Moving keeps the
+			# body aligned to the view so locomotion and the model turn together.
+			_view_yaw += input_yaw
+			_sync_moving_body_yaw()
+		else:
+			var trigger := deg_to_rad(movement_config.turn_trigger_angle_degrees)
+			var limit := deg_to_rad(movement_config.turn_view_limit_degrees)
+			var ratio := 1.0
+			if absf(body_offset) > trigger:
+				var t := inverse_lerp(trigger, maxf(limit * 2.0, limit + 0.001), absf(body_offset))
+				ratio = lerpf(1.0, movement_config.turn_view_min_sensitivity_ratio, clampf(t, 0.0, 1.0))
+			var desired_yaw := _view_yaw + input_yaw * ratio
+			_view_yaw = _player.rotation.y + clampf(angle_difference(_player.rotation.y, desired_yaw), -limit, limit)
+	else:
+		_view_yaw += input_yaw
 	_vertical_angle -= event.relative.y * _mouse_sensitivity * unified_multiplier * invert_sign
 	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
 
@@ -510,10 +532,9 @@ func _process(delta: float) -> void:
 	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧
 	_active_camera.global_position = _player.global_transform * filtered_local
 
-	var player_yaw: float = _player.rotation.y if _player else 0.0
 	_active_camera.global_rotation = Vector3(
 		_vertical_angle + _pain_pitch + ragdoll_shake["rotation"].x,
-		player_yaw + _pain_yaw + ragdoll_shake["rotation"].y,
+		_view_yaw + _pain_yaw + ragdoll_shake["rotation"].y,
 		_pain_roll + ragdoll_shake["rotation"].z
 	)
 
@@ -677,3 +698,24 @@ func get_base_mouse_sensitivity() -> float:
 
 func get_vertical_angle() -> float:
 	return _vertical_angle
+
+func get_view_yaw() -> float:
+	return _view_yaw
+
+func get_body_yaw_offset() -> float:
+	return angle_difference(_player.rotation.y, _view_yaw) if is_instance_valid(_player) else 0.0
+
+func get_view_basis() -> Basis:
+	return Basis(Vector3.UP, _view_yaw)
+
+
+func _sync_moving_body_yaw() -> void:
+	if is_instance_valid(_player) and _is_moving():
+		_player.rotation.y = _view_yaw
+
+
+func _is_moving() -> bool:
+	if not is_instance_valid(_player):
+		return false
+	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+	return horizontal_velocity.length_squared() > 0.01

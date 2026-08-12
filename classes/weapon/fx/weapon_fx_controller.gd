@@ -47,12 +47,18 @@ func initialize(weapon: BaseWeapon, fx: WeaponFXConfig) -> void:
 	# 而配件是在武器初始化之后才装上的——因此必须在配件变动后重新查找，
 	# 否则永远只找得到机匣本体上的挂点（或找不到，退化成硬编码偏移）。
 	if weapon.attachment_manager:
-		weapon.attachment_manager.attachments_changed.connect(_resolve_markers)
+		weapon.attachment_manager.attachments_changed.connect(_on_attachments_changed)
 
 	if not weapon.ejection.is_connected(_on_ejection):
 		weapon.ejection.connect(_on_ejection)
 	if not weapon.fired.is_connected(_on_fired):
 		weapon.fired.connect(_on_fired)
+	call_deferred("_preload_current_muzzle_flash")
+
+
+func _on_attachments_changed() -> void:
+	_resolve_markers()
+	call_deferred("_preload_current_muzzle_flash")
 
 func set_settings_service(service) -> void:
 	_settings_service = service
@@ -76,6 +82,10 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 		"graphics/muzzle_flash":
 			if not bool(value):
 				_free_effect_group("weapon_muzzle_flash_effects")
+			else:
+				call_deferred("_preload_current_muzzle_flash")
+		"graphics/muzzle_flash_quality":
+			call_deferred("_preload_current_muzzle_flash")
 		"graphics/muzzle_light":
 			if not bool(value):
 				_free_effect_group("weapon_muzzle_light_effects")
@@ -186,12 +196,30 @@ func _on_fired() -> void:
 		return
 	var profile := _fx.resolve_muzzle_profile(_effective_barrel_length(), _muzzle_kind())
 	var xf := _muzzle_transform()
-	if _setting_enabled("graphics/muzzle_flash", true):
+	if _setting_enabled("graphics/muzzle_flash", true) and _muzzle_flash_visible(xf.origin):
 		_spawn_flash(profile, xf)
-	_spawn_muzzle_light(profile, xf)
+	if _muzzle_light_visible(xf.origin):
+		_spawn_muzzle_light(profile, xf)
 	_spawn_smoke(xf)
-	if _heat_haze_allowed():
+	if _heat_haze_allowed() and _muzzle_flash_visible(xf.origin):
 		_add_heat_haze_heat(profile)
+
+
+func _preload_current_muzzle_flash() -> void:
+	if not _fx or not _weapon or not _weapon.is_inside_tree():
+		return
+	var profile := _fx.resolve_muzzle_profile(_effective_barrel_length(), _muzzle_kind())
+	var profile_id: int = int(profile.get("profile", WeaponFXConfig.MuzzleProfile.STANDARD))
+	for scene in _fx.scenes_for_profile(profile_id, _effective_barrel_length()):
+		if not scene:
+			continue
+		var sequence := scene.instantiate() as MuzzleFlashSequence
+		if sequence:
+			var local_weapon := _is_local_player_weapon()
+			sequence.force_front_view = local_weapon
+			sequence.quality = "high" if local_weapon else _muzzle_flash_quality()
+			sequence.preload_frames()
+			sequence.free()
 
 
 func _process(delta: float) -> void:
@@ -228,6 +256,17 @@ func _muzzle_kind() -> int:
 			continue
 		if cfg.attachment_type != AttachmentConfig.AttachmentType.MUZZLE:
 			continue
+		if cfg is MuzzleDeviceConfig:
+			var muzzle_cfg := cfg as MuzzleDeviceConfig
+			match muzzle_cfg.visual_kind:
+				MuzzleDeviceConfig.VisualKind.NONE:
+					return WeaponFXConfig.MuzzleKind.NONE
+				MuzzleDeviceConfig.VisualKind.FLASH_HIDER:
+					return WeaponFXConfig.MuzzleKind.FLASH_HIDER
+				MuzzleDeviceConfig.VisualKind.MUZZLE_BRAKE:
+					return WeaponFXConfig.MuzzleKind.BRAKE
+				MuzzleDeviceConfig.VisualKind.SUPPRESSOR:
+					return WeaponFXConfig.MuzzleKind.SUPPRESSOR
 		# 配件配置若声明了消音/消焰能力则直接采用，否则按名称回退判断
 		if cfg.suppresses_sound:
 			return WeaponFXConfig.MuzzleKind.SUPPRESSOR
@@ -261,11 +300,66 @@ func _spawn_flash(profile: Dictionary, xf: Transform3D) -> void:
 	var node := scene.instantiate() as Node3D
 	if not node:
 		return
-	_weapon.get_tree().current_scene.add_child(node)
+	if node is MuzzleFlashSequence:
+		var sequence := node as MuzzleFlashSequence
+		var local_weapon := _is_local_player_weapon()
+		sequence.force_front_view = local_weapon
+		sequence.quality = "high" if local_weapon else _muzzle_flash_quality()
+		sequence.maximum_visibility_distance = _muzzle_flash_distance()
+	var world_parent := _weapon.get_tree().current_scene
+	world_parent.add_child(node)
 	node.add_to_group("weapon_muzzle_flash_effects")
 	node.global_transform = xf
 	node.scale = Vector3.ONE * float(profile.get("scale", 1.0))
-	_auto_free(node, float(profile.get("lifetime", 0.05)) + 1.0)
+	if not node is MuzzleFlashSequence:
+		_auto_free(node, float(profile.get("lifetime", 0.05)) + 1.0)
+
+
+func _is_local_player_weapon() -> bool:
+	var ancestor: Node = _weapon
+	while ancestor:
+		if ancestor is BasePlayer:
+			return not (ancestor as BasePlayer).is_ai_player
+		ancestor = ancestor.get_parent()
+	return false
+
+
+func _muzzle_flash_visible(position: Vector3) -> bool:
+	if _is_local_player_weapon():
+		return true
+	var camera := _current_camera()
+	if not camera:
+		return true
+	if camera.global_position.distance_to(position) > _muzzle_flash_distance():
+		return false
+	if _setting_enabled("graphics/muzzle_flash_offscreen_culling", true):
+		return camera.is_position_in_frustum(position)
+	return true
+
+
+func _muzzle_light_visible(position: Vector3) -> bool:
+	if not _fx.muzzle_light_enabled or not _setting_enabled("graphics/muzzle_light", true):
+		return false
+	if _is_local_player_weapon():
+		return true
+	var camera := _current_camera()
+	return not camera or camera.global_position.distance_to(position) <= _muzzle_light_distance()
+
+
+func _current_camera() -> Camera3D:
+	return _weapon.get_viewport().get_camera_3d() if _weapon and _weapon.is_inside_tree() else null
+
+
+func _muzzle_flash_distance() -> float:
+	return clampf(float(_settings_service.get_value("graphics/muzzle_flash_distance", 120.0)), 20.0, 300.0) if _settings_service else 120.0
+
+
+func _muzzle_light_distance() -> float:
+	return clampf(float(_settings_service.get_value("graphics/muzzle_light_distance", 35.0)), 5.0, 100.0) if _settings_service else 35.0
+
+
+func _muzzle_flash_quality() -> String:
+	return String(_settings_service.get_value("graphics/muzzle_flash_quality", "medium")) if _settings_service else "medium"
 
 
 func _spawn_muzzle_light(profile: Dictionary, xf: Transform3D) -> void:
@@ -452,8 +546,10 @@ func _clear_heat_haze_node() -> void:
 
 
 func _auto_free(node: Node, seconds: float) -> void:
+	var instance_id := node.get_instance_id()
 	var timer := node.get_tree().create_timer(seconds)
 	timer.timeout.connect(func():
-		if is_instance_valid(node):
-			node.queue_free()
+		var target := instance_from_id(instance_id) as Node
+		if target:
+			target.queue_free()
 	)
