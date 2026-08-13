@@ -189,7 +189,7 @@ func _create_pool(ground_point: Vector3) -> void:
 		return
 	var pool := Decal.new()
 	pool.name = "BloodPool"
-	pool.texture_albedo = _config.blood_pool_texture
+	pool.texture_albedo = _atlas_variant(_config.blood_pool_texture, 0)
 	pool.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	pool.size = Vector3(_config.pool_start_size.x, 0.08, _config.pool_start_size.y)
 	pool.position = ground_point + Vector3.UP * _config.ground_offset
@@ -269,9 +269,23 @@ func _make_drop_mesh() -> QuadMesh:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	material.albedo_color = Color(1.0, 1.0, 1.0, _config.drip_alpha)
-	material.albedo_texture = _config.blood_drop_texture
+	material.albedo_texture = _atlas_variant(_config.blood_drop_texture, 1)
 	mesh.material = material
 	return mesh
+
+func _atlas_variant(texture: Texture2D, variant_index: int) -> Texture2D:
+	if not texture:
+		return null
+	var atlas_size := texture.get_size()
+	if atlas_size.x < 2.0 or atlas_size.y < 2.0:
+		return texture
+	var atlas := AtlasTexture.new()
+	atlas.atlas = texture
+	var cell_size := atlas_size / 2.0
+	var column := variant_index % 2
+	var row := int(variant_index / 2)
+	atlas.region = Rect2(Vector2(column, row) * cell_size, cell_size)
+	return atlas
 
 func _make_drip_process_material() -> ParticleProcessMaterial:
 	var material := ParticleProcessMaterial.new()
