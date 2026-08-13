@@ -1,6 +1,8 @@
 class_name Projectile
 extends RefCounted
 
+const ENVIRONMENT_IMPACT_EFFECT = preload("res://classes/combat/environment_impact_effect.gd")
+
 # ============================================================
 # 瞬时 hitscan 回退发射器
 # 功能：从枪口发射射线，计算命中，构建 DamageInfo 交给目标 HealthSystem。
@@ -39,7 +41,7 @@ static func fire_hitscan(
 	var query := PhysicsRayQueryParameters3D.create(
 		origin,
 		origin + target_dir.normalized() * 2000.0,
-		1 | 2,
+		PhysicsLayers.BALLISTIC_TARGETS,
 		exclude
 	)
 	query.collide_with_areas = true
@@ -61,6 +63,16 @@ static func fire_hitscan(
 	# 向上寻找 BasePlayer；命中环境（墙/地面）时子弹在此终止
 	var player_node := find_player(collider)
 	if not player_node:
+		var surface := BallisticProjectileSystem.get_surface_config(collider)
+		ENVIRONMENT_IMPACT_EFFECT.spawn(
+			source.get_tree().current_scene if is_instance_valid(source) else null,
+			result.get("position", Vector3.ZERO),
+			result.get("normal", -target_dir.normalized()),
+			target_dir.normalized(),
+			ENVIRONMENT_IMPACT_EFFECT.ImpactKind.STOP,
+			energy,
+			surface.material_name
+		)
 		return
 	if not player_node.has_node("HealthSystem"):
 		GlobalLogger.warn("Projectile", "Hit player has no HealthSystem")

@@ -77,8 +77,11 @@ func get_stance_value() -> float:
 
 func set_stance(value: float) -> void:
 	"""直接设置姿态值（用于强制站起等场景）"""
+	var previous := _stance_value
 	_stance_value = clamp(value, 0.0, 1.0)
 	_target_stance = _stance_value
+	if not is_equal_approx(previous, _stance_value):
+		stance_changed.emit(_stance_value)
 
 
 # 每帧更新 ──────────────────────────────────────────────────

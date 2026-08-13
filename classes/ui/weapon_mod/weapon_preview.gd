@@ -87,15 +87,17 @@ func rebuild(config: WeaponConfig, attachment_state: Dictionary, rail_offsets: D
 
 	_restore_attachments(attachment_state)
 	for slot_name in rail_offsets:
-		set_rail_offset(slot_name, float(rail_offsets[slot_name]))
+		set_rail_offset(slot_name, float(rail_offsets[slot_name]), false)
 	_frame_weapon()
 
 
 ## 只更新预览中一个已安装配件的位置，不必重建整把武器。
-func set_rail_offset(slot_name: String, offset: float) -> void:
+func set_rail_offset(slot_name: String, offset: float, refit_camera: bool = true) -> void:
 	if not _weapon:
 		return
 	_weapon.set_attachment_rail_offset(slot_name, offset)
+	if refit_camera:
+		_frame_weapon()
 
 
 ## 将草稿状态增量同步到当前预览武器，不销毁并重建整把武器。
@@ -127,7 +129,12 @@ func sync_attachment_state(attachment_state: Dictionary, rail_offsets: Dictionar
 				if _weapon.equip_attachment(key, want):
 					progressed = true
 	for slot_name in rail_offsets:
-		_weapon.set_attachment_rail_offset(slot_name, float(rail_offsets[slot_name]))
+		set_rail_offset(slot_name, float(rail_offsets[slot_name]), false)
+
+	# 草稿配件是在现有预览武器上增量替换的，不能依赖 rebuild() 触发重新取景。
+	# 配件长度、位置或可见模型发生变化后，立即按新的包围盒更新镜头，
+	# 否则未保存的预览会继续使用旧距离，装上较长配件时镜头就会过近。
+	_frame_weapon()
 
 
 ## 还原配件。必须反复扫描：部分槽位是被别的配件带出来的

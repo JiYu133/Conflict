@@ -53,6 +53,29 @@ extends Resource
 ## 转向减速强度（0=不减速，1=完全余弦削减）
 @export var turn_decel_factor: float = 0.85
 
+## 原地转身参数：角色移动受限且视角超过阈值时，控制身体朝向与动画播放。
+@export_group("原地转身")
+## 是否在移动受限时播放原地转身动画。
+@export var turn_in_place_enabled: bool = true
+## 视角与身体偏差达到此角度后触发原地转身。
+@export_range(0.0, 180.0, 0.5) var turn_trigger_angle_degrees: float = 40.0
+## 原地转身期间允许视角偏离身体的最大角度。
+@export_range(0.0, 180.0, 0.5) var turn_view_limit_degrees: float = 90.0
+## 视角受限时保留的最低输入灵敏度比例。
+@export_range(0.0, 1.0, 0.01) var turn_view_min_sensitivity_ratio: float = 0.25
+## 原地转身动画片段对应的作者标注旋转角度。
+@export_range(1.0, 180.0, 0.5) var turn_clip_authored_angle_degrees: float = 90.0
+## 原地转身动画的最低播放速度；提高该值会缩短转身时长而不改变转角。
+@export_range(0.1, 3.0, 0.01) var turn_min_playback_speed: float = 1.25
+## 原地转身动画可达到的最大播放速度。
+@export_range(0.1, 3.0, 0.01) var turn_max_playback_speed: float = 1.5
+## 原地转身受限时的移动速度比例。
+@export_range(0.0, 1.0, 0.01) var turn_constrained_speed_ratio: float = 0.25
+## 原地转身受限时的加速度比例。
+@export_range(0.0, 1.0, 0.01) var turn_constrained_acceleration_ratio: float = 0.25
+## 原地转身动画切换的混合时长（秒）。
+@export_range(0.0, 1.0, 0.01) var turn_transition_time: float = 0.12
+
 # 运动手感 ────────────────────────────────────────────────────
 @export_group("运动手感")
 ## 起步峰值速度倍率

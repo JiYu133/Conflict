@@ -49,6 +49,7 @@ var _bone_attachment: BoneAttachment3D
 
 var _mouse_sensitivity: float
 var _vertical_angle: float = 0.0
+var _view_yaw: float = 0.0
 var _max_vertical_angle: float
 
 # 弹簧系统 - 3 轴独立弹簧，对头部位置在玩家局部空间做低通滤波
@@ -124,6 +125,7 @@ func initialize(
 	_camera_config = camera_config if camera_config else CameraConfig.new()
 	_settings_service = settings_service
 	_player = player
+	_view_yaw = player.rotation.y if player else 0.0
 
 	_spring_x = CameraSpring1D.new()
 	_spring_y = CameraSpring1D.new()
@@ -436,7 +438,27 @@ func _input(event: InputEvent) -> void:
 		return
 	var unified_multiplier := float(_settings_service.get_value("controls/sensitivity", 1.0)) if _settings_service else 1.0
 	var invert_sign := -1.0 if _settings_service and bool(_settings_service.get_value("controls/invert_y", false)) else 1.0
-	_player.rotate_y(-event.relative.x * _mouse_sensitivity * unified_multiplier)
+	var input_yaw : float = -event.relative.x * _mouse_sensitivity * unified_multiplier
+	var body_offset := get_body_yaw_offset()
+	var movement_config := _player.player_config.movement_config if _player and _player.player_config else null
+	if movement_config and movement_config.turn_in_place_enabled:
+		var moving := _is_moving()
+		if moving:
+			# Turn-in-place limits only apply while stationary. Moving keeps the
+			# body aligned to the view so locomotion and the model turn together.
+			_view_yaw += input_yaw
+			_sync_moving_body_yaw()
+		else:
+			var trigger := deg_to_rad(movement_config.turn_trigger_angle_degrees)
+			var limit := deg_to_rad(movement_config.turn_view_limit_degrees)
+			var ratio := 1.0
+			if absf(body_offset) > trigger:
+				var t := inverse_lerp(trigger, maxf(limit * 2.0, limit + 0.001), absf(body_offset))
+				ratio = lerpf(1.0, movement_config.turn_view_min_sensitivity_ratio, clampf(t, 0.0, 1.0))
+			var desired_yaw := _view_yaw + input_yaw * ratio
+			_view_yaw = _player.rotation.y + clampf(angle_difference(_player.rotation.y, desired_yaw), -limit, limit)
+	else:
+		_view_yaw += input_yaw
 	_vertical_angle -= event.relative.y * _mouse_sensitivity * unified_multiplier * invert_sign
 	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
 
@@ -451,7 +473,6 @@ func _process(delta: float) -> void:
 	# 即使暂时失去输入控制，也让受击镜头继续回正，避免打开菜单后
 	# 冲击被冻结，关闭菜单时突然恢复一个过期的歪斜角度。
 	_update_pain_impulse(delta)
-	var ragdoll_shake: Dictionary = _update_ragdoll_camera_shake(delta)
 
 	# 眼部高度平滑插值（蹲下/起立时移动摄像机 fallback 高度）
 	if _eye_height != _target_eye_height:
@@ -473,9 +494,11 @@ func _process(delta: float) -> void:
 			else:
 				# 死亡动画阶段仍直接读取动画骨骼，不经过弹簧。
 				head_xform = _ragdoll_skeleton.global_transform * _ragdoll_skeleton.get_bone_global_pose(_ragdoll_bone_idx)
+			# 死亡和昏迷都严格跟随布娃娃头部，完整保留物理位移、滚转和姿态。
+			# 仅保留一次性轴向转换，用于适配模型头骨骼与相机前方向的差异。
 			var camera_basis := (head_xform.basis.orthonormalized() * _ragdoll_head_to_camera_basis).orthonormalized()
-			_active_camera.global_position = head_xform.origin + head_xform.basis.orthonormalized() * (_camera_config.ragdoll_eye_offset + ragdoll_shake["position"])
-			_active_camera.global_basis = (camera_basis * ragdoll_shake["basis"]).orthonormalized()
+			_active_camera.global_position = head_xform.origin
+			_active_camera.global_basis = camera_basis
 			return
 
 	# 防御性保护：死亡跟随已接管相机时，正常头部弹簧永远不再推进。
@@ -510,11 +533,10 @@ func _process(delta: float) -> void:
 	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧
 	_active_camera.global_position = _player.global_transform * filtered_local
 
-	var player_yaw: float = _player.rotation.y if _player else 0.0
 	_active_camera.global_rotation = Vector3(
-		_vertical_angle + _pain_pitch + ragdoll_shake["rotation"].x,
-		player_yaw + _pain_yaw + ragdoll_shake["rotation"].y,
-		_pain_roll + ragdoll_shake["rotation"].z
+		_vertical_angle + _pain_pitch,
+		_view_yaw + _pain_yaw,
+		_pain_roll
 	)
 
 	_update_ads(delta)
@@ -677,3 +699,51 @@ func get_base_mouse_sensitivity() -> float:
 
 func get_vertical_angle() -> float:
 	return _vertical_angle
+
+func get_view_yaw() -> float:
+	return _view_yaw
+
+func get_body_yaw_offset() -> float:
+	return angle_difference(_player.rotation.y, _view_yaw) if is_instance_valid(_player) else 0.0
+
+func get_view_basis() -> Basis:
+	return Basis(Vector3.UP, _view_yaw)
+
+
+func _sync_moving_body_yaw() -> void:
+	if is_instance_valid(_player) and _is_moving():
+		if _body_yaw_blend_remaining <= 0.0:
+			_player.rotation.y = _view_yaw
+
+
+var _body_yaw_blend_remaining: float = 0.0
+var _body_yaw_blend_duration: float = 0.0
+var _body_yaw_blend_start: float = 0.0
+var _body_yaw_blend_target: float = 0.0
+
+
+func begin_moving_body_yaw_blend(duration: float) -> void:
+	_body_yaw_blend_duration = maxf(duration, 0.001)
+	_body_yaw_blend_remaining = _body_yaw_blend_duration
+	_body_yaw_blend_start = _player.rotation.y if is_instance_valid(_player) else _view_yaw
+	_body_yaw_blend_target = _view_yaw
+
+
+func process_moving_body_yaw_blend(delta: float) -> void:
+	if _body_yaw_blend_remaining <= 0.0 or not is_instance_valid(_player):
+		return
+	_body_yaw_blend_remaining = maxf(_body_yaw_blend_remaining - delta, 0.0)
+	var weight := 1.0 - (_body_yaw_blend_remaining / _body_yaw_blend_duration)
+	# Smoothstep keeps angular velocity continuous at both ends and avoids the
+	# large final snap produced by repeatedly lerping from the current yaw.
+	weight = weight * weight * (3.0 - 2.0 * weight)
+	_player.rotation.y = lerp_angle(_body_yaw_blend_start, _body_yaw_blend_target, clampf(weight, 0.0, 1.0))
+	if _body_yaw_blend_remaining <= 0.0:
+		_player.rotation.y = _body_yaw_blend_target
+
+
+func _is_moving() -> bool:
+	if not is_instance_valid(_player):
+		return false
+	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+	return horizontal_velocity.length_squared() > 0.01

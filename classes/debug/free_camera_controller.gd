@@ -254,7 +254,7 @@ func _fire_hitscan(energy: float, dmg_type: MedicalEnums.DamageType, forced_part
 	var forward := -_free_cam.global_transform.basis.z
 
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + forward * 2000.0)
-	query.collision_mask = 2
+	query.collision_mask = PhysicsLayers.CHARACTER
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
 	query.exclude = [_player.get_rid()]
@@ -325,7 +325,7 @@ func _physics_process(_delta: float) -> void:
 	var origin  := _free_cam.global_position
 	var forward := -_free_cam.global_transform.basis.z
 	var query := PhysicsRayQueryParameters3D.create(origin, origin + forward * 2000.0)
-	query.collision_mask = 2
+	query.collision_mask = PhysicsLayers.CHARACTER
 	query.collide_with_areas = true
 	query.collide_with_bodies = true
 	query.exclude = [_player.get_rid()]

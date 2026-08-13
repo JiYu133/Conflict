@@ -20,14 +20,18 @@ extends Resource
 
 # 基础属性 ─────────────────────────────────────────────────
 @export_group("基础属性")
+## Display name shown in weapon UI.
 @export var weapon_name: String = "Unnamed Weapon"
+## Weapon family identifier used by gameplay systems.
 @export var weapon_type: String = "rifle"
 ## 武器逻辑总开关：关闭时禁用击发/换弹/后座/故障，仅保留模型显示
 @export var logic_enabled: bool = false
 
 # 自动原理 ─────────────────────────────────────────────────
 @export_group("自动原理")
+## Operating action identifier.
 @export var action_type: String = "gas_operated"
+## Whether the weapon fires from an open bolt.
 @export var open_bolt: bool = false
 ## 理论射速（RPM），实际射速由枪机框循环时间决定
 @export var cycle_rate: float = 600.0
@@ -42,26 +46,36 @@ extends Resource
 ## 一组点射的发数（仅 fire_modes 含 burst 时有意义）。
 ## AK-12 为 2 发点射；多数西方步枪为 3 发。
 @export_range(2, 5) var burst_count: int = 3
+## Fire mode selected when first equipped.
 @export var default_fire_mode: String = "semi"
 
 # 后座旧字段（兼容）──────────────────────────────────────────
 ## Deprecated: retained only so older weapon resources remain loadable.
 ## RecoilPhysicsModel derives recoil from physical receiver/attachment data.
 @export_storage var recoil_vertical: float = 2.0
+## Legacy horizontal recoil value retained for compatibility.
 @export_storage var recoil_horizontal: float = 0.5
+## Legacy recoil recovery speed retained for compatibility.
 @export_storage var recoil_recovery_speed: float = 5.0
+## Legacy pitch kick in degrees retained for compatibility.
 @export_storage var kick_pitch_deg: float = 0.8
+## Legacy yaw kick in degrees retained for compatibility.
 @export_storage var kick_yaw_deg: float = 0.12
+## Legacy random yaw kick in degrees retained for compatibility.
 @export_storage var kick_yaw_random_deg: float = 0.35
 
 # 散布（机匣基准值）──────────────────────────────────────
 @export_group("散布")
+## Base hip-fire spread in degrees.
 @export var hipfire_spread: float = 3.0
+## Base ADS spread in degrees.
 @export var ads_spread: float = 0.1
 
 # 重量（机匣自身重量）────────────────────────────────────
 @export_group("重量")
+## Receiver/weapon mass in kilograms.
 @export var weight: float = 3.5
+## Whether weapon weight affects movement.
 @export var weight_affects_movement: bool = true
 
 # 后座物理 ----------------------------------------
@@ -85,14 +99,19 @@ extends Resource
 
 # 视觉效果 ────────────────────────────────────────────────
 @export_group("视觉效果")
+## Weapon model scene instantiated for this resource.
 @export var weapon_scene: PackedScene
 ## 开火表现配置（抛壳 / 枪口焰 / 枪口光照）。
 ## 留空则使用 WeaponFXConfig 默认值：抛壳照常工作（占位模型），
 ## 枪口焰因无素材而静默跳过，待美术补上贴图后填入 .tres 即可。
 @export var fx_config: WeaponFXConfig
+## Overall weapon length in metres, used by presentation systems.
 @export var weapon_length: float = 0.75
+## Time to complete ADS transition, in seconds.
 @export var ads_time: float = 0.25
+## Camera offset while aiming down sights.
 @export var ads_center_offset: Vector3 = Vector3(0.0, -0.1, -0.05)
+## Optional ADS FOV override; negative keeps the default.
 @export var ads_fov_override: float = -1.0
 
 # 掉落物理 ─────────────────────────────────────────────────
@@ -108,6 +127,7 @@ extends Resource
 ## 若美术摆放握把 Marker 的轴向与骨骼约定不一致（枪身侧倒/上下颠倒），在此修正。
 ## 通常只需调 Z（枪身滚转）或 X（枪口俯仰）。
 @export var grip_alignment_offset: Vector3 = Vector3.ZERO
+## Left-hand IK influence while holding this weapon.
 @export_range(0.0, 1.0) var left_hand_ik_weight: float = 1.0
 
 # 配件槽位声明 ────────────────────────────────────────────
@@ -124,7 +144,9 @@ extends Resource
 
 # 武器特征标签 ────────────────────────────────────────────
 @export_group("武器特征")
+## Country associated with the weapon.
 @export var origin_country: String = "Russia"
+## Approximate era or generation label.
 @export var era: String = "Modern"
 
 # 弹道学 ──────────────────────────────────────────────────

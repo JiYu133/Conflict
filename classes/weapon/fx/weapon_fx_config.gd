@@ -27,6 +27,7 @@ extends Resource
 @export_range(0.0, 1.0) var shell_velocity_jitter: float = 0.18
 ## 抛壳翻滚初角速度（弧度/秒）范围
 @export var shell_spin_min: float = 8.0
+## 抛壳翻滚初角速度上限（弧度/秒）。
 @export var shell_spin_max: float = 22.0
 ## 弹壳物理材质（弹性/摩擦）。留空 = 使用默认值
 @export var shell_physics_material: PhysicsMaterial
@@ -40,14 +41,41 @@ extends Resource
 ## 各形态的粒子场景。留空则该形态不生成任何东西。
 ## 命名与清单一致：短枪管 / 标准 / 长枪管 / 消焰器 / 制退器 / 消音器
 @export var flash_scene_short_barrel: PackedScene
+## Fallback muzzle-flash scene for a standard barrel.
 @export var flash_scene_standard: PackedScene
+## Fallback muzzle-flash scene for a long barrel.
 @export var flash_scene_long_barrel: PackedScene
+## Fallback muzzle-flash scene when a flash hider is attached.
 @export var flash_scene_flash_hider: PackedScene
+## Fallback muzzle-flash scene when a muzzle brake is attached.
 @export var flash_scene_muzzle_brake: PackedScene
+## Fallback muzzle-smoke scene when a suppressor is attached.
 @export var flash_scene_suppressor_smoke: PackedScene
+
+## Sequence variants. When populated, one scene is selected randomly per shot.
+## The legacy single-scene fields above remain valid as fallbacks.
+## 随机选用的短枪管枪口焰场景。
+@export var flash_scenes_short_barrel: Array[PackedScene] = []
+## 随机选用的标准枪管枪口焰场景。
+@export var flash_scenes_standard: Array[PackedScene] = []
+## 随机选用的长枪管枪口焰场景。
+@export var flash_scenes_long_barrel: Array[PackedScene] = []
+## 随机选用的短枪管制退器枪口焰场景。
+@export var flash_scenes_muzzle_brake_short: Array[PackedScene] = []
+## 随机选用的标准枪管制退器枪口焰场景。
+@export var flash_scenes_muzzle_brake_standard: Array[PackedScene] = []
+## 随机选用的长枪管制退器枪口焰场景。
+@export var flash_scenes_muzzle_brake_long: Array[PackedScene] = []
+## 随机选用的短消音器烟雾场景。
+@export var flash_scenes_suppressor_short: Array[PackedScene] = []
+## 随机选用的标准消音器烟雾场景。
+@export var flash_scenes_suppressor_standard: Array[PackedScene] = []
+## 随机选用的长消音器烟雾场景。
+@export var flash_scenes_suppressor_long: Array[PackedScene] = []
 
 ## 枪管长度分界（米）：短于 short 判为短枪管，长于 long 判为长枪管
 @export var short_barrel_threshold: float = 0.32
+## 长枪管判定阈值（米）。
 @export var long_barrel_threshold: float = 0.50
 
 ## 枪口焰基准存活时间（秒），实际按枪管长度缩放
@@ -173,7 +201,7 @@ func resolve_muzzle_profile(barrel_length: float, muzzle_kind: int) -> Dictionar
 
 	return {
 		"profile": profile,
-		"scene": _scene_for(profile),
+		"scene": _scene_for(profile, barrel_length),
 		"scale": flash_base_scale * scale_mult,
 		"lifetime": flash_base_lifetime * life_mult,
 		"light_energy": muzzle_light_energy * light_mult,
@@ -184,11 +212,56 @@ func resolve_muzzle_profile(barrel_length: float, muzzle_kind: int) -> Dictionar
 enum MuzzleKind { NONE, FLASH_HIDER, BRAKE, SUPPRESSOR }
 
 
-func _scene_for(profile: MuzzleProfile) -> PackedScene:
+func _scene_for(profile: MuzzleProfile, barrel_length: float) -> PackedScene:
+	var variants := scenes_for_profile(profile, barrel_length)
+	if not variants.is_empty():
+		return variants.pick_random()
 	match profile:
-		MuzzleProfile.SHORT_BARREL:  return flash_scene_short_barrel
-		MuzzleProfile.LONG_BARREL:   return flash_scene_long_barrel
-		MuzzleProfile.FLASH_HIDER:   return flash_scene_flash_hider
-		MuzzleProfile.MUZZLE_BRAKE:  return flash_scene_muzzle_brake
-		MuzzleProfile.SUPPRESSOR:    return flash_scene_suppressor_smoke
-		_:                           return flash_scene_standard
+		MuzzleProfile.SHORT_BARREL: return flash_scene_short_barrel
+		MuzzleProfile.LONG_BARREL: return flash_scene_long_barrel
+		MuzzleProfile.FLASH_HIDER: return flash_scene_flash_hider if flash_scene_flash_hider else flash_scene_standard
+		MuzzleProfile.MUZZLE_BRAKE: return flash_scene_muzzle_brake
+		MuzzleProfile.SUPPRESSOR: return flash_scene_suppressor_smoke
+		_: return flash_scene_standard
+
+
+func scenes_for_profile(profile: MuzzleProfile, barrel_length: float) -> Array[PackedScene]:
+	var length_profile := _length_profile(barrel_length)
+	var variants: Array[PackedScene] = []
+	match profile:
+		MuzzleProfile.SHORT_BARREL:
+			variants = flash_scenes_short_barrel
+		MuzzleProfile.STANDARD:
+			variants = flash_scenes_standard
+		MuzzleProfile.LONG_BARREL:
+			variants = flash_scenes_long_barrel
+		MuzzleProfile.FLASH_HIDER:
+			# Flash hiders intentionally reuse the smaller standard-barrel flash.
+			variants = flash_scenes_standard
+		MuzzleProfile.MUZZLE_BRAKE:
+			variants = _muzzle_brake_scenes_for(length_profile)
+		MuzzleProfile.SUPPRESSOR:
+			variants = _suppressor_scenes_for(length_profile)
+	return variants
+
+
+func _length_profile(barrel_length: float) -> MuzzleProfile:
+	if barrel_length <= short_barrel_threshold:
+		return MuzzleProfile.SHORT_BARREL
+	if barrel_length >= long_barrel_threshold:
+		return MuzzleProfile.LONG_BARREL
+	return MuzzleProfile.STANDARD
+
+
+func _muzzle_brake_scenes_for(length_profile: MuzzleProfile) -> Array[PackedScene]:
+	match length_profile:
+		MuzzleProfile.SHORT_BARREL: return flash_scenes_muzzle_brake_short
+		MuzzleProfile.LONG_BARREL: return flash_scenes_muzzle_brake_long
+		_: return flash_scenes_muzzle_brake_standard
+
+
+func _suppressor_scenes_for(length_profile: MuzzleProfile) -> Array[PackedScene]:
+	match length_profile:
+		MuzzleProfile.SHORT_BARREL: return flash_scenes_suppressor_short
+		MuzzleProfile.LONG_BARREL: return flash_scenes_suppressor_long
+		_: return flash_scenes_suppressor_standard

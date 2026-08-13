@@ -5,6 +5,7 @@
 
 [resource]
 script = ExtResource("1_a")
+visual_kind = 3
 gas_impulse_vector = Vector3(0, 0.14, 0.68)
 attachment_name = "双腔制退补偿器"
 attachment_type = 1

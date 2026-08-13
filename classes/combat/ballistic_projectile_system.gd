@@ -5,13 +5,15 @@ extends Node
 ## Projectile origin and direction are supplied by the weapon muzzle only.
 
 const DEFAULT_ENVIRONMENT: BallisticEnvironmentConfig = preload("res://assets/config/ballistics/default_environment.tres")
+const ENVIRONMENT_IMPACT_EFFECT = preload("res://classes/combat/environment_impact_effect.gd")
 ## Legacy constants retained for callers that used the original fixed limits.
 const MAX_RANGE_M: float = 2000.0
 const MAX_FLIGHT_TIME_S: float = 8.0
 const MIN_SPEED_MPS: float = 40.0
 const MAX_ACTIVE_BULLETS: int = 256
-const HIT_MASK: int = 1 | 2
+const HIT_MASK: int = PhysicsLayers.BALLISTIC_TARGETS
 const COLLISION_EPSILON_M: float = 0.002
+const MAX_RICOCHETS_PER_BULLET: int = 2
 
 static var _instance: BallisticProjectileSystem = null
 
@@ -100,6 +102,7 @@ func spawn(
 		"traveled": 0.0,
 		"time": 0.0,
 		"penetrations_this_frame": 0,
+		"ricochet_count": 0,
 		"skip_collider": null,
 		"skip_until_time": 0.0,
 		"tracer": _spawn_tracer(origin, velocity),
@@ -201,17 +204,30 @@ func _handle_collision(b: Dictionary, ray_result: Dictionary, velocity: Vector3)
 	var normal_dot := absf(incoming_direction.dot(normal)) if normal != Vector3.ZERO else 1.0
 	var grazing_angle := rad_to_deg(asin(clampf(normal_dot, 0.0, 1.0)))
 	var too_shallow := grazing_angle <= surface.ricochet_angle_deg
-	if too_shallow and energy < required_energy:
+	var ricochet_count: int = int(b.get("ricochet_count", 0))
+	var can_ricochet: bool = too_shallow and surface.hardness >= 0.5 \
+		and surface.ricochet_energy_retention > 0.0 \
+		and ricochet_count < MAX_RICOCHETS_PER_BULLET
+	if not player_node and can_ricochet:
+		_spawn_environment_impact(ray_result, incoming_direction, energy, surface, ENVIRONMENT_IMPACT_EFFECT.ImpactKind.RICOCHET)
 		return _ricochet(b, ray_result, velocity, surface)
 	if not surface.penetrable or energy <= required_energy:
+		if not player_node:
+			_spawn_environment_impact(ray_result, incoming_direction, energy, surface, ENVIRONMENT_IMPACT_EFFECT.ImpactKind.STOP)
 		return false
 	if b["penetrations_this_frame"] >= _environment.max_penetrations_per_frame:
+		if not player_node:
+			_spawn_environment_impact(ray_result, incoming_direction, energy, surface, ENVIRONMENT_IMPACT_EFFECT.ImpactKind.STOP)
 		return false
 
 	var retained_energy := maxf(energy - required_energy, 0.0)
 	retained_energy *= 1.0 - clampf(surface.energy_loss_factor, 0.0, 1.0)
 	if retained_energy <= 0.0:
+		if not player_node:
+			_spawn_environment_impact(ray_result, incoming_direction, energy, surface, ENVIRONMENT_IMPACT_EFFECT.ImpactKind.STOP)
 		return false
+	if not player_node:
+		_spawn_environment_impact(ray_result, incoming_direction, energy, surface, ENVIRONMENT_IMPACT_EFFECT.ImpactKind.PENETRATION)
 	b["velocity"] = incoming_direction * sqrt(2.0 * retained_energy / b["mass_kg"])
 	b["penetrations_this_frame"] += 1
 	b["skip_collider"] = collider
@@ -230,10 +246,32 @@ func _ricochet(b: Dictionary, ray_result: Dictionary, velocity: Vector3, surface
 	var energy := Ballistics.kinetic_energy(b["mass_kg"], velocity.length())
 	var retained := energy * clampf(surface.ricochet_energy_retention, 0.0, 1.0)
 	b["velocity"] = bounced * sqrt(2.0 * retained / b["mass_kg"])
+	b["ricochet_count"] += 1
 	b["position"] = ray_result.get("position", b["position"]) + bounced * COLLISION_EPSILON_M
 	b["skip_collider"] = ray_result.get("collider", null)
 	b["skip_until_time"] = b["time"] + 0.02
 	return b["velocity"].length() >= _environment.minimum_effective_speed_mps
+
+
+func _spawn_environment_impact(
+	ray_result: Dictionary,
+	incoming_direction: Vector3,
+	energy_j: float,
+	surface: BallisticSurfaceConfig,
+	kind: int
+) -> void:
+	var parent := get_tree().current_scene
+	if not parent:
+		return
+	ENVIRONMENT_IMPACT_EFFECT.spawn(
+		parent,
+		ray_result.get("position", Vector3.ZERO),
+		ray_result.get("normal", -incoming_direction),
+		incoming_direction,
+		kind,
+		energy_j,
+		surface.material_name
+	)
 
 
 func _apply_player_damage(b: Dictionary, ray_result: Dictionary, velocity: Vector3, player_node: BasePlayer) -> void:

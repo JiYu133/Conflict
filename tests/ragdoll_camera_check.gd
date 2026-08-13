@@ -38,7 +38,7 @@ func _ready() -> void:
 		return
 
 	var head_transform: Transform3D = physical_head.global_transform * controller._ragdoll_head_from_physical
-	var expected_position := head_transform.origin + head_transform.basis.orthonormalized() * controller._camera_config.ragdoll_eye_offset
+	var expected_position := head_transform.origin
 	if not _check(camera.global_position.distance_to(expected_position) < 0.02, "camera position follows the physical head"):
 		return
 	var expected_basis := (head_transform.basis.orthonormalized() * controller._ragdoll_head_to_camera_basis).orthonormalized()

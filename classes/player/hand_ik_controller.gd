@@ -13,6 +13,7 @@ var _config: HandIKConfig
 
 var _ik_node: TwoBoneIK3D
 var _hand_target: Marker3D      # Skeleton3D 下的中间目标点，由代码每帧更新
+var _target_modifier: HandTargetModifier
 var _left_hand_grip: Node3D     # 武器上的 LeftHandGrip Marker3D
 var _current_weapon: BaseWeapon
 var _enabled: bool = false
@@ -41,6 +42,12 @@ func initialize(_model_manager: PlayerModelManager, _lookup: ModelLookupConfig) 
 func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 	_config = config if config else HandIKConfig.new()
 	_skeleton = skeleton
+	if not is_instance_valid(_skeleton):
+		GlobalLogger.warn("HandIK", "未找到 Skeleton3D，手部 IK 已禁用")
+		return
+	if is_instance_valid(_target_modifier):
+		_target_modifier.queue_free()
+	_target_modifier = null
 	_hand_bone_idx = skeleton.find_bone(_config.tip_bone_name)
 	if _hand_bone_idx == -1:
 		GlobalLogger.warn("HandIK", "未找到手腕骨骼 '%s'，手腕朝向标定不可用" % _config.tip_bone_name)
@@ -62,6 +69,14 @@ func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 	# index 0 是第一条（唯一一条）IK 设置
 	_ik_node.set_target_node(0, _ik_node.get_path_to(_hand_target))
 	_ik_node.influence = 0.0
+
+	# 目标同步必须发生在脊柱修正之后、TwoBoneIK3D 求解之前。
+	# SkeletonModifier3D 的兄弟顺序就是执行顺序，因此把同步器插到 IK 前面。
+	_target_modifier = HandTargetModifier.new()
+	_target_modifier.name = "LeftHandTargetSync"
+	skeleton.add_child(_target_modifier)
+	_target_modifier.setup(self)
+	skeleton.move_child(_target_modifier, _ik_node.get_index())
 	GlobalLogger.info("HandIK", "TwoBoneIK3D '%s' 已绑定，目标点: LeftHandTarget" % node_name)
 
 
@@ -138,23 +153,34 @@ func _update_target_weight() -> void:
 		_target_weight = base * (_config.walk_ik_weight if _config else 1.0)
 
 
-func process_ik(delta: float) -> void:
+func process_ik(delta: float, active: bool = true) -> void:
 	if not _ik_node:
 		return
 
-	# 目标点跟随武器上的左手握把（武器随右手骨骼移动，故目标每帧都在变）
-	if _enabled and is_instance_valid(_left_hand_grip) and _hand_target:
+	var can_solve: bool = active and _enabled \
+		and is_instance_valid(_left_hand_grip) and is_instance_valid(_hand_target)
+	if _target_modifier:
+		_target_modifier.sync_enabled = can_solve
+
+	# 非 SkeletonModifier 更新路径下保留一次同步，确保编辑器和禁用修饰器的
+	# 特殊场景也能工作；正式求解前还会由 HandTargetModifier 再同步一次。
+	if can_solve:
 		_update_hand_target()
 
 	var blend_time := maxf(_config.weight_blend_time if _config else 0.12, 0.001)
-	var effective_target := _target_weight if _enabled else 0.0
+	var effective_target := _target_weight if can_solve else 0.0
+	if not active:
+		_current_weight = 0.0
+		_ik_node.influence = 0.0
+		return
 	_current_weight = move_toward(_current_weight, effective_target, delta / blend_time)
 	_ik_node.influence = _current_weight
 
 
 ## 位置永远取握把；朝向按配置决定是否用标定后的自然手腕姿态。
 func _update_hand_target() -> void:
-	var grip_xf: Transform3D = _left_hand_grip.global_transform
+	_refresh_weapon_mount()
+	var grip_xf := _get_current_grip_transform()
 	var grip_basis: Basis = grip_xf.basis.orthonormalized()
 	# 握持点偏移在握把局部坐标系下施加，手掌略微离开握把表面
 	var origin: Vector3 = grip_xf.origin + grip_basis * _config.grip_position_offset
@@ -174,6 +200,24 @@ func _update_hand_target() -> void:
 		grip_basis * _grip_to_hand_basis * Basis.from_euler(_wrist_offset_rad()),
 		origin
 	)
+
+
+## The rendered grip is the source of truth. BoneAttachment3D owns the exact
+## authored offset and internal pose conversion, so recreating its transform
+## from a skeleton pose is not reliable across imported models.
+func _get_current_grip_transform() -> Transform3D:
+	if not is_instance_valid(_left_hand_grip):
+		return Transform3D.IDENTITY
+	return _left_hand_grip.global_transform
+
+
+func _refresh_weapon_mount() -> void:
+	var node: Node = _left_hand_grip
+	while is_instance_valid(node):
+		if node is BoneAttachment3D:
+			(node as BoneAttachment3D).on_skeleton_update()
+			return
+		node = node.get_parent()
 
 
 ## 记录「动画手腕朝向 相对于 握把朝向」的差值
@@ -196,3 +240,17 @@ func _wrist_offset_rad() -> Vector3:
 		return Vector3.ZERO
 	var d := _config.wrist_rotation_offset
 	return Vector3(deg_to_rad(d.x), deg_to_rad(d.y), deg_to_rad(d.z))
+
+
+class HandTargetModifier extends SkeletonModifier3D:
+	var sync_enabled: bool = false
+	var _controller: HandIKController
+
+
+	func setup(controller: HandIKController) -> void:
+		_controller = controller
+
+
+	func _process_modification() -> void:
+		if sync_enabled and is_instance_valid(_controller):
+			_controller._update_hand_target()

@@ -15,8 +15,11 @@ extends Resource
 @export_range(0.0, 10.0, 0.05) var pool_delay: float = 0.35
 ## 血泊从无到最大尺寸的扩散时长。
 @export_range(0.05, 20.0, 0.05) var pool_growth_duration: float = 4.0
+## 血泊开始渲染时的平面尺寸（米）。
 @export var pool_start_size: Vector2 = Vector2(0.08, 0.08)
+## 血泊完全扩散后的最大平面尺寸（米）。
 @export var pool_max_size: Vector2 = Vector2(2.2, 1.55)
+## 血泊贴图的最终不透明度。
 @export_range(0.01, 1.0, 0.01) var pool_alpha: float = 0.88
 ## 血泊贴地时向上抬升的偏移，避免与地面 z-fighting。
 @export_range(0.001, 0.1, 0.001) var ground_offset: float = 0.012
@@ -24,14 +27,21 @@ extends Resource
 @export_group("Drips")
 ## 渗血表现持续时间；0 表示持续到复活或节点被清理。
 @export_range(0.0, 120.0, 0.5) var drip_duration: float = 18.0
+## 死亡后开始生成血滴前的延迟（秒）。
 @export_range(0.0, 60.0, 0.1) var drip_delay: float = 0.2
+## 单次渗血表现生成的血滴数量。
 @export_range(1, 128, 1) var drip_amount: int = 36
+## 单个血滴粒子的生命周期（秒）。
 @export_range(0.01, 2.0, 0.01) var drip_lifetime: float = 0.75
+## 血滴粒子所受重力加速度（m/s²）。
 @export_range(0.1, 30.0, 0.1) var drip_gravity: float = 9.8
+## 单个血滴的显示尺寸（米）。
 @export_range(0.01, 0.3, 0.005) var drip_size: float = 0.035
+## 血滴粒子的初始不透明度。
 @export_range(0.0, 1.0, 0.01) var drip_alpha: float = 0.75
 
 @export_group("Ground Query")
 ## 地面射线检测的长度；应覆盖尸体可能离地的高度。
 @export_range(1.0, 30.0, 0.5) var ground_ray_length: float = 8.0
-@export_flags_3d_physics var ground_collision_mask: int = 1
+## 参与地面射线检测的物理层掩码。
+@export_flags_3d_physics var ground_collision_mask: int = PhysicsLayers.WORLD

@@ -4,9 +4,6 @@ extends Node
 ## Shared death-time weapon physics for local players and Bots. The existing
 ## weapon instance is detached into an official RigidBody3D and restored on revive.
 
-const DROPPED_WEAPON_COLLISION_LAYER := 4
-const DROPPED_WEAPON_COLLISION_MASK := 0x7FFFFFFF
-
 var _player: BasePlayer
 var _weapon_manager: WeaponManager
 var _dropped_body: RigidBody3D
@@ -44,8 +41,8 @@ func drop_current_weapon() -> bool:
 	_dropped_body = RigidBody3D.new()
 	_dropped_body.name = "%s_Dropped" % weapon.name
 	_dropped_body.mass = maxf(weapon.get_total_weight(), 0.1)
-	_dropped_body.collision_layer = DROPPED_WEAPON_COLLISION_LAYER
-	_dropped_body.collision_mask = DROPPED_WEAPON_COLLISION_MASK
+	_dropped_body.collision_layer = PhysicsLayers.DROPPED_WEAPON
+	_dropped_body.collision_mask = PhysicsLayers.DROPPED_WEAPON_MASK
 	_dropped_body.continuous_cd = true
 	_dropped_body.linear_damp = 0.2
 	_dropped_body.angular_damp = 1.5

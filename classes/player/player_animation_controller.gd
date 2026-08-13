@@ -19,6 +19,11 @@ const SM_JUMP         := "Jump"
 const SM_FALL         := "Fall"
 const SM_LAND         := "Land"
 const SM_DEATH        := "Death"
+const SM_TURN_LEFT    := "TurnLeft"
+const SM_TURN_RIGHT   := "TurnRight"
+const SM_CROUCH_TURN_LEFT  := "CrouchTurnLeft"
+const SM_CROUCH_TURN_RIGHT := "CrouchTurnRight"
+const TURN_THRESHOLD_EPSILON := deg_to_rad(0.1)
 
 # AnimationTree 参数路径 ──────────────────────────────────────
 const PARAM_PLAYBACK           := "parameters/playback"
@@ -27,6 +32,7 @@ const PARAM_CROUCH_WALK_BLEND  := "parameters/CrouchWalk/blend_position"
 const PARAM_RUN_BLEND          := "parameters/Run/blend_position"
 const PARAM_SPRINT_BLEND       := "parameters/Sprint/blend_position"
 const PARAM_STANCE_BLEND       := "parameters/Idle/blend_position"
+const TURN_STATE_NAMES := [SM_TURN_LEFT, SM_TURN_RIGHT, SM_CROUCH_TURN_LEFT, SM_CROUCH_TURN_RIGHT]
 
 
 # 状态枚举 ─────────────────────────────────────────────────
@@ -40,6 +46,10 @@ enum State {
 	FALL,
 	LAND,
 	DEATH,
+	TURN_LEFT,
+	TURN_RIGHT,
+	CROUCH_TURN_LEFT,
+	CROUCH_TURN_RIGHT,
 }
 
 # 私有变量 ─────────────────────────────────────────────────
@@ -54,6 +64,11 @@ var _land_timer: float = 0.0
 var _was_on_floor: bool = true
 # 上一帧的局部水平速度，速度不变时跳过 AnimationTree 参数写入（INF 保证首帧必写）
 var _last_blend_vel: Vector2 = Vector2.INF
+var _last_observed_yaw: float = 0.0
+var _accumulated_turn_yaw: float = 0.0
+var _turn_timer: float = 0.0
+var _external_turn_active: bool = false
+var _external_turn_speed: float = 1.0
 
 
 # 初始化 ────────────────────────────────────────────────────
@@ -98,11 +113,14 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 
 	GlobalLogger.info("AnimationController", "Initialized with AnimationTree.")
 	_setup_animations()
+	_setup_turn_filters()
+	_setup_turn_transitions()
 	_apply_config_to_transitions()
 	# _state 默认就是 IDLE，但状态机启动时仍停在 Start 节点；直接 start
 	# 确保运行时实例（尤其是动态创建的 Bot）不会保留导入模型的 T-pose。
 	_playback.start(SM_IDLE, true)
 	_state = State.IDLE
+	_reset_turn_tracking()
 
 
 # 初始化动画资源设置 ────────────────────────────────────
@@ -135,16 +153,88 @@ func _setup_animations() -> void:
 			var anim: Animation = lib.get_animation(anim_name)
 			if not anim:
 				continue
-
-			if should_loop and anim.loop_mode != Animation.LOOP_LINEAR:
+			if _is_turn_animation_library(lib_name):
+				anim = anim.duplicate(true) as Animation
+				lib.remove_animation(anim_name)
+				lib.add_animation(anim_name, anim)
+				_neutralize_turn_hips(anim)
+			if should_loop and not _is_turn_animation_library(lib_name) and anim.loop_mode != Animation.LOOP_LINEAR:
 				anim.loop_mode = Animation.LOOP_LINEAR
+			elif _is_turn_animation_library(lib_name):
+				anim.loop_mode = Animation.LOOP_NONE
 
-			# 剥离根骨骼位置轨迹
 			var i := anim.get_track_count() - 1
 			while i >= 0:
-				if anim.track_get_type(i) == Animation.TYPE_POSITION_3D and _is_root_motion_track(anim.track_get_path(i)):
+				var track_path := anim.track_get_path(i)
+				if not _is_turn_animation_library(lib_name) and anim.track_get_type(i) == Animation.TYPE_POSITION_3D and _is_root_motion_track(track_path):
 					anim.remove_track(i)
 				i -= 1
+
+
+func _is_turn_animation_library(library_name: StringName) -> bool:
+	return str(library_name) in ["turn_left", "turn_right", "crouch_turn_left", "crouch_turn_right"]
+
+
+func _neutralize_turn_hips(animation: Animation) -> void:
+	for track_index in animation.get_track_count():
+		if not str(animation.track_get_path(track_index)).contains("mixamorig_Hips"):
+			continue
+		if animation.track_get_type(track_index) not in [Animation.TYPE_ROTATION_3D, Animation.TYPE_POSITION_3D]:
+			continue
+		var first_value: Variant = animation.track_get_key_value(track_index, 0)
+		for key_index in range(1, animation.track_get_key_count(track_index)):
+			animation.track_set_key_value(track_index, key_index, first_value)
+
+
+func _setup_turn_filters() -> void:
+	if not _animation_tree:
+		return
+	var sm := _animation_tree.tree_root as AnimationNodeStateMachine
+	if not sm:
+		return
+	for state_name in [SM_TURN_LEFT, SM_TURN_RIGHT, SM_CROUCH_TURN_LEFT, SM_CROUCH_TURN_RIGHT]:
+		if not sm.has_node(state_name):
+			continue
+		var turn_node := sm.get_node(state_name) as AnimationNodeAnimation
+		if not turn_node:
+			continue
+		var base_node := (sm.get_node(SM_IDLE) as AnimationRootNode).duplicate(true) as AnimationRootNode
+		var layered_turn := AnimationNodeBlend2.new()
+		layered_turn.filter_enabled = true
+		var turn_animation := _get_animation_for_node(turn_node)
+		if turn_animation:
+			for track_index in turn_animation.get_track_count():
+				var track_path := turn_animation.track_get_path(track_index)
+				if _is_turn_lower_body_path(track_path):
+					layered_turn.set_filter_path(track_path, true)
+		var blend_tree := AnimationNodeBlendTree.new()
+		blend_tree.add_node("Base", base_node, Vector2(0.0, 0.0))
+		blend_tree.add_node("Turn", turn_node, Vector2(0.0, 120.0))
+		blend_tree.add_node("Layer", layered_turn, Vector2(220.0, 60.0))
+		blend_tree.connect_node("Layer", 0, "Base")
+		blend_tree.connect_node("Layer", 1, "Turn")
+		blend_tree.connect_node("output", 0, "Layer")
+		sm.replace_node(state_name, blend_tree)
+		_animation_tree.set("parameters/%s/Layer/blend_amount" % state_name, 1.0)
+		_animation_tree.set("parameters/%s/Base/blend_position" % state_name, _current_stance_value())
+
+
+func _get_animation_for_node(animation_node: AnimationNodeAnimation) -> Animation:
+	if not animation_node or not _animation_tree:
+		return null
+	var animator := _animation_tree.get_node_or_null(_animation_tree.anim_player) as AnimationPlayer
+	return animator.get_animation(animation_node.animation) if animator else null
+
+
+func _is_turn_lower_body_path(track_path: NodePath) -> bool:
+	var path_text := str(track_path)
+	for bone_name in [
+		"mixamorig_LeftUpLeg", "mixamorig_LeftLeg", "mixamorig_LeftFoot", "mixamorig_LeftToeBase",
+		"mixamorig_RightUpLeg", "mixamorig_RightLeg", "mixamorig_RightFoot", "mixamorig_RightToeBase",
+	]:
+		if path_text.contains(bone_name):
+			return true
+	return false
 
 
 func _apply_config_to_transitions() -> void:
@@ -158,6 +248,29 @@ func _apply_config_to_transitions() -> void:
 		var to := sm.get_transition_to(i)
 		if from == SM_CROUCH_WALK or to == SM_CROUCH_WALK:
 			sm.get_transition(i).xfade_time = xfade
+
+
+func _setup_turn_transitions() -> void:
+	var sm := _animation_tree.tree_root as AnimationNodeStateMachine
+	if not sm:
+		return
+	for turn_state in [SM_TURN_LEFT, SM_TURN_RIGHT, SM_CROUCH_TURN_LEFT, SM_CROUCH_TURN_RIGHT]:
+		if not sm.has_node(turn_state):
+			GlobalLogger.warn("AnimationController", "Missing turn state: %s" % turn_state)
+			continue
+		_add_transition_if_missing(sm, SM_IDLE, turn_state)
+		_add_transition_if_missing(sm, turn_state, SM_IDLE)
+		for locomotion_state in [SM_WALK, SM_CROUCH_WALK, SM_RUN, SM_SPRINT]:
+			_add_transition_if_missing(sm, turn_state, locomotion_state)
+
+
+func _add_transition_if_missing(sm: AnimationNodeStateMachine, from: StringName, to: StringName) -> void:
+	for transition_index in sm.get_transition_count():
+		if sm.get_transition_from(transition_index) == from and sm.get_transition_to(transition_index) == to:
+			return
+	var transition := AnimationNodeStateMachineTransition.new()
+	transition.xfade_time = _config.movement_config.turn_transition_time if _config and _config.movement_config else 0.12
+	sm.add_transition(from, to, transition)
 
 # 每帧检测 ──────────────────────────────────────────────────
 
@@ -182,6 +295,14 @@ func _process(delta: float) -> void:
 
 	# 每帧更新 BlendSpace2D 混合坐标（无论当前状态，保持同步）
 	_update_blend_positions()
+	# Turn-in-place is owned by PlayerTurnController. Keep this controller
+	# responsible only for AnimationTree state transitions.
+
+	if _is_turn_state(_state):
+		if _external_turn_active:
+			return
+		_process_turn(delta)
+		return
 
 	# 落地过渡计时：倒计时结束后按地面速度决定切回 IDLE/WALK/RUN
 	if _state == State.LAND:
@@ -215,7 +336,10 @@ func _process(delta: float) -> void:
 	# 地面状态：每帧主动驱动 IDLE ↔ WALK 切换
 	# RUN 由信号和 is_running() 协同驱动
 	if on_floor and _state != State.JUMP:
-		_transition(_resolve_ground_state())
+		var ground_state := _resolve_ground_state()
+		_transition(ground_state)
+		if ground_state != State.IDLE:
+			_reset_turn_tracking()
 
 # BlendSpace2D 混合坐标更新 ───────────────────────────────────
 
@@ -258,11 +382,17 @@ func _on_stance_changed(value: float) -> void:
 	if not _animation_tree:
 		return
 	_animation_tree.set(PARAM_STANCE_BLEND, value)
+	for turn_state_name in TURN_STATE_NAMES:
+		_animation_tree.set("parameters/%s/Base/blend_position" % turn_state_name, value)
 	# 走路状态下实时切换：半蹲阈值 0.3，避免在临界值来回抖动用滞后
 	if _state == State.WALK and value >= 0.3:
 		_transition(State.CROUCH_WALK)
 	elif _state == State.CROUCH_WALK and value < 0.2:
 		_transition(State.WALK)
+
+
+func _current_stance_value() -> float:
+	return _player.stance_controller.get_stance_value() if is_instance_valid(_player) and _player.stance_controller else 0.0
 func _on_jumped() -> void:
 	if _state == State.DEATH:
 		return
@@ -297,6 +427,8 @@ func _on_died() -> void:
 	# 直接通过 AnimationPlayer 播放，此处仅阻止 _process()
 	# 进行自动状态切换。
 	_state = State.DEATH
+	_turn_timer = 0.0
+	_reset_turn_tracking()
 
 func on_unconscious() -> void:
 	# 昏迷时同样停止动画状态机，防止 AnimationTree 覆盖物理骨骼姿势
@@ -306,6 +438,7 @@ func _on_revived() -> void:
 	if not _playback:
 		return
 	_was_on_floor = _player.is_on_floor() if is_instance_valid(_player) else false
+	_reset_turn_tracking()
 	_transition(_resolve_ground_state())
 
 
@@ -353,6 +486,98 @@ func _transition(new_state: State) -> void:
 	_state = new_state
 
 
+func _try_start_turn() -> void:
+	# Kept as a compatibility no-op for old debug scripts. PlayerTurnController
+	# owns thresholding and clip completion using AnimationTree playback data.
+	return
+
+
+func _process_turn(delta: float) -> void:
+	var ground_state := _resolve_ground_state()
+	if not _player.is_on_floor() or ground_state != State.IDLE:
+		_turn_timer = 0.0
+		_reset_turn_tracking()
+		_transition(ground_state if _player.is_on_floor() else State.FALL)
+		return
+
+	_turn_timer -= delta
+	if _turn_timer <= 0.0:
+		_transition(State.IDLE)
+
+
+func get_current_state() -> State:
+	return _state
+
+
+func begin_external_turn(turn_state: State, playback_speed: float) -> void:
+	_external_turn_active = true
+	set_turn_playback_speed(playback_speed)
+	_transition(turn_state)
+
+
+func end_external_turn() -> void:
+	if not _external_turn_active:
+		return
+	_external_turn_active = false
+	set_turn_playback_speed(1.0)
+	_transition(_resolve_ground_state())
+
+
+func get_turn_clip_length(turn_state: State) -> float:
+	if not _animation_tree:
+		return 0.0
+	var player_path: NodePath = _animation_tree.anim_player
+	var animator := _animation_tree.get_node_or_null(player_path) as AnimationPlayer
+	if not animator:
+		return 0.0
+	var animation := animator.get_animation(_state_to_animation_name(turn_state))
+	return animation.length if animation else 0.0
+
+
+func get_turn_playback_progress(clip_length: float) -> float:
+	if not _playback or clip_length <= 0.0:
+		return 1.0
+	return _playback.get_current_play_position() / clip_length
+
+
+func set_turn_playback_speed(speed: float) -> void:
+	_external_turn_speed = maxf(speed, 0.01)
+	if not _animation_tree:
+		return
+	var animator := _animation_tree.get_node_or_null(_animation_tree.anim_player) as AnimationPlayer
+	if animator:
+		animator.speed_scale = _external_turn_speed
+
+
+func _state_to_animation_name(state: State) -> StringName:
+	match state:
+		State.TURN_LEFT: return &"turn_left/mixamo_com"
+		State.TURN_RIGHT: return &"turn_right/mixamo_com"
+		State.CROUCH_TURN_LEFT: return &"crouch_turn_left/mixamo_com"
+		State.CROUCH_TURN_RIGHT: return &"crouch_turn_right/mixamo_com"
+	return &""
+
+
+func _accumulate_turn_yaw() -> void:
+	var current_yaw := _player.rotation.y
+	_accumulated_turn_yaw += angle_difference(_last_observed_yaw, current_yaw)
+	_last_observed_yaw = current_yaw
+
+
+func _reset_turn_tracking() -> void:
+	_last_observed_yaw = _player.rotation.y if is_instance_valid(_player) else 0.0
+	_accumulated_turn_yaw = 0.0
+
+
+func _is_turn_state(state: State) -> bool:
+	return state in [
+		State.TURN_LEFT,
+		State.TURN_RIGHT,
+		State.CROUCH_TURN_LEFT,
+		State.CROUCH_TURN_RIGHT,
+	]
+
+
 func _state_to_sm_name(state: State) -> String:
 	match state:
 		State.IDLE:        return SM_IDLE
@@ -364,4 +589,8 @@ func _state_to_sm_name(state: State) -> String:
 		State.FALL:        return SM_FALL
 		State.LAND:        return SM_LAND
 		State.DEATH:       return SM_DEATH
+		State.TURN_LEFT:   return SM_TURN_LEFT
+		State.TURN_RIGHT:  return SM_TURN_RIGHT
+		State.CROUCH_TURN_LEFT:  return SM_CROUCH_TURN_LEFT
+		State.CROUCH_TURN_RIGHT: return SM_CROUCH_TURN_RIGHT
 	return SM_IDLE

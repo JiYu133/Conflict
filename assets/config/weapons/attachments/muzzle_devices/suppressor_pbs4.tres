@@ -4,6 +4,7 @@
 
 [resource]
 script = ExtResource("1_attcfg")
+visual_kind = 4
 
 ; ──────────────────────────── 基础信息 ────────────────────────────
 attachment_name = "PBS-4 消音器"

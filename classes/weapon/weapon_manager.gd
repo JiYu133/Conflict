@@ -145,6 +145,18 @@ func cycle_fire_mode() -> bool:
 		return current_weapon.cycle_fire_mode()
 	return false
 
+
+func get_available_fire_modes() -> Array[String]:
+	if current_weapon:
+		return current_weapon.get_available_fire_modes()
+	return []
+
+
+func set_fire_mode(mode: String) -> bool:
+	if current_weapon:
+		return current_weapon.set_fire_mode(mode)
+	return false
+
 func attempt_malfunction_clearance() -> void:
 	if current_weapon:
 		current_weapon.attempt_malfunction_clearance()

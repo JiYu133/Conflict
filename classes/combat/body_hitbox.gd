@@ -6,7 +6,7 @@ extends Area3D
 # 功能：玩家存活时挂载到骨骼上的命中检测 Area3D。
 #       布娃娃激活时销毁，切换到 PhysicalBone3D 接管。
 # 用法：由 HealthSystem（P1 后期）或 ModelManager 创建并附加到骨骼。
-#       碰撞层 2（与布娃娃物理骨骼同层），mask 0（不主动检测）。
+#       使用角色物理层（与布娃娃骨骼同层），mask 为 NONE（不主动检测）。
 # ============================================================
 
 var _part_id: MedicalEnums.BodyPartId = MedicalEnums.BodyPartId.TORSO
@@ -20,8 +20,8 @@ var _anatomy_debug_meshes: Array[MeshInstance3D] = []  # P2 内部结构可视�
 ## debug_color: 调试网格颜色
 func setup(part_id: MedicalEnums.BodyPartId, shape: Shape3D = null, debug_color: Color = Color(0.0, 1.0, 0.0, 0.3)) -> void:
 	_part_id = part_id
-	collision_layer = 2
-	collision_mask = 0
+	collision_layer = PhysicsLayers.CHARACTER
+	collision_mask = PhysicsLayers.NONE
 
 	if shape:
 		var col := CollisionShape3D.new()
@@ -30,7 +30,6 @@ func setup(part_id: MedicalEnums.BodyPartId, shape: Shape3D = null, debug_color:
 
 		# 创建调试可视化网格（默认隐藏）
 		_create_debug_mesh(shape, debug_color)
-		GlobalLogger.debug("BodyHitbox", "Setup hitbox for part: " + MedicalEnums.BodyPartId.keys()[part_id])
 
 
 ## 供 HitResolver 查询部位 ID
@@ -42,7 +41,6 @@ func get_body_part_id() -> MedicalEnums.BodyPartId:
 func set_debug_visible(visible: bool) -> void:
 	if _debug_mesh:
 		_debug_mesh.visible = visible
-		GlobalLogger.debug("BodyHitbox", "%s debug mesh visibility: %s" % [name, visible])
 	for mesh in _anatomy_debug_meshes:
 		if is_instance_valid(mesh):
 			mesh.visible = visible

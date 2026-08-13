@@ -140,7 +140,7 @@ func _raycast_foot(bone_idx: int) -> Dictionary:
 	var ray_to   := foot_world + Vector3.DOWN * RAY_BELOW
 
 	var query := PhysicsRayQueryParameters3D.create(ray_from, ray_to)
-	query.collision_mask = 1
+	query.collision_mask = PhysicsLayers.WORLD
 	if _player:
 		query.exclude = [_player.get_rid()]
 

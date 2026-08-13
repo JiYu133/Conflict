@@ -44,6 +44,10 @@
 [ext_resource type="AnimationLibrary" uid="uid://cpb7voxbqoa63" path="res://assets/animations/player/walk crouching forward right.fbx" id="34_cwfwdright"]
 [ext_resource type="AnimationLibrary" uid="uid://2otad1n1ueqm" path="res://assets/animations/player/walk crouching backward left.fbx" id="35_cwbwdleft"]
 [ext_resource type="AnimationLibrary" uid="uid://dwqwfi1m5eb7u" path="res://assets/animations/player/walk crouching backward right.fbx" id="36_cwbwdright"]
+[ext_resource type="AnimationLibrary" uid="uid://bc1evop8risls" path="res://assets/animations/player/turn 90 left.fbx" id="37_turn_left"]
+[ext_resource type="AnimationLibrary" uid="uid://dhbffr21ty2ar" path="res://assets/animations/player/turn 90 right.fbx" id="38_turn_right"]
+[ext_resource type="AnimationLibrary" uid="uid://ckjb0gw7dulps" path="res://assets/animations/player/crouching turn 90 left.fbx" id="39_crouch_turn_left"]
+[ext_resource type="AnimationLibrary" uid="uid://bdk38bfsltha" path="res://assets/animations/player/crouching turn 90 right.fbx" id="40_crouch_turn_right"]
 [ext_resource type="Script" uid="uid://bswvfbnn6pt4h" path="res://classes/player/foot_ik_controller.gd" id="45_21u12"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_21u12"]
@@ -296,6 +300,18 @@ animation = &"walk_bwd_left/mixamo_com"
 [sub_resource type="AnimationNodeAnimation" id="ANAnim_walk_bwd_right"]
 animation = &"walk_bwd_right/mixamo_com"
 
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_turn_left"]
+animation = &"turn_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_turn_right"]
+animation = &"turn_right/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_crouch_turn_left"]
+animation = &"crouch_turn_left/mixamo_com"
+
+[sub_resource type="AnimationNodeAnimation" id="ANAnim_crouch_turn_right"]
+animation = &"crouch_turn_right/mixamo_com"
+
 [sub_resource type="AnimationNodeBlendSpace2D" id="ANBlend_walk"]
 blend_point_0/node = SubResource("ANAnim_walk_fwd")
 blend_point_0/pos = Vector2(0, 1)
@@ -360,6 +376,14 @@ states/Sprint/node = SubResource("ANBlend_sprint")
 states/Sprint/position = Vector2(0, 0)
 states/Walk/node = SubResource("ANBlend_walk")
 states/Walk/position = Vector2(400, 100)
+states/TurnLeft/node = SubResource("ANAnim_turn_left")
+states/TurnLeft/position = Vector2(120, 180)
+states/TurnRight/node = SubResource("ANAnim_turn_right")
+states/TurnRight/position = Vector2(280, 180)
+states/CrouchTurnLeft/node = SubResource("ANAnim_crouch_turn_left")
+states/CrouchTurnLeft/position = Vector2(400, 300)
+states/CrouchTurnRight/node = SubResource("ANAnim_crouch_turn_right")
+states/CrouchTurnRight/position = Vector2(560, 300)
 transitions = ["Start", "Idle", SubResource("Trans_start_idle"), "Idle", "Walk", SubResource("Trans_xfade"), "Walk", "Idle", SubResource("Trans_xfade"), "Idle", "Run", SubResource("Trans_xfade"), "Run", "Idle", SubResource("Trans_xfade"), "Walk", "Run", SubResource("Trans_xfade"), "Run", "Walk", SubResource("Trans_xfade"), "Idle", "Jump", SubResource("Trans_xfade"), "Walk", "Jump", SubResource("Trans_xfade"), "Run", "Jump", SubResource("Trans_xfade"), "Jump", "Fall", SubResource("Trans_auto_jump_fall"), "Idle", "Fall", SubResource("Trans_xfade"), "Walk", "Fall", SubResource("Trans_xfade"), "Run", "Fall", SubResource("Trans_xfade"), "Fall", "Land", SubResource("Trans_auto_fall_land"), "Land", "Idle", SubResource("Trans_auto_land_idle"), "Run", "Sprint", SubResource("Trans_xfade"), "Sprint", "Run", SubResource("Trans_xfade"), "Sprint", "Idle", SubResource("Trans_xfade"), "Sprint", "Walk", SubResource("Trans_xfade"), "Sprint", "Jump", SubResource("Trans_xfade"), "Sprint", "Fall", SubResource("Trans_xfade"), "Idle", "Sprint", SubResource("Trans_xfade"), "Walk", "Sprint", SubResource("Trans_xfade"), "Walk", "CrouchWalk", SubResource("Trans_crouch_walk"), "CrouchWalk", "Walk", SubResource("Trans_crouch_walk"), "Idle", "CrouchWalk", SubResource("Trans_crouch_walk"), "CrouchWalk", "Idle", SubResource("Trans_crouch_walk"), "CrouchWalk", "Jump", SubResource("Trans_xfade"), "CrouchWalk", "Fall", SubResource("Trans_xfade")]
 graph_offset = Vector2(-27.73114, -174.33472)
 
@@ -630,6 +654,8 @@ libraries/crouch_walk_fwd_left = ExtResource("33_cwfwdleft")
 libraries/crouch_walk_fwd_right = ExtResource("34_cwfwdright")
 libraries/crouch_walk_left = ExtResource("31_cwleft")
 libraries/crouch_walk_right = ExtResource("32_cwright")
+libraries/crouch_turn_left = ExtResource("39_crouch_turn_left")
+libraries/crouch_turn_right = ExtResource("40_crouch_turn_right")
 libraries/death_back = ExtResource("19_death_back")
 libraries/death_back_headshot = ExtResource("20_death_back_hs")
 libraries/death_crouching_headshot = ExtResource("23_death_crouch_hs")
@@ -656,6 +682,8 @@ libraries/sprint_fwd_left = ExtResource("24_mpx0j")
 libraries/sprint_fwd_right = ExtResource("25_bl0pa")
 libraries/sprint_left = ExtResource("26_3uqx0")
 libraries/sprint_right = ExtResource("27_spright")
+libraries/turn_left = ExtResource("37_turn_left")
+libraries/turn_right = ExtResource("38_turn_right")
 libraries/walk_bwd = ExtResource("3_fohhv")
 libraries/walk_bwd_left = ExtResource("16_wbwdleft")
 libraries/walk_bwd_right = ExtResource("17_wbwdright")

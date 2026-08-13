@@ -42,11 +42,10 @@ extends Resource
 # 碰撞层 ─────────────────────────────────────────────────
 @export_group("碰撞层")
 ## 布娃娃骨骼碰撞层 / Physics layer for ragdoll bones
-@export_flags_3d_physics var ragdoll_collision_layer: int = 2
-## 布娃娃碰撞掩码 / Ragdoll collision mask — 必须与地图 StaticBody3D 的 layer 互相匹配
-## （骨骼在 layer 2，地图 layer 1，骨骼 mask 包含 1，骨骼间不互相碰撞）
-## 默认碰撞所有常用层；相邻骨骼通过 collision exception 避免互相弹飞。
-@export_flags_3d_physics var ragdoll_collision_mask: int = 0x7FFFFFFF
+@export_flags_3d_physics var ragdoll_collision_layer: int = PhysicsLayers.CHARACTER
+## 布娃娃默认与环境、其他角色及掉落武器碰撞，但不接触弹壳或未来新增层。
+## 相邻骨骼通过 collision exception 避免互相弹飞。
+@export_flags_3d_physics var ragdoll_collision_mask: int = PhysicsLayers.RAGDOLL_DEFAULT_MASK
 
 # 冲击力目标 ─────────────────────────────────────────────────
 @export_group("冲击力目标")

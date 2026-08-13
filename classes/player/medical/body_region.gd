@@ -20,6 +20,7 @@ var organ_damage: Dictionary = {}
 
 ## 已骨折的骨骼结构 ID 列表
 var fractured_bones: Array[StringName] = []
+var splinted_bones: Array[StringName] = []
 
 
 ## 累加器官损伤，返回累加后的总值
@@ -42,6 +43,9 @@ func add_fracture(structure_id: StringName) -> void:
 ## 该骨骼结构是否已骨折
 func is_fractured(structure_id: StringName) -> bool:
 	return structure_id in fractured_bones
+
+func is_splinted(structure_id: StringName) -> bool:
+	return structure_id in splinted_bones
 
 
 ## 返回本部位所有伤口的累积严重度（0.0–无穷大）

@@ -44,9 +44,11 @@ extends Resource
 @export var right_hand_bone_names: Array[String] = [
 	"mixamorig_RightHand", "RightHand", "Hand_R", "r_hand"
 ]
+## Candidate bone names for resolving the left hand.
 @export var left_hand_bone_names: Array[String] = [
 	"mixamorig_LeftHand", "LeftHand", "Hand_L", "l_hand"
 ]
+## Candidate bone names for resolving the left arm chain.
 @export var left_arm_bone_names: Array[String] = [
 	"mixamorig_LeftArm", "LeftArm", "Arm_L", "l_arm"
 ]

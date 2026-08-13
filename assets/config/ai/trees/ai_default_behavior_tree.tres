@@ -1,0 +1,9 @@
+[gd_resource type="BehaviorTree" format=3 uid="uid://bh3ru3mbh5ens"]
+
+[ext_resource type="Script" uid="uid://d0dlholotqmrx" path="res://classes/bot/limbo/limbo_bot_tick.gd" id="1_task"]
+
+[sub_resource type="BTAction" id="BTAction_ai_tick"]
+script = ExtResource("1_task")
+
+[resource]
+root_task = SubResource("BTAction_ai_tick")

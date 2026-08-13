@@ -45,10 +45,10 @@ func setup(fx: WeaponFXConfig) -> void:
 	can_sleep = true
 	contact_monitor = true
 	max_contacts_reported = 2
-	# 与玩家/命中判定层分开：弹壳只和环境（layer 1）交互，
-	# 否则会被 hitbox 拦下、甚至干扰射线检测
-	collision_layer = 1
-	collision_mask = 1
+	# 弹壳占用独立层，但只主动检测环境。布娃娃同时从自身掩码中
+	# 排除此层，确保双方都不会建立接触约束。
+	collision_layer = PhysicsLayers.SHELL_CASING
+	collision_mask = PhysicsLayers.WORLD
 
 	body_entered.connect(_on_body_entered)
 

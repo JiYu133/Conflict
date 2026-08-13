@@ -41,30 +41,24 @@ func _input(event: InputEvent) -> void:
 			# 同时切换碰撞体可视化
 			if _health_system:
 				_health_system.set_hitboxes_visible(_is_visible)
-				GlobalLogger.info("MedicalHUD", "Toggled hitbox visibility: " + str(_is_visible))
 			else:
 				GlobalLogger.warn("MedicalHUD", "No health_system found to toggle hitboxes")
-			GlobalLogger.debug("MedicalHUD", "Toggle visibility: " + str(_is_visible))
 
 func _find_health_system() -> void:
 	# 遍历场景树查找 BasePlayer
 	for node in get_tree().get_nodes_in_group("player"):
 		if node is BasePlayer:
 			_health_system = node.health_system
-			GlobalLogger.info("MedicalHUD", "Found HealthSystem")
 			return
 
 	# 兜底：直接搜索 HealthSystem 节点
 	var health_systems := get_tree().get_nodes_in_group("health_system")
 	if health_systems.size() > 0:
 		_health_system = health_systems[0] as HealthSystem
-		GlobalLogger.info("MedicalHUD", "Found HealthSystem via group")
 		return
 
 	# 再兜底：递归查找
 	_health_system = _find_node_recursive(get_tree().root, "HealthSystem")
-	if _health_system:
-		GlobalLogger.info("MedicalHUD", "Found HealthSystem via recursive search")
 
 func _find_node_recursive(node: Node, target_name: String) -> Node:
 	if node.name == target_name and node is HealthSystem:

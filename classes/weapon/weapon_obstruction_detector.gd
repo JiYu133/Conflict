@@ -62,6 +62,7 @@ func _get_target_retract() -> float:
 	var to: Vector3 = from + forward * ray_length
 
 	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to)
+	query.collision_mask = PhysicsLayers.WEAPON_OBSTRUCTION
 	query.exclude = [_player.get_rid()]
 
 	var result: Dictionary = space_state.intersect_ray(query)

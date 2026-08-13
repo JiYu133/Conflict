@@ -454,23 +454,35 @@ func _run_reload_stage(stage: ReloadStage, duration: float) -> bool:
 ## 切换射击模式
 ## 按 config.fire_modes 列表的顺序循环
 func cycle_fire_mode() -> bool:
-	if not config or not config.logic_enabled:
-		return false
-	if not attachment_manager:
-		return false
-	var selector := attachment_manager.get_attachment_of_type(AttachmentConfig.AttachmentType.SELECTOR_SWITCH)
-	if not selector or not selector.has_method("can_switch_fire_mode") or not selector.can_switch_fire_mode():
-		return false
-	var modes = config.fire_modes
+	var modes := get_available_fire_modes()
 	if modes.size() == 0:
 		return false
-
 	var idx = modes.find(current_fire_mode)
 	idx = (idx + 1) % modes.size()
-	current_fire_mode = modes[idx]
-	if not fire_control.set_fire_mode(current_fire_mode):
+	return set_fire_mode(modes[idx])
+
+
+func get_available_fire_modes() -> Array[String]:
+	if not config or not config.logic_enabled or not attachment_manager:
+		return []
+	var selector := attachment_manager.get_attachment_of_type(AttachmentConfig.AttachmentType.SELECTOR_SWITCH)
+	if not selector or not selector.has_method("can_switch_fire_mode") or not selector.can_switch_fire_mode():
+		return []
+	var result: Array[String] = []
+	for mode in config.fire_modes:
+		result.append(mode)
+	return result
+
+
+func set_fire_mode(mode: String) -> bool:
+	var modes := get_available_fire_modes()
+	if not modes.has(mode) or not fire_control:
 		return false
-	if selector.has_method("on_fire_mode_changed"):
+	if not fire_control.set_fire_mode(mode):
+		return false
+	current_fire_mode = mode
+	var selector := attachment_manager.get_attachment_of_type(AttachmentConfig.AttachmentType.SELECTOR_SWITCH)
+	if selector and selector.has_method("on_fire_mode_changed"):
 		selector.on_fire_mode_changed(current_fire_mode)
 	fire_mode_changed.emit(current_fire_mode)
 	return true

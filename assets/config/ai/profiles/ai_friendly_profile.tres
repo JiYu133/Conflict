@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="AIProfile" format=3]
+
+[ext_resource type="Script" path="res://classes/bot/ai_profile.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+perception_distance = 30.0
+field_of_view_degrees = 135.0
+sight_check_interval = 0.20
+target_memory_time = 4.0
+reaction_time = 0.35
+aggression = 0.45
+move_speed = 3.2
+chase_distance = 30.0
+return_to_objective_distance = 4.0
+weapon_distance = 20.0
+aim_error_degrees = 4.0
+burst_length = 3
+fire_interval = 0.8
+minimum_ammo_ratio = 0.25
+suppression_duration = 4.5
+suppression_count = 1
+search_duration = 4.0
+retreat_casualty_ratio = 0.50
+retreat_ammo_ratio = 0.20
+blackboard_stale_time = 4.0
+broadcast_radius = 40.0

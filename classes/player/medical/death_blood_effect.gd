@@ -92,6 +92,11 @@ func _start_effect() -> void:
 		return
 	if not _blood_effects_enabled():
 		return
+	# 等待布娃娃的 deferred 启动至少跨过一个物理帧，再从当前骨骼姿态投影伤口。
+	await get_tree().physics_frame
+	if not _has_started or not is_instance_valid(_player):
+		return
+	# 渐显延迟由 Shader Tween 控制，避免将延迟重复计入血泊创建时机。
 	# 效果属于死亡地点，不应随着 BasePlayer 后续的布娃娃根节点移动。
 	var effect_parent := _player.get_parent()
 	if effect_parent and get_parent() == _player:
@@ -100,23 +105,91 @@ func _start_effect() -> void:
 	_global_position_for_ground_query()
 	_ground_ray.enabled = true
 	_ground_ray.force_raycast_update()
-	var ground_point := _ground_ray.get_collision_point() if _ground_ray.is_colliding() else global_position + Vector3.DOWN * 1.0
+	var ground_point: Vector3 = _ground_ray.get_collision_point() if _ground_ray.is_colliding() else _player.global_position
+	if not _ground_ray.is_colliding():
+		GlobalLogger.warn("DeathBloodEffect", "No ground below wound; using player origin for blood pool fallback.")
 	_create_pool(ground_point)
 	_start_drips()
 
 func _global_position_for_ground_query() -> void:
-	# 玩家模型原点位于脚部附近，向上偏移后射线既能命中地面，也能覆盖死亡动画末端。
-	global_position = _player.global_position
-	_ground_ray.position = Vector3(0.0, 1.2, 0.0)
+	# 优先从最严重的外部伤口的实际入射点向下投影，让血泊从伤口位置渗出。
+	var wound_origin: Vector3 = _find_major_bleed_origin()
+	global_position = wound_origin
+	_ground_ray.position = Vector3(0.0, 0.15, 0.0)
 	_ground_ray.target_position = Vector3(0.0, -_config.ground_ray_length, 0.0)
+
+func _find_major_bleed_origin() -> Vector3:
+	if not _player.health_system or not _player.health_system.vitals:
+		return _player.global_position
+	var best_wound: Wound = null
+	for region_value in _player.health_system.vitals.regions.values():
+		var region: BodyRegion = region_value as BodyRegion
+		if not region:
+			continue
+		for wound_value in region.wounds:
+			var wound: Wound = wound_value as Wound
+			if not wound or wound.is_bandaged or wound.is_tourniqueted:
+				continue
+			if wound.bleed_rate == MedicalEnums.BleedRate.NONE:
+				continue
+			if best_wound == null or _is_higher_priority_bleed(wound, best_wound):
+				best_wound = wound
+	if not best_wound:
+		return _player.global_position
+	return _wound_world_position(best_wound)
+
+
+func _is_higher_priority_bleed(candidate: Wound, current: Wound) -> bool:
+	if candidate.bleed_rate != current.bleed_rate:
+		return candidate.bleed_rate > current.bleed_rate
+	return candidate.severity > current.severity
+
+
+func _wound_world_position(wound: Wound) -> Vector3:
+	if wound.has_bone_local_position and not wound.anchor_bone.is_empty():
+		var anchored_position := _bone_world_position(wound.anchor_bone, wound.bone_local_position)
+		if anchored_position != Vector3.INF:
+			return anchored_position
+	if wound.has_hit_position:
+		return wound.hit_position
+	for fallback_name in _fallback_bone_names(wound.body_part):
+		var fallback_position := _bone_world_position(fallback_name, Vector3.ZERO)
+		if fallback_position != Vector3.INF:
+			return fallback_position
+	return _player.global_position
+
+func _bone_world_position(bone_name: String, local_entry: Vector3) -> Vector3:
+	if not _player.model_manager or not _player.model_manager.skeleton:
+		return Vector3.INF
+	var skeleton: Skeleton3D = _player.model_manager.skeleton
+	var bone_index := skeleton.find_bone(bone_name)
+	if bone_index < 0:
+		return Vector3.INF
+	var bone_world_transform := skeleton.global_transform * skeleton.get_bone_global_pose(bone_index)
+	return bone_world_transform * local_entry
+
+
+func _fallback_bone_names(part: MedicalEnums.BodyPartId) -> Array[String]:
+	match part:
+		MedicalEnums.BodyPartId.HEAD: return ["mixamorig_Head", "Head"]
+		MedicalEnums.BodyPartId.TORSO: return ["mixamorig_Spine2", "mixamorig_Spine1", "Spine2"]
+		MedicalEnums.BodyPartId.LEFT_UPPER_ARM: return ["mixamorig_LeftArm", "LeftArm"]
+		MedicalEnums.BodyPartId.LEFT_FOREARM: return ["mixamorig_LeftForeArm", "LeftForeArm"]
+		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM: return ["mixamorig_RightArm", "RightArm"]
+		MedicalEnums.BodyPartId.RIGHT_FOREARM: return ["mixamorig_RightForeArm", "RightForeArm"]
+		MedicalEnums.BodyPartId.LEFT_THIGH: return ["mixamorig_LeftUpLeg", "LeftUpLeg"]
+		MedicalEnums.BodyPartId.LEFT_CALF: return ["mixamorig_LeftLeg", "LeftLeg"]
+		MedicalEnums.BodyPartId.RIGHT_THIGH: return ["mixamorig_RightUpLeg", "RightUpLeg"]
+		MedicalEnums.BodyPartId.RIGHT_CALF: return ["mixamorig_RightLeg", "RightLeg"]
+	return [""]
 
 func _create_pool(ground_point: Vector3) -> void:
 	if not _config.blood_pool_texture:
-		push_warning("DeathBloodEffect: blood_pool_texture is not assigned; pool decal is disabled.")
+		push_warning("DeathBloodEffect: blood_pool_texture is not assigned; blood pool creation skipped.")
 		return
 	var pool := Decal.new()
 	pool.name = "BloodPool"
-	pool.texture_albedo = _config.blood_pool_texture
+	pool.texture_albedo = _atlas_variant(_config.blood_pool_texture, 0)
 	pool.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	pool.size = Vector3(_config.pool_start_size.x, 0.08, _config.pool_start_size.y)
 	pool.position = ground_point + Vector3.UP * _config.ground_offset
@@ -196,9 +269,23 @@ func _make_drop_mesh() -> QuadMesh:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	material.albedo_color = Color(1.0, 1.0, 1.0, _config.drip_alpha)
-	material.albedo_texture = _config.blood_drop_texture
+	material.albedo_texture = _atlas_variant(_config.blood_drop_texture, 1)
 	mesh.material = material
 	return mesh
+
+func _atlas_variant(texture: Texture2D, variant_index: int) -> Texture2D:
+	if not texture:
+		return null
+	var atlas_size := texture.get_size()
+	if atlas_size.x < 2.0 or atlas_size.y < 2.0:
+		return texture
+	var atlas := AtlasTexture.new()
+	atlas.atlas = texture
+	var cell_size := atlas_size / 2.0
+	var column := variant_index % 2
+	var row := int(variant_index / 2)
+	atlas.region = Rect2(Vector2(column, row) * cell_size, cell_size)
+	return atlas
 
 func _make_drip_process_material() -> ParticleProcessMaterial:
 	var material := ParticleProcessMaterial.new()
