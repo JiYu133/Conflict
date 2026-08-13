@@ -15,17 +15,32 @@ extends Node
 # - 人物贴花跟随骨骼，在复活或模型热重载时清理。
 # ============================================================
 
-const WALL_SPLATTER_TEXTURE: Texture2D = preload("res://assets/textures/combat_effects/wall_splatter_realistic.png")
-const FLOOR_POOL_TEXTURE: Texture2D = preload("res://assets/textures/combat_effects/floor_pool_realistic.png")
-const FLOOR_DROPLET_TEXTURE: Texture2D = preload("res://assets/textures/combat_effects/floor_droplet_realistic.png")
-const WOUND_MARK_TEXTURE: Texture2D = preload("res://assets/textures/combat_effects/wound_mark_realistic.png")
+const WALL_SPLATTER_ATLAS: Texture2D = preload("res://assets/textures/combat_effects/wall_splatter_atlas.png")
+const FLOOR_POOL_ATLAS: Texture2D = preload("res://assets/textures/combat_effects/floor_pool_atlas.png")
+const FLOOR_DROPLET_ATLAS: Texture2D = preload("res://assets/textures/combat_effects/floor_droplet_atlas.png")
+const WOUND_MARK_ATLAS: Texture2D = preload("res://assets/textures/combat_effects/wound_mark_atlas.png")
 
 const ENVIRONMENT_MASK: int = 1
+const ATLAS_COLUMNS: int = 2
+const ATLAS_VARIANT_COUNT: int = 4
 const MAX_WORLD_DECALS: int = 96
 const MAX_CHARACTER_DECALS: int = 18
 const WALL_TRACE_DISTANCE_M: float = 4.0
 const FLOOR_TRACE_DISTANCE_M: float = 3.0
-const STATIONARY_POOL_LOSS_ML: float = 24.0
+const STATIONARY_POOL_LOSS_ML: float = 70.0
+
+const BODY_PART_BONES: Dictionary = {
+	MedicalEnums.BodyPartId.HEAD: [&"mixamorig_Head"],
+	MedicalEnums.BodyPartId.TORSO: [&"mixamorig_Spine2", &"mixamorig_Spine1"],
+	MedicalEnums.BodyPartId.LEFT_UPPER_ARM: [&"mixamorig_LeftArm"],
+	MedicalEnums.BodyPartId.LEFT_FOREARM: [&"mixamorig_LeftForeArm"],
+	MedicalEnums.BodyPartId.RIGHT_UPPER_ARM: [&"mixamorig_RightArm"],
+	MedicalEnums.BodyPartId.RIGHT_FOREARM: [&"mixamorig_RightForeArm"],
+	MedicalEnums.BodyPartId.LEFT_THIGH: [&"mixamorig_LeftUpLeg"],
+	MedicalEnums.BodyPartId.LEFT_CALF: [&"mixamorig_LeftLeg"],
+	MedicalEnums.BodyPartId.RIGHT_THIGH: [&"mixamorig_RightUpLeg"],
+	MedicalEnums.BodyPartId.RIGHT_CALF: [&"mixamorig_RightLeg"],
+}
 
 static var _world_decals: Array[WeakRef] = []
 
@@ -33,21 +48,34 @@ var _player: BasePlayer = null
 var _health: HealthSystem = null
 var _rng := RandomNumberGenerator.new()
 var _bleed_timer: float = 0.0
+var _bleed_pulse_count: int = 0
 var _stationary_loss_ml: float = 0.0
 var _last_mark_position: Vector3 = Vector3.ZERO
 var _has_last_mark_position: bool = false
 var _character_decals: Array[BoneAttachment3D] = []
+var _latest_wound_decal: WeakRef = null
+static var _wall_splatter_variants: Array[Texture2D] = []
+static var _floor_pool_variants: Array[Texture2D] = []
+static var _floor_droplet_variants: Array[Texture2D] = []
+static var _wound_mark_variants: Array[Texture2D] = []
 
 
 func initialize(player: BasePlayer) -> void:
 	_player = player
 	_health = player.health_system
 	_rng.randomize()
+	# Atlas 只裁切一次并由所有玩家共享，避免每个 bot 重复解压/上传 16 张纹理。
+	if _wall_splatter_variants.is_empty():
+		_wall_splatter_variants = _build_atlas_variants(WALL_SPLATTER_ATLAS)
+	if _floor_pool_variants.is_empty():
+		_floor_pool_variants = _build_atlas_variants(FLOOR_POOL_ATLAS)
+	if _floor_droplet_variants.is_empty():
+		_floor_droplet_variants = _build_atlas_variants(FLOOR_DROPLET_ATLAS)
+	if _wound_mark_variants.is_empty():
+		_wound_mark_variants = _build_atlas_variants(WOUND_MARK_ATLAS)
 
 	if _health and not _health.damage_taken.is_connected(_on_damage_taken):
 		_health.damage_taken.connect(_on_damage_taken)
-	if not _player.died.is_connected(_on_player_died):
-		_player.died.connect(_on_player_died)
 	if not _player.revived.is_connected(_on_player_revived):
 		_player.revived.connect(_on_player_revived)
 	if _player.model_manager and not _player.model_manager.model_unloaded.is_connected(_clear_character_decals):
@@ -61,6 +89,7 @@ func _physics_process(delta: float) -> void:
 	var external_rate: float = _health.vitals.total_bleed_rate()
 	if external_rate <= 0.0:
 		_bleed_timer = 0.0
+		_bleed_pulse_count = 0
 		_stationary_loss_ml = 0.0
 		_has_last_mark_position = false
 		return
@@ -69,9 +98,10 @@ func _physics_process(delta: float) -> void:
 	if _bleed_timer > 0.0:
 		return
 
-	# 毛细出血约每 1.3 秒一滴；动脉出血最快约每 0.25 秒一滴。
-	var interval: float = clampf(1.15 / sqrt(external_rate + 0.25), 0.24, 1.35)
+	var highest_bleed := _highest_external_bleed_rate()
+	var interval: float = _bleed_interval(highest_bleed)
 	_bleed_timer = interval * _rng.randf_range(0.82, 1.18)
+	_bleed_pulse_count += 1
 
 	var current_position := _player.global_position
 	var is_stationary := _has_last_mark_position and current_position.distance_to(_last_mark_position) < 0.28
@@ -83,6 +113,11 @@ func _physics_process(delta: float) -> void:
 	if _stationary_loss_ml >= STATIONARY_POOL_LOSS_ML:
 		_spawn_floor_mark(true, external_rate)
 		_stationary_loss_ml = 0.0
+	elif highest_bleed == MedicalEnums.BleedRate.ARTERIAL:
+		# 动脉出血以短促、定向的脉冲为主，地面只偶尔留下单滴，避免连续盖章成大片规则血带。
+		_spawn_arterial_spurt(external_rate)
+		if _bleed_pulse_count % 3 == 0:
+			_spawn_floor_mark(false, external_rate, 0.58)
 	else:
 		_spawn_floor_mark(false, external_rate)
 
@@ -139,21 +174,26 @@ func _spawn_impact_droplets(info: DamageInfo) -> void:
 
 
 func _spawn_character_wound(info: DamageInfo) -> void:
-	if info.anchor_bone.is_empty() or not _player.model_manager or not _player.model_manager.skeleton:
+	if not _player.model_manager or not _player.model_manager.skeleton:
 		return
 	if info.type != MedicalEnums.DamageType.BULLET and info.type != MedicalEnums.DamageType.FRAGMENT:
 		return
 
 	var skeleton := _player.model_manager.skeleton
-	if skeleton.find_bone(info.anchor_bone) < 0:
+	var bone_name := _resolve_wound_bone(info, skeleton)
+	if bone_name.is_empty():
 		return
 
 	var attachment := BoneAttachment3D.new()
-	attachment.name = "Wound_%s" % info.anchor_bone.replace("mixamorig_", "")
-	attachment.bone_name = info.anchor_bone
+	attachment.name = "Wound_%s" % bone_name.replace("mixamorig_", "")
+	attachment.bone_name = bone_name
 	skeleton.add_child(attachment)
 
-	var decal := _create_decal(WOUND_MARK_TEXTURE, Vector2(0.18, 0.20), 0.08)
+	var decal := _create_decal(
+		_random_variant(_wound_mark_variants),
+		_wound_size_for_part(info.body_part),
+		_wound_projection_depth(info.body_part)
+	)
 	decal.name = "WoundDecal"
 	attachment.add_child(decal)
 
@@ -163,6 +203,7 @@ func _spawn_character_wound(info: DamageInfo) -> void:
 		info.hit_position + outward_normal * 0.012
 	)
 
+	_latest_wound_decal = weakref(decal)
 	_character_decals.append(attachment)
 	_trim_character_decals()
 
@@ -188,7 +229,7 @@ func _spawn_wall_splatter(info: DamageInfo) -> void:
 
 	var size_scale: float = clampf(sqrt(maxf(info.amount, 1.0) / 600.0), 0.68, 1.35)
 	_spawn_world_decal(
-		WALL_SPLATTER_TEXTURE,
+		_random_variant(_wall_splatter_variants),
 		result.get("position", info.hit_position),
 		result.get("normal", -travel_dir),
 		Vector2(0.78, 0.78) * size_scale,
@@ -197,7 +238,7 @@ func _spawn_wall_splatter(info: DamageInfo) -> void:
 	)
 
 
-func _spawn_floor_mark(pool: bool, external_rate: float = 0.0) -> void:
+func _spawn_floor_mark(pool: bool, external_rate: float = 0.0, scale_multiplier: float = 1.0) -> void:
 	if not _player or not _player.get_world_3d():
 		return
 
@@ -217,22 +258,22 @@ func _spawn_floor_mark(pool: bool, external_rate: float = 0.0) -> void:
 		return
 
 	if pool:
-		var pool_scale: float = clampf(0.78 + external_rate / 30.0, 0.78, 1.28)
+		var pool_scale: float = clampf(0.72 + external_rate / 40.0, 0.72, 1.08) * scale_multiplier
 		_spawn_world_decal(
-			FLOOR_POOL_TEXTURE,
+			_random_variant(_floor_pool_variants),
 			result.get("position", origin),
 			result.get("normal", Vector3.UP),
-			Vector2(0.86, 0.62) * pool_scale,
+			Vector2(0.72, 0.54) * pool_scale,
 			180.0,
 			"FloorPool"
 		)
 	else:
-		var drop_scale: float = _rng.randf_range(0.75, 1.15)
+		var drop_scale: float = _rng.randf_range(0.72, 1.12) * scale_multiplier
 		_spawn_world_decal(
-			FLOOR_DROPLET_TEXTURE,
+			_random_variant(_floor_droplet_variants),
 			result.get("position", origin),
 			result.get("normal", Vector3.UP),
-			Vector2(0.24, 0.24) * drop_scale,
+			Vector2(0.13, 0.13) * drop_scale,
 			90.0,
 			"FloorDroplet"
 		)
@@ -280,6 +321,135 @@ func _create_decal(texture: Texture2D, size_xz: Vector2, projection_depth: float
 	decal.distance_fade_length = 14.0
 	decal.cull_mask = 1
 	return decal
+
+
+func _random_variant(variants: Array[Texture2D]) -> Texture2D:
+	if variants.is_empty():
+		return null
+	return variants[_rng.randi_range(0, variants.size() - 1)]
+
+
+func _build_atlas_variants(atlas: Texture2D) -> Array[Texture2D]:
+	var variants: Array[Texture2D] = []
+	var atlas_image := atlas.get_image()
+	if atlas_image.is_compressed():
+		var decompress_error := atlas_image.decompress()
+		if decompress_error != OK:
+			push_error("CombatEffects: failed to decompress decal atlas (%s)" % error_string(decompress_error))
+			return variants
+	var cell_size := Vector2i(
+		atlas_image.get_width() / ATLAS_COLUMNS,
+		atlas_image.get_height() / ATLAS_COLUMNS
+	)
+	for variant_index in range(ATLAS_VARIANT_COUNT):
+		var column := variant_index % ATLAS_COLUMNS
+		var row := variant_index / ATLAS_COLUMNS
+		var cell := atlas_image.get_region(Rect2i(Vector2i(column, row) * cell_size, cell_size))
+		variants.append(ImageTexture.create_from_image(cell))
+	return variants
+
+
+func _resolve_wound_bone(info: DamageInfo, skeleton: Skeleton3D) -> StringName:
+	if not info.anchor_bone.is_empty() and skeleton.find_bone(info.anchor_bone) >= 0:
+		return StringName(info.anchor_bone)
+	for candidate: StringName in BODY_PART_BONES.get(info.body_part, []):
+		if skeleton.find_bone(candidate) >= 0:
+			return candidate
+	return &""
+
+
+func _wound_size_for_part(part: MedicalEnums.BodyPartId) -> Vector2:
+	match part:
+		MedicalEnums.BodyPartId.HEAD:
+			return Vector2(0.12, 0.13)
+		MedicalEnums.BodyPartId.TORSO:
+			return Vector2(0.18, 0.20)
+		_:
+			return Vector2(0.13, 0.15)
+
+
+func _wound_projection_depth(part: MedicalEnums.BodyPartId) -> float:
+	# 投影盒必须穿过命中胶囊并覆盖服装表面；旧值 0.08m 只在较贴近骨骼的腿部稳定命中。
+	match part:
+		MedicalEnums.BodyPartId.TORSO:
+			return 0.44
+		MedicalEnums.BodyPartId.HEAD:
+			return 0.30
+		MedicalEnums.BodyPartId.LEFT_THIGH, MedicalEnums.BodyPartId.RIGHT_THIGH:
+			return 0.26
+		_:
+			return 0.20
+
+
+func _highest_external_bleed_rate() -> MedicalEnums.BleedRate:
+	var highest: int = MedicalEnums.BleedRate.NONE
+	for region_value in _health.vitals.regions.values():
+		var region := region_value as BodyRegion
+		for wound_value in region.wounds:
+			var wound := wound_value as Wound
+			if wound and wound.get_bleed_ml_per_sec() > 0.0:
+				highest = maxi(highest, int(wound.bleed_rate))
+	return highest as MedicalEnums.BleedRate
+
+
+func _bleed_interval(rate: MedicalEnums.BleedRate) -> float:
+	match rate:
+		MedicalEnums.BleedRate.ARTERIAL:
+			return _rng.randf_range(0.36, 0.52)
+		MedicalEnums.BleedRate.VENOUS:
+			return _rng.randf_range(0.68, 0.96)
+		_:
+			return _rng.randf_range(1.10, 1.45)
+
+
+func _spawn_arterial_spurt(external_rate: float) -> void:
+	var parent := _world_parent()
+	if not parent:
+		return
+
+	var source_position := _player.global_position + Vector3.UP * 1.0
+	var outward := (_player.global_basis.x + Vector3.UP * 0.12).normalized()
+	if _latest_wound_decal:
+		var wound_decal = _latest_wound_decal.get_ref()
+		if is_instance_valid(wound_decal):
+			source_position = wound_decal.global_position
+			outward = (wound_decal.global_basis.y + Vector3.UP * 0.12).normalized()
+
+	var particles := CPUParticles3D.new()
+	particles.name = "ArterialSpurt"
+	particles.amount = clampi(roundi(external_rate * 0.55), 6, 11)
+	particles.lifetime = 0.34
+	particles.one_shot = true
+	particles.explosiveness = 1.0
+	particles.randomness = 0.34
+	particles.direction = outward
+	particles.spread = 14.0
+	particles.initial_velocity_min = 1.8
+	particles.initial_velocity_max = 3.6
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
+	particles.damping_min = 0.25
+	particles.damping_max = 0.7
+	particles.scale_amount_min = 0.45
+	particles.scale_amount_max = 1.15
+	particles.mesh = _make_droplet_mesh(0.009)
+
+	parent.add_child(particles)
+	particles.global_position = source_position
+	particles.emitting = true
+	_queue_free_after(particles, particles.lifetime + 0.3)
+
+
+func _make_droplet_mesh(radius: float) -> SphereMesh:
+	var mesh := SphereMesh.new()
+	mesh.radius = radius
+	mesh.height = radius * 2.0
+	mesh.radial_segments = 8
+	mesh.rings = 4
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.34, 0.008, 0.018, 1.0)
+	material.roughness = 0.72
+	mesh.surface_set_material(0, material)
+	return mesh
 
 
 func _basis_for_surface(normal: Vector3, align_to_gravity: bool = false) -> Basis:
@@ -335,19 +505,12 @@ func _world_parent() -> Node:
 	return get_tree().current_scene if get_tree() else null
 
 
-func _on_player_died() -> void:
-	# 等布娃娃落地后补一块明显血泊；节点/场景已卸载时自动跳过。
-	var player_ref: WeakRef = weakref(_player)
-	get_tree().create_timer(0.9).timeout.connect(func() -> void:
-		if is_instance_valid(player_ref.get_ref()):
-			_spawn_floor_mark(true, 15.0)
-	)
-
-
 func _on_player_revived() -> void:
 	_bleed_timer = 0.0
+	_bleed_pulse_count = 0
 	_stationary_loss_ml = 0.0
 	_has_last_mark_position = false
+	_latest_wound_decal = null
 	_clear_character_decals()
 
 
@@ -356,3 +519,4 @@ func _clear_character_decals() -> void:
 		if is_instance_valid(attachment):
 			attachment.queue_free()
 	_character_decals.clear()
+	_latest_wound_decal = null
