@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c3stumj1ym537"
-path.s3tc="res://.godot/imported/wall_splatter_realistic.png-e92e739152b1b0bc75bd28492f9cc5d0.s3tc.ctex"
+uid="uid://cxgr2jyv3jo3i"
+path.s3tc="res://.godot/imported/wall_splatter_atlas.png-83e315877f9f150c8ca2361f2bfce51e.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -11,8 +11,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/textures/combat_effects/wall_splatter_realistic.png"
-dest_files=["res://.godot/imported/wall_splatter_realistic.png-e92e739152b1b0bc75bd28492f9cc5d0.s3tc.ctex"]
+source_file="res://assets/textures/combat_effects/wall_splatter_atlas.png"
+dest_files=["res://.godot/imported/wall_splatter_atlas.png-83e315877f9f150c8ca2361f2bfce51e.s3tc.ctex"]
 
 [params]
 

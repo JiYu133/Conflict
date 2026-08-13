@@ -2,8 +2,8 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bhposdor3cg8n"
-path.s3tc="res://.godot/imported/wound_mark_realistic.png-0b5ae87ec7056feeda8b8ffa969ebb91.s3tc.ctex"
+uid="uid://c1itq1qxaync4"
+path.s3tc="res://.godot/imported/floor_droplet_atlas.png-0976a303a1bb35a4d316942a5a7fdf87.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -11,8 +11,8 @@ metadata={
 
 [deps]
 
-source_file="res://assets/textures/combat_effects/wound_mark_realistic.png"
-dest_files=["res://.godot/imported/wound_mark_realistic.png-0b5ae87ec7056feeda8b8ffa969ebb91.s3tc.ctex"]
+source_file="res://assets/textures/combat_effects/floor_droplet_atlas.png"
+dest_files=["res://.godot/imported/floor_droplet_atlas.png-0976a303a1bb35a4d316942a5a7fdf87.s3tc.ctex"]
 
 [params]
 
