@@ -97,7 +97,7 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 func _resolve_markers() -> void:
 	if not is_instance_valid(_weapon):
 		return
-	_muzzle_point = _weapon.find_child(MUZZLE_NODE_NAME, true, false) as Node3D
+	_muzzle_point = _find_forward_marker(MUZZLE_NODE_NAME)
 	_ejection_point = _weapon.find_child(EJECTION_NODE_NAME, true, false) as Node3D
 	var next_heat_marker := _weapon.find_child(HEAT_HAZE_MARKER_NAME, true, false) as Node3D
 	# 旧武器没有专用 Marker 时回退到 Muzzle，但新枪管应始终提供 HeatHaze Marker。
@@ -112,6 +112,21 @@ func _resolve_markers() -> void:
 			"未找到 %s 挂点，抛壳将使用 EjectionComponent 的硬编码偏移（位置可能不准）"
 				% EJECTION_NODE_NAME
 		)
+
+
+func _find_forward_marker(marker_name: String) -> Node3D:
+	var best: Node3D
+	var best_forward := -INF
+	for candidate_node in _weapon.find_children(marker_name, "Node3D", true, false):
+		var candidate := candidate_node as Node3D
+		if not candidate or not candidate.is_inside_tree():
+			continue
+		var local_position := _weapon.global_transform.affine_inverse() * candidate.global_position
+		var forward := -local_position.z
+		if forward > best_forward:
+			best = candidate
+			best_forward = forward
+	return best
 
 
 # ── 抛壳（P0）────────────────────────────────────────────────
@@ -194,6 +209,9 @@ func _get_carrier_velocity() -> Vector3:
 func _on_fired() -> void:
 	if not _weapon or not _weapon.is_inside_tree():
 		return
+	# Attachments can be reparented in the same frame as a shot. Resolve from the
+	# live assembly so an old barrel marker cannot place the flash behind the muzzle.
+	_resolve_markers()
 	var profile := _fx.resolve_muzzle_profile(_effective_barrel_length(), _muzzle_kind())
 	var xf := _muzzle_transform()
 	if _setting_enabled("graphics/muzzle_flash", true) and _muzzle_flash_visible(xf.origin):
@@ -306,10 +324,17 @@ func _spawn_flash(profile: Dictionary, xf: Transform3D) -> void:
 		sequence.force_front_view = local_weapon
 		sequence.quality = "high" if local_weapon else _muzzle_flash_quality()
 		sequence.maximum_visibility_distance = _muzzle_flash_distance()
-	var world_parent := _weapon.get_tree().current_scene
-	world_parent.add_child(node)
+	var flash_parent: Node = _muzzle_point if is_instance_valid(_muzzle_point) else _weapon.get_tree().current_scene
+	if not flash_parent:
+		node.queue_free()
+		return
+	flash_parent.add_child(node)
 	node.add_to_group("weapon_muzzle_flash_effects")
-	node.global_transform = xf
+	if flash_parent == _muzzle_point:
+		# Keep the complete flash animation attached while recoil/weapon animation moves the barrel.
+		node.transform = Transform3D.IDENTITY
+	else:
+		node.global_transform = xf
 	node.scale = Vector3.ONE * float(profile.get("scale", 1.0))
 	if not node is MuzzleFlashSequence:
 		_auto_free(node, float(profile.get("lifetime", 0.05)) + 1.0)

@@ -477,6 +477,16 @@ func _build_wound(info: DamageInfo, severity: float, region: BodyRegion) -> Woun
 	var w := Wound.new()
 	w.wound_id = vitals.allocate_wound_id()
 	w.body_part = info.body_part
+	w.anchor_bone = info.anchor_bone
+	w.hit_position = info.hit_position
+	w.has_hit_position = info.hit_position != Vector3.ZERO
+	if w.has_hit_position and not w.anchor_bone.is_empty() and _player.model_manager and _player.model_manager.skeleton:
+		var skeleton: Skeleton3D = _player.model_manager.skeleton
+		var bone_index := skeleton.find_bone(w.anchor_bone)
+		if bone_index >= 0:
+			var bone_world_transform := skeleton.global_transform * skeleton.get_bone_global_pose(bone_index)
+			w.bone_local_position = bone_world_transform.affine_inverse() * w.hit_position
+			w.has_bone_local_position = true
 	w.type = MedicalEnums.WoundType.PENETRATING if info.type == MedicalEnums.DamageType.BULLET else MedicalEnums.WoundType.BLUNT_TRAUMA
 	if info.type == MedicalEnums.DamageType.EXPLOSION:
 		w.type = MedicalEnums.WoundType.BLAST_TRAUMA

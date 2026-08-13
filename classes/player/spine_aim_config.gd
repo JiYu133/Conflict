@@ -13,6 +13,7 @@ extends Resource
 
 ## 抬头和低头的最大角度。
 @export_range(0.0, 89.0, 0.5) var max_look_up_degrees: float = 55.0
+## 脊柱可分摊的最大低头角度（度）。
 @export_range(0.0, 89.0, 0.5) var max_look_down_degrees: float = 45.0
 
 ## 脊柱追随视角的速度；越大响应越快。

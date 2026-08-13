@@ -259,7 +259,10 @@ func _next_default_name() -> String:
 
 func _copy_player_config(source: PlayerConfig) -> PlayerConfig:
 	if source:
-		return source.duplicate(true) as PlayerConfig
+		# PlayerConfig and its nested gameplay resources are treated as immutable
+		# templates during spawn. A shallow copy keeps per-bot root identity without
+		# recursively duplicating model, weapon and medical resource graphs.
+		return source.duplicate(false) as PlayerConfig
 	return PlayerConfig.new()
 
 

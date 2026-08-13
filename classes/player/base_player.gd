@@ -124,9 +124,15 @@ func _ready() -> void:
 
 	# 加载配置中的模型
 	if player_config and player_config.model_scene:
-		model_manager.load_model(
-			player_config
-		)	
+		if is_ai_player:
+			_load_model_deferred.call_deferred()
+		else:
+			model_manager.load_model(player_config)
+
+
+func _load_model_deferred() -> void:
+	if is_inside_tree() and player_config and player_config.model_scene:
+		model_manager.load_model(player_config)
 	
 
 # 子系统初始化

@@ -3,18 +3,29 @@ extends Resource
 
 ## Runtime environment used by BallisticProjectileSystem.
 @export_group("Atmosphere")
+## Gravitational acceleration in metres per second squared.
 @export var gravity_mps2: float = 9.80665
+## Air density in kilograms per cubic metre.
 @export var air_density_kg_m3: float = 1.225
+## Ambient air temperature in degrees Celsius.
 @export var temperature_c: float = 15.0
+## Ambient air pressure in pascals.
 @export var pressure_pa: float = 101325.0
+## Wind velocity vector in metres per second.
 @export var wind_velocity_mps: Vector3 = Vector3.ZERO
 
 @export_group("Simulation limits")
+## Maximum simulated projectile range in metres.
 @export var max_range_m: float = 2000.0
+## Maximum simulated projectile flight time in seconds.
 @export var max_flight_time_s: float = 8.0
+## Speeds below this value stop ballistic simulation.
 @export var minimum_effective_speed_mps: float = 40.0
+## Maximum integration time step in seconds.
 @export var max_time_step_s: float = 1.0 / 240.0
+## Maximum integration distance per step in metres.
 @export var max_step_distance_m: float = 2.0
+## Maximum surface penetrations processed per frame.
 @export_range(0, 32, 1) var max_penetrations_per_frame: int = 4
 
 @export_group("Visuals")

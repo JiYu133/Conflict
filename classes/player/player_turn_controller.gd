@@ -28,9 +28,10 @@ func initialize(player: BasePlayer, camera: PlayerCameraController, movement: Pl
 	_animator = player.model_manager.animator if player and player.model_manager else null
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
+	_camera.process_moving_body_yaw_blend(delta)
 	if not _player.is_alive or _player.is_ragdolled or not _player.is_on_floor():
 		_cancel_turn()
 		return
@@ -70,6 +71,13 @@ func _try_start_turn() -> void:
 
 
 func _process_turn() -> void:
+	if _camera._is_moving():
+		_exit_turn_to_locomotion()
+		return
+	var opposite_state := _get_turn_state_for_offset(_camera.get_body_yaw_offset())
+	if opposite_state != _turn_state and opposite_state != PlayerAnimationController.State.IDLE:
+		_restart_turn(opposite_state)
+		return
 	var progress := _animation.get_turn_playback_progress(_clip_length)
 	progress = clampf(progress, _last_progress, 1.0)
 	_player.rotate_y(_turn_angle * (progress - _last_progress))
@@ -79,6 +87,31 @@ func _process_turn() -> void:
 		_turning = false
 		_movement.set_turn_constraint(false)
 		_animation.end_external_turn()
+
+
+func _exit_turn_to_locomotion() -> void:
+	_turning = false
+	_last_progress = 0.0
+	_movement.set_turn_constraint(false)
+	_animation.end_external_turn()
+	_camera.begin_moving_body_yaw_blend(_config.turn_transition_time)
+
+
+func _get_turn_state_for_offset(offset: float) -> PlayerAnimationController.State:
+	var crouching := _player.stance_controller and _player.stance_controller.get_stance_value() >= 0.3
+	if absf(offset) < deg_to_rad(_config.turn_trigger_angle_degrees):
+		return PlayerAnimationController.State.IDLE
+	if offset > 0.0:
+		return PlayerAnimationController.State.CROUCH_TURN_LEFT if crouching else PlayerAnimationController.State.TURN_LEFT
+	return PlayerAnimationController.State.CROUCH_TURN_RIGHT if crouching else PlayerAnimationController.State.TURN_RIGHT
+
+
+func _restart_turn(next_state: PlayerAnimationController.State) -> void:
+	_turn_state = next_state
+	_turn_angle = clampf(_camera.get_body_yaw_offset(), -deg_to_rad(_config.turn_clip_authored_angle_degrees), deg_to_rad(_config.turn_clip_authored_angle_degrees))
+	_clip_length = _animation.get_turn_clip_length(_turn_state)
+	_last_progress = 0.0
+	_animation.begin_external_turn(_turn_state, _get_playback_speed())
 
 
 func _get_playback_speed() -> float:

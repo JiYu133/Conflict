@@ -473,7 +473,6 @@ func _process(delta: float) -> void:
 	# 即使暂时失去输入控制，也让受击镜头继续回正，避免打开菜单后
 	# 冲击被冻结，关闭菜单时突然恢复一个过期的歪斜角度。
 	_update_pain_impulse(delta)
-	var ragdoll_shake: Dictionary = _update_ragdoll_camera_shake(delta)
 
 	# 眼部高度平滑插值（蹲下/起立时移动摄像机 fallback 高度）
 	if _eye_height != _target_eye_height:
@@ -495,9 +494,11 @@ func _process(delta: float) -> void:
 			else:
 				# 死亡动画阶段仍直接读取动画骨骼，不经过弹簧。
 				head_xform = _ragdoll_skeleton.global_transform * _ragdoll_skeleton.get_bone_global_pose(_ragdoll_bone_idx)
+			# 死亡和昏迷都严格跟随布娃娃头部，完整保留物理位移、滚转和姿态。
+			# 仅保留一次性轴向转换，用于适配模型头骨骼与相机前方向的差异。
 			var camera_basis := (head_xform.basis.orthonormalized() * _ragdoll_head_to_camera_basis).orthonormalized()
-			_active_camera.global_position = head_xform.origin + head_xform.basis.orthonormalized() * (_camera_config.ragdoll_eye_offset + ragdoll_shake["position"])
-			_active_camera.global_basis = (camera_basis * ragdoll_shake["basis"]).orthonormalized()
+			_active_camera.global_position = head_xform.origin
+			_active_camera.global_basis = camera_basis
 			return
 
 	# 防御性保护：死亡跟随已接管相机时，正常头部弹簧永远不再推进。
@@ -533,9 +534,9 @@ func _process(delta: float) -> void:
 	_active_camera.global_position = _player.global_transform * filtered_local
 
 	_active_camera.global_rotation = Vector3(
-		_vertical_angle + _pain_pitch + ragdoll_shake["rotation"].x,
-		_view_yaw + _pain_yaw + ragdoll_shake["rotation"].y,
-		_pain_roll + ragdoll_shake["rotation"].z
+		_vertical_angle + _pain_pitch,
+		_view_yaw + _pain_yaw,
+		_pain_roll
 	)
 
 	_update_ads(delta)
@@ -711,7 +712,34 @@ func get_view_basis() -> Basis:
 
 func _sync_moving_body_yaw() -> void:
 	if is_instance_valid(_player) and _is_moving():
-		_player.rotation.y = _view_yaw
+		if _body_yaw_blend_remaining <= 0.0:
+			_player.rotation.y = _view_yaw
+
+
+var _body_yaw_blend_remaining: float = 0.0
+var _body_yaw_blend_duration: float = 0.0
+var _body_yaw_blend_start: float = 0.0
+var _body_yaw_blend_target: float = 0.0
+
+
+func begin_moving_body_yaw_blend(duration: float) -> void:
+	_body_yaw_blend_duration = maxf(duration, 0.001)
+	_body_yaw_blend_remaining = _body_yaw_blend_duration
+	_body_yaw_blend_start = _player.rotation.y if is_instance_valid(_player) else _view_yaw
+	_body_yaw_blend_target = _view_yaw
+
+
+func process_moving_body_yaw_blend(delta: float) -> void:
+	if _body_yaw_blend_remaining <= 0.0 or not is_instance_valid(_player):
+		return
+	_body_yaw_blend_remaining = maxf(_body_yaw_blend_remaining - delta, 0.0)
+	var weight := 1.0 - (_body_yaw_blend_remaining / _body_yaw_blend_duration)
+	# Smoothstep keeps angular velocity continuous at both ends and avoids the
+	# large final snap produced by repeatedly lerping from the current yaw.
+	weight = weight * weight * (3.0 - 2.0 * weight)
+	_player.rotation.y = lerp_angle(_body_yaw_blend_start, _body_yaw_blend_target, clampf(weight, 0.0, 1.0))
+	if _body_yaw_blend_remaining <= 0.0:
+		_player.rotation.y = _body_yaw_blend_target
 
 
 func _is_moving() -> bool:

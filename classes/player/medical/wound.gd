@@ -21,6 +21,21 @@ var wound_id: int = 0
 ## 所在部位
 var body_part: MedicalEnums.BodyPartId = MedicalEnums.BodyPartId.TORSO
 
+## 命中时绑定的骨骼名；用于死亡后在布娃娃当前姿态中重建伤口位置。
+var anchor_bone: String = ""
+
+## 伤口相对锚定骨骼的局部坐标（米），用于跟随布娃娃姿态重建世界位置。
+var bone_local_position: Vector3 = Vector3.ZERO
+
+## 是否已成功从实际命中点建立骨骼局部坐标。
+var has_bone_local_position: bool = false
+
+## 伤口初次命中时的世界坐标，缺少骨骼锚点时作为回退。
+var hit_position: Vector3 = Vector3.ZERO
+
+## hit_position 是否来自实际碰撞，而非默认零向量。
+var has_hit_position: bool = false
+
 ## 伤口类型
 var type: MedicalEnums.WoundType = MedicalEnums.WoundType.PENETRATING
 

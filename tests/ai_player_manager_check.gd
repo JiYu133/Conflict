@@ -1,14 +1,18 @@
-extends SceneTree
+extends Node
 
 
-func _init() -> void:
+func _ready() -> void:
+	_run.call_deferred()
+
+
+func _run() -> void:
 	var scene := load("res://assets/map/TestMap.tscn") as PackedScene
 	if not _check(scene != null, "TestMap scene loads"):
 		return
 	var map := scene.instantiate()
-	get_root().add_child(map)
-	await process_frame
-	await process_frame
+	get_tree().root.add_child(map)
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 	var manager := map.get_node_or_null("AIPlayerManager") as AIPlayerManager
 	var player := map.get_node_or_null("CharacterBody3D") as BasePlayer
@@ -17,7 +21,9 @@ func _init() -> void:
 	if not _check(manager.get_spawn_transform().origin.is_equal_approx(player.global_position), "initial spawn transform is captured"):
 		return
 
+	var spawn_started := Time.get_ticks_usec()
 	var first := manager.add_ai_player("CheckAIPlayer", BasePlayer.Faction.UA)
+	var synchronous_spawn_usec := Time.get_ticks_usec() - spawn_started
 	if not _check(first != null, "add_bot creates a bot"):
 		return
 	if not _check(first.is_ai_player and not first.controllable, "AIPlayer identity and control state are set"):
@@ -28,6 +34,11 @@ func _init() -> void:
 		return
 	if not _check(first.player_config.health_config != null, "bot copies the health configuration"):
 		return
+	if not _check(first.model_manager.model_node == null, "bot defers heavy model initialization"):
+		return
+	if not _check(synchronous_spawn_usec < 50000, "bot command returns without a long synchronous stall"):
+		return
+	await get_tree().process_frame
 	if not _check(first.model_manager.model_node != null, "bot loads the player model"):
 		return
 	if not _check(first.model_manager.animator != null, "bot keeps the model AnimationPlayer"):
@@ -45,7 +56,7 @@ func _init() -> void:
 	for local_ui in ["SeedCamera", "ConsoleSystem", "PauseMenu", "WeaponModMenu", "WeaponAmmoHUD", "FreeCameraController"]:
 		if not _check(first.get_node_or_null(local_ui) == null, "bot has no local %s" % local_ui):
 			return
-	await process_frame
+	await get_tree().process_frame
 	if not _check(first.health_system.get_hitbox_rids().size() > 0, "bot creates medical hitboxes"):
 		return
 	var damage_seen := false
@@ -65,7 +76,7 @@ func _init() -> void:
 		return
 	if not _check(is_instance_valid(first) and not first.is_alive, "kill does not remove the bot"):
 		return
-	await process_frame
+	await get_tree().process_frame
 	var simulator := first.ragdoll_system._physical_simulator as PhysicalBoneSimulator3D
 	if not _check(simulator != null and simulator.is_simulating_physics(), "bot death starts physical ragdoll simulation"):
 		return
@@ -77,7 +88,7 @@ func _init() -> void:
 	if not _check(bot_head.visible and (bot_head.layers & 1) != 0, "ragdoll keeps the bot head visible to world cameras"):
 		return
 	first.revive()
-	await process_frame
+	await get_tree().process_frame
 	if not _check(bot_weapon.get_parent() == first.weapon_manager.weapon_mount, "revive restores the bot weapon to its mount"):
 		return
 	if not _check(not is_instance_valid(dropped_bot_weapon), "revive removes the dropped bot weapon body"):
@@ -85,7 +96,7 @@ func _init() -> void:
 
 	var player_weapon := player.weapon_manager.current_weapon
 	player.die()
-	await process_frame
+	await get_tree().process_frame
 	var dropped_player_weapon := map.get_node_or_null("%s_Dropped" % player_weapon.name) as RigidBody3D
 	if not _check(dropped_player_weapon != null and player_weapon.get_parent() == dropped_player_weapon, "player death uses the same weapon drop system"):
 		return
@@ -99,12 +110,12 @@ func _init() -> void:
 		return
 	manager.remove_all_ai_players()
 	print("bot_manager_check=ok")
-	quit(0)
+	get_tree().quit(0)
 
 
 func _check(condition: bool, message: String) -> bool:
 	if condition:
 		return true
 	push_error(message)
-	quit(1)
+	get_tree().quit(1)
 	return false

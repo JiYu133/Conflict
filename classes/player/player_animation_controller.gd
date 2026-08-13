@@ -32,6 +32,7 @@ const PARAM_CROUCH_WALK_BLEND  := "parameters/CrouchWalk/blend_position"
 const PARAM_RUN_BLEND          := "parameters/Run/blend_position"
 const PARAM_SPRINT_BLEND       := "parameters/Sprint/blend_position"
 const PARAM_STANCE_BLEND       := "parameters/Idle/blend_position"
+const TURN_STATE_NAMES := [SM_TURN_LEFT, SM_TURN_RIGHT, SM_CROUCH_TURN_LEFT, SM_CROUCH_TURN_RIGHT]
 
 
 # 状态枚举 ─────────────────────────────────────────────────
@@ -112,6 +113,7 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 
 	GlobalLogger.info("AnimationController", "Initialized with AnimationTree.")
 	_setup_animations()
+	_setup_turn_filters()
 	_setup_turn_transitions()
 	_apply_config_to_transitions()
 	# _state 默认就是 IDLE，但状态机启动时仍停在 Start 节点；直接 start
@@ -151,26 +153,20 @@ func _setup_animations() -> void:
 			var anim: Animation = lib.get_animation(anim_name)
 			if not anim:
 				continue
-			# Imported AnimationLibrary resources are shared. Turn clips need a
-			# private runtime copy before their hips yaw is neutralized.
 			if _is_turn_animation_library(lib_name):
 				anim = anim.duplicate(true) as Animation
 				lib.remove_animation(anim_name)
 				lib.add_animation(anim_name, anim)
-
-			if should_loop and anim.loop_mode != Animation.LOOP_LINEAR:
+				_neutralize_turn_hips(anim)
+			if should_loop and not _is_turn_animation_library(lib_name) and anim.loop_mode != Animation.LOOP_LINEAR:
 				anim.loop_mode = Animation.LOOP_LINEAR
+			elif _is_turn_animation_library(lib_name):
+				anim.loop_mode = Animation.LOOP_NONE
 
-			# A turn-in-place clip is lower-body only. Non-leg tracks must remain
-			# bound to prevent Skeleton3D from falling back to its rest/T-pose, but
-			# are frozen to their authored first-frame holding pose.
 			var i := anim.get_track_count() - 1
 			while i >= 0:
 				var track_path := anim.track_get_path(i)
-				if _is_turn_animation_library(lib_name):
-					if not _is_turn_lower_body_track(track_path):
-						_freeze_animation_track(anim, i)
-				elif anim.track_get_type(i) == Animation.TYPE_POSITION_3D and _is_root_motion_track(track_path):
+				if not _is_turn_animation_library(lib_name) and anim.track_get_type(i) == Animation.TYPE_POSITION_3D and _is_root_motion_track(track_path):
 					anim.remove_track(i)
 				i -= 1
 
@@ -179,24 +175,66 @@ func _is_turn_animation_library(library_name: StringName) -> bool:
 	return str(library_name) in ["turn_left", "turn_right", "crouch_turn_left", "crouch_turn_right"]
 
 
-func _is_turn_lower_body_track(track_path: NodePath) -> bool:
+func _neutralize_turn_hips(animation: Animation) -> void:
+	for track_index in animation.get_track_count():
+		if not str(animation.track_get_path(track_index)).contains("mixamorig_Hips"):
+			continue
+		if animation.track_get_type(track_index) not in [Animation.TYPE_ROTATION_3D, Animation.TYPE_POSITION_3D]:
+			continue
+		var first_value: Variant = animation.track_get_key_value(track_index, 0)
+		for key_index in range(1, animation.track_get_key_count(track_index)):
+			animation.track_set_key_value(track_index, key_index, first_value)
+
+
+func _setup_turn_filters() -> void:
+	if not _animation_tree:
+		return
+	var sm := _animation_tree.tree_root as AnimationNodeStateMachine
+	if not sm:
+		return
+	for state_name in [SM_TURN_LEFT, SM_TURN_RIGHT, SM_CROUCH_TURN_LEFT, SM_CROUCH_TURN_RIGHT]:
+		if not sm.has_node(state_name):
+			continue
+		var turn_node := sm.get_node(state_name) as AnimationNodeAnimation
+		if not turn_node:
+			continue
+		var base_node := (sm.get_node(SM_IDLE) as AnimationRootNode).duplicate(true) as AnimationRootNode
+		var layered_turn := AnimationNodeBlend2.new()
+		layered_turn.filter_enabled = true
+		var turn_animation := _get_animation_for_node(turn_node)
+		if turn_animation:
+			for track_index in turn_animation.get_track_count():
+				var track_path := turn_animation.track_get_path(track_index)
+				if _is_turn_lower_body_path(track_path):
+					layered_turn.set_filter_path(track_path, true)
+		var blend_tree := AnimationNodeBlendTree.new()
+		blend_tree.add_node("Base", base_node, Vector2(0.0, 0.0))
+		blend_tree.add_node("Turn", turn_node, Vector2(0.0, 120.0))
+		blend_tree.add_node("Layer", layered_turn, Vector2(220.0, 60.0))
+		blend_tree.connect_node("Layer", 0, "Base")
+		blend_tree.connect_node("Layer", 1, "Turn")
+		blend_tree.connect_node("output", 0, "Layer")
+		sm.replace_node(state_name, blend_tree)
+		_animation_tree.set("parameters/%s/Layer/blend_amount" % state_name, 1.0)
+		_animation_tree.set("parameters/%s/Base/blend_position" % state_name, _current_stance_value())
+
+
+func _get_animation_for_node(animation_node: AnimationNodeAnimation) -> Animation:
+	if not animation_node or not _animation_tree:
+		return null
+	var animator := _animation_tree.get_node_or_null(_animation_tree.anim_player) as AnimationPlayer
+	return animator.get_animation(animation_node.animation) if animator else null
+
+
+func _is_turn_lower_body_path(track_path: NodePath) -> bool:
 	var path_text := str(track_path)
 	for bone_name in [
-		"LeftUpLeg", "LeftLeg", "LeftFoot", "LeftToeBase",
-		"RightUpLeg", "RightLeg", "RightFoot", "RightToeBase",
+		"mixamorig_LeftUpLeg", "mixamorig_LeftLeg", "mixamorig_LeftFoot", "mixamorig_LeftToeBase",
+		"mixamorig_RightUpLeg", "mixamorig_RightLeg", "mixamorig_RightFoot", "mixamorig_RightToeBase",
 	]:
 		if path_text.contains(bone_name):
 			return true
 	return false
-
-
-func _freeze_animation_track(animation: Animation, track_index: int) -> void:
-	var key_count := animation.track_get_key_count(track_index)
-	if key_count == 0:
-		return
-	var first_value: Variant = animation.track_get_key_value(track_index, 0)
-	for key_index in range(1, key_count):
-		animation.track_set_key_value(track_index, key_index, first_value)
 
 
 func _apply_config_to_transitions() -> void:
@@ -222,6 +260,8 @@ func _setup_turn_transitions() -> void:
 			continue
 		_add_transition_if_missing(sm, SM_IDLE, turn_state)
 		_add_transition_if_missing(sm, turn_state, SM_IDLE)
+		for locomotion_state in [SM_WALK, SM_CROUCH_WALK, SM_RUN, SM_SPRINT]:
+			_add_transition_if_missing(sm, turn_state, locomotion_state)
 
 
 func _add_transition_if_missing(sm: AnimationNodeStateMachine, from: StringName, to: StringName) -> void:
@@ -342,11 +382,17 @@ func _on_stance_changed(value: float) -> void:
 	if not _animation_tree:
 		return
 	_animation_tree.set(PARAM_STANCE_BLEND, value)
+	for turn_state_name in TURN_STATE_NAMES:
+		_animation_tree.set("parameters/%s/Base/blend_position" % turn_state_name, value)
 	# 走路状态下实时切换：半蹲阈值 0.3，避免在临界值来回抖动用滞后
 	if _state == State.WALK and value >= 0.3:
 		_transition(State.CROUCH_WALK)
 	elif _state == State.CROUCH_WALK and value < 0.2:
 		_transition(State.WALK)
+
+
+func _current_stance_value() -> float:
+	return _player.stance_controller.get_stance_value() if is_instance_valid(_player) and _player.stance_controller else 0.0
 func _on_jumped() -> void:
 	if _state == State.DEATH:
 		return
