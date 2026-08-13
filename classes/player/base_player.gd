@@ -89,6 +89,7 @@ var animation_controller: PlayerAnimationController
 var turn_controller: PlayerTurnController
 var health_system: HealthSystem
 var death_blood_effect: DeathBloodEffect
+var combat_effects: CombatEffects
 var stamina_system: StaminaSystem
 var screen_effects
 var settings_service
@@ -197,6 +198,10 @@ func _initialize_subsystems() -> void:
 		player_config.blood_effect_config if player_config else null,
 		settings_service
 		)
+
+	# 命中反馈只消费医疗系统结果：伤口、喷溅、滴落与血泊不反向影响伤害判定。
+	combat_effects = _create_subsystem(CombatEffects.new(), "CombatEffects")
+	combat_effects.initialize(self)
 
 	stamina_system.initialize(self, player_config.stamina_config if player_config else null)
 
