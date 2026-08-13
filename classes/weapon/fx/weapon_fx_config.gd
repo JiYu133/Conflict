@@ -27,6 +27,7 @@ extends Resource
 @export_range(0.0, 1.0) var shell_velocity_jitter: float = 0.18
 ## 抛壳翻滚初角速度（弧度/秒）范围
 @export var shell_spin_min: float = 8.0
+## 抛壳翻滚初角速度上限（弧度/秒）。
 @export var shell_spin_max: float = 22.0
 ## 弹壳物理材质（弹性/摩擦）。留空 = 使用默认值
 @export var shell_physics_material: PhysicsMaterial
@@ -40,26 +41,41 @@ extends Resource
 ## 各形态的粒子场景。留空则该形态不生成任何东西。
 ## 命名与清单一致：短枪管 / 标准 / 长枪管 / 消焰器 / 制退器 / 消音器
 @export var flash_scene_short_barrel: PackedScene
+## Fallback muzzle-flash scene for a standard barrel.
 @export var flash_scene_standard: PackedScene
+## Fallback muzzle-flash scene for a long barrel.
 @export var flash_scene_long_barrel: PackedScene
+## Fallback muzzle-flash scene when a flash hider is attached.
 @export var flash_scene_flash_hider: PackedScene
+## Fallback muzzle-flash scene when a muzzle brake is attached.
 @export var flash_scene_muzzle_brake: PackedScene
+## Fallback muzzle-smoke scene when a suppressor is attached.
 @export var flash_scene_suppressor_smoke: PackedScene
 
 ## Sequence variants. When populated, one scene is selected randomly per shot.
 ## The legacy single-scene fields above remain valid as fallbacks.
+## 随机选用的短枪管枪口焰场景。
 @export var flash_scenes_short_barrel: Array[PackedScene] = []
+## 随机选用的标准枪管枪口焰场景。
 @export var flash_scenes_standard: Array[PackedScene] = []
+## 随机选用的长枪管枪口焰场景。
 @export var flash_scenes_long_barrel: Array[PackedScene] = []
+## 随机选用的短枪管制退器枪口焰场景。
 @export var flash_scenes_muzzle_brake_short: Array[PackedScene] = []
+## 随机选用的标准枪管制退器枪口焰场景。
 @export var flash_scenes_muzzle_brake_standard: Array[PackedScene] = []
+## 随机选用的长枪管制退器枪口焰场景。
 @export var flash_scenes_muzzle_brake_long: Array[PackedScene] = []
+## 随机选用的短消音器烟雾场景。
 @export var flash_scenes_suppressor_short: Array[PackedScene] = []
+## 随机选用的标准消音器烟雾场景。
 @export var flash_scenes_suppressor_standard: Array[PackedScene] = []
+## 随机选用的长消音器烟雾场景。
 @export var flash_scenes_suppressor_long: Array[PackedScene] = []
 
 ## 枪管长度分界（米）：短于 short 判为短枪管，长于 long 判为长枪管
 @export var short_barrel_threshold: float = 0.32
+## 长枪管判定阈值（米）。
 @export var long_barrel_threshold: float = 0.50
 
 ## 枪口焰基准存活时间（秒），实际按枪管长度缩放

@@ -2,14 +2,21 @@ class_name BallisticSurfaceConfig
 extends Resource
 
 ## Surface data can be assigned as collider metadata or as a Resource.
+## Stable identifier used when resolving surface-specific effects.
 @export var material_name: String = "hard_surface"
+## Whether projectiles may pass through this surface.
 @export var penetrable: bool = false
+## Surface thickness in metres.
 @export var thickness_m: float = 0.1
+## Relative material hardness used by penetration calculations.
 @export_range(0.0, 100.0, 0.1) var hardness: float = 1.0
 ## Fraction of the remaining energy lost after a successful penetration.
 @export_range(0.0, 1.0, 0.01) var energy_loss_factor: float = 0.45
+## Fixed energy threshold required to penetrate, in joules.
 @export var penetration_resistance_j: float = 1000.0
+## Incidence angle below which a ricochet may occur, in degrees.
 @export_range(0.0, 90.0, 0.5) var ricochet_angle_deg: float = 15.0
+## Fraction of projectile energy retained after ricochet.
 @export_range(0.0, 1.0, 0.01) var ricochet_energy_retention: float = 0.65
 
 var penetration_energy_loss: float:

@@ -1,5 +1,7 @@
 extends SceneTree
 
+const ENVIRONMENT_IMPACT_EFFECT = preload("res://classes/combat/environment_impact_effect.gd")
+
 func _init() -> void:
 	var environment := load("res://assets/config/ballistics/default_environment.tres") as BallisticEnvironmentConfig
 	var barrel := load("res://assets/config/weapons/attachments/barrel_assemblies/ak12_barrel_assembly.tres") as BarrelConfig
@@ -29,6 +31,14 @@ func _init() -> void:
 	surface.thickness_m = 0.05
 	surface.hardness = 1.0
 	_check(surface.required_penetration_energy() > 0.0, "surface penetration energy")
+	_check(surface.ricochet_angle_deg > 0.0, "surface ricochet angle is configured")
+	_check(surface.ricochet_energy_retention > 0.0, "surface retains energy after ricochet")
+	var glancing_direction := Vector3(1.0, -0.05, 0.0).normalized()
+	var grazing_angle := rad_to_deg(asin(absf(glancing_direction.dot(Vector3.UP))))
+	_check(grazing_angle <= surface.ricochet_angle_deg, "glancing impact enters ricochet angle")
+	var reflected := glancing_direction.bounce(Vector3.UP)
+	_check(reflected.y > 0.0, "ricochet reflection leaves the surface")
+	_check(ResourceLoader.exists("%s/variant_01/frame_0001.png" % ENVIRONMENT_IMPACT_EFFECT.FRAME_ROOT), "wall impact animation resource exists")
 	_check(environment.tracer_scene == null, "default environment has no tracer")
 	print("ballistic_physics_check=ok")
 	quit(0)
