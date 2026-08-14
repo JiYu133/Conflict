@@ -1,0 +1,173 @@
+[gd_scene format=3 uid="uid://4m2gn8p1gks5"]
+
+[ext_resource type="Script" uid="uid://ddo7hshqrwhs1" path="res://assets/title/credits.gd" id="1"]
+[ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://assets/fonts/ConflictCJKUI.ttf" id="2_53lk8"]
+
+[sub_resource type="StyleBoxFlat" id="CreditsButtonNormal"]
+bg_color = Color(0, 0, 0, 0)
+border_color = Color(0, 0, 0, 0)
+
+[sub_resource type="StyleBoxFlat" id="CreditsButtonHover"]
+bg_color = Color(0, 0, 0, 0)
+border_color = Color(0, 0, 0, 0)
+
+[node name="Credits" type="CanvasLayer" unique_id=1770320441]
+layer = 30
+script = ExtResource("1")
+
+[node name="TopCinemaBar" type="ColorRect" parent="." unique_id=1770320443]
+z_index = 10
+anchors_preset = 10
+anchor_right = 1.0
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="BottomCinemaBar" type="ColorRect" parent="." unique_id=1770320444]
+z_index = 10
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
+
+[node name="ReturnButton" type="Button" parent="." unique_id=1253905200]
+z_index = 2
+custom_minimum_size = Vector2(0, 42)
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -399.0
+offset_top = -112.0
+offset_right = -269.0
+offset_bottom = -70.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.82, 0.84, 0.87, 1)
+theme_override_colors/font_focus_color = Color(0.95, 0.78, 0.2, 1)
+theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
+theme_override_styles/normal = SubResource("CreditsButtonNormal")
+theme_override_styles/hover = SubResource("CreditsButtonHover")
+theme_override_styles/focus = SubResource("CreditsButtonHover")
+text = "返回标题"
+flat = true
+
+[node name="Content" type="VBoxContainer" parent="." unique_id=1121352111]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -270.0
+offset_top = -258.0
+offset_right = 270.0
+offset_bottom = 228.0
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Content" unique_id=1380096066]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.96, 0.98, 1)
+theme_override_font_sizes/font_size = 26
+text = "制作人员"
+
+[node name="Subtitle" type="Label" parent="Content" unique_id=1380096067]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.72, 0.2, 1)
+theme_override_fonts/font = ExtResource("2_53lk8")
+theme_override_font_sizes/font_size = 11
+text = "排名不分先后"
+
+[node name="Rule" type="ColorRect" parent="Content" unique_id=1380096068]
+custom_minimum_size = Vector2(0, 1)
+layout_mode = 2
+color = Color(0.85, 0.72, 0.2, 0.38)
+
+[node name="CreditsViewport" type="Control" parent="Content" unique_id=545834093]
+custom_minimum_size = Vector2(0, 350)
+clip_contents = true
+layout_mode = 2
+
+[node name="CreditsText" type="Label" parent="Content/CreditsViewport" unique_id=488768592]
+custom_minimum_size = Vector2(0, 1100)
+layout_mode = 0
+offset_right = 540.0
+offset_bottom = 1100.0
+theme_override_colors/font_color = Color(0.88, 0.9, 0.93, 1)
+theme_override_fonts/font = ExtResource("2_53lk8")
+theme_override_font_sizes/font_size = 17
+text = "开发
+
+
+JiYu - 策划，主要程序，美术
+
+
+tianzzi - 主要程序，美术
+
+
+Sakurana Hanaikada - 程序
+
+
+去桂林钓只鱼. - 程序，技术指导
+
+
+h&aq*%uzi@%oxg~?ly! - 美术
+
+
+ForwardForWar - 音乐
+
+
+
+
+
+
+设计
+
+
+LQ - 军事顾问
+
+
+闵 - 军事顾问，模型
+
+
+Days Go By - 军事顾问
+
+
+潮月海明Kano - 军事顾问
+
+
+oneLiLi x Minecraft - 技术，美术指导
+
+
+WDNMD - 模型
+
+
+
+
+
+
+
+特别鸣谢所有参与测试与反馈的玩家
+
+
+
+
+
+
+
+Conflict Team
+
+26/8/14"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Footer" type="Label" parent="Content" unique_id=1380096069]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.5, 0.55, 0.62, 1)
+theme_override_fonts/font = ExtResource("2_53lk8")
+theme_override_font_sizes/font_size = 11
+text = "ESC  /  返回标题"
+horizontal_alignment = 2

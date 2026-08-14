@@ -22,7 +22,7 @@ func _init() -> void:
 	weapon.add_child(charging_handle)
 
 	manager.attachments_changed.emit()
-	await get_tree().process_frame
+	await process_frame
 
 	weapon.bolt_moving.emit(0.5)
 
