@@ -101,7 +101,7 @@ func _run() -> void:
 	if not _check(dropped_player_weapon != null and player_weapon.get_parent() == dropped_player_weapon, "player death uses the same weapon drop system"):
 		return
 	player.revive()
-	await process_frame
+	await get_tree().process_frame
 	if not _check(player_weapon.get_parent() == player.weapon_manager.weapon_mount, "player revive restores the weapon to its mount"):
 		return
 	if not _check(manager.remove_ai_player(first.ai_player_id), "remove_ai_player accepts a valid ID"):
