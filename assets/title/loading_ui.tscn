@@ -1,0 +1,245 @@
+[gd_scene format=3 uid="uid://cia7vaq46uhgf"]
+
+[ext_resource type="Script" uid="uid://bkj3rrp4owfbl" path="res://classes/ui/loading_screen.gd" id="1_loading"]
+[ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://assets/fonts/ConflictCJKUI.ttf" id="2_o1nf5"]
+
+[sub_resource type="StyleBoxFlat" id="DeploymentPanelStyle"]
+content_margin_left = 34.0
+content_margin_top = 28.0
+content_margin_right = 34.0
+content_margin_bottom = 28.0
+bg_color = Color(0.04, 0.012, 0.018, 0.78)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.95, 0.08, 0.06, 0.95)
+shadow_color = Color(0.95, 0.02, 0.01, 0.72)
+shadow_size = 18
+
+[node name="LoadingLayer" type="Control" unique_id=1448196556]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_loading")
+
+[node name="Background" type="ColorRect" parent="." unique_id=835847627]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.008, 0.012, 0.02, 0.94)
+
+[node name="Accent" type="ColorRect" parent="." unique_id=596503238]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 2.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.85, 0.72, 0.2, 0.75)
+
+[node name="LoadingContent" type="VBoxContainer" parent="." unique_id=1952798400]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 140.0
+offset_top = 96.0
+offset_right = -140.0
+offset_bottom = -96.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 18
+
+[node name="ContentLayout" type="HBoxContainer" parent="LoadingContent" unique_id=727130101]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 42
+
+[node name="ImageColumn" type="VBoxContainer" parent="LoadingContent/ContentLayout" unique_id=170120084]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="MapImage" type="TextureRect" parent="LoadingContent/ContentLayout/ImageColumn" unique_id=1507685637]
+texture_filter = 1
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ImageSlotHint" type="Label" parent="LoadingContent/ContentLayout/ImageColumn/MapImage" unique_id=724223267]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.55, 0.58, 0.63, 0.55)
+theme_override_font_sizes/font_size = 16
+text = "MAP IMAGE
+IMAGE SLOT"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="InfoColumn" type="VBoxContainer" parent="LoadingContent/ContentLayout" unique_id=1714685147]
+custom_minimum_size = Vector2(360, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="LoadingContent/ContentLayout/InfoColumn" unique_id=2143951646]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.72, 0.2, 1)
+theme_override_font_sizes/font_size = 22
+text = "CONFLICT"
+
+[node name="MapTitle" type="Label" parent="LoadingContent/ContentLayout/InfoColumn" unique_id=832564524]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.92, 0.93, 0.95, 1)
+theme_override_font_sizes/font_size = 25
+text = "测试区域  /  北线设施"
+
+[node name="History" type="Label" parent="LoadingContent/ContentLayout/InfoColumn" unique_id=1747735966]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.75, 0.8, 1)
+theme_override_font_sizes/font_size = 17
+text = "地图历史介绍"
+autowrap_mode = 2
+
+[node name="Tip" type="Label" parent="LoadingContent/ContentLayout/InfoColumn" unique_id=1170457135]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.72, 0.2, 1)
+theme_override_font_sizes/font_size = 16
+text = "TIP  /  提示"
+autowrap_mode = 2
+
+[node name="Status" type="Label" parent="LoadingContent/ContentLayout/InfoColumn" unique_id=308864908]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "正在准备测试区域"
+
+[node name="Progress" type="ProgressBar" parent="LoadingContent/ContentLayout/InfoColumn" unique_id=566276946]
+custom_minimum_size = Vector2(0, 3)
+layout_mode = 2
+show_percentage = false
+
+[node name="Actions" type="HBoxContainer" parent="LoadingContent/ContentLayout/InfoColumn" unique_id=1212755846]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="DeployButton" type="Button" parent="LoadingContent/ContentLayout/InfoColumn/Actions" unique_id=1254586887]
+custom_minimum_size = Vector2(120, 42)
+layout_mode = 2
+text = "部署"
+
+[node name="DeploymentOverlay" type="Control" parent="." unique_id=1272781051]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Background" type="TextureRect" parent="DeploymentOverlay" unique_id=801243726]
+modulate = Color(0.18, 0.18, 0.18, 1)
+texture_filter = 1
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Shade" type="ColorRect" parent="DeploymentOverlay" unique_id=878429225]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.01, 0.005, 0.008, 0.68)
+
+[node name="DeploymentPanel" type="Panel" parent="DeploymentOverlay" unique_id=759608953]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -67.0
+offset_top = 23.0
+offset_right = 233.0
+offset_bottom = 203.0
+grow_horizontal = 2
+grow_vertical = 2
+scale = Vector2(0.48000002, 0.2400006)
+theme_override_styles/panel = SubResource("DeploymentPanelStyle")
+
+[node name="Title" type="Label" parent="DeploymentOverlay" unique_id=2065476292]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -104.0
+offset_top = 28.0
+offset_right = 136.0
+offset_bottom = 72.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("2_o1nf5")
+theme_override_font_sizes/font_size = 22
+text = "做好准备！"
+horizontal_alignment = 1
+
+[node name="Countdown" type="Label" parent="DeploymentOverlay" unique_id=142617094]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -120.0
+offset_top = -39.0
+offset_right = 120.0
+offset_bottom = 21.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_fonts/font = ExtResource("2_o1nf5")
+theme_override_font_sizes/font_size = 30
+text = "00:05:000"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="DeploymentFade" type="ColorRect" parent="." unique_id=83328764]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 0)

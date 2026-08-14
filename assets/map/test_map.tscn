@@ -1,11 +1,11 @@
-[gd_scene format=3 uid="uid://dt1legmj73oun"]
+[gd_scene format=3 uid="uid://blus6y00fymck"]
 
 [ext_resource type="Script" uid="uid://drp83k76y43jc" path="res://classes/player/base_player.gd" id="1_4om3i"]
 [ext_resource type="Resource" uid="uid://6j1op088306v" path="res://assets/config/player/player_config.tres" id="2_kh0mb"]
 [ext_resource type="Script" uid="uid://dtgqrshx3beik" path="res://classes/ui/top_right_notification_manager.gd" id="3_l6oqr"]
 [ext_resource type="Resource" uid="uid://ke76oc81381y" path="res://assets/config/ui/notifications/tutorial.tres" id="4_f5kyo"]
 [ext_resource type="Script" uid="uid://dqt48xyctgcbr" path="res://classes/ui/medical_debug_hud.gd" id="5_d5dx0"]
-[ext_resource type="Script" path="res://classes/bot/ai_player_manager.gd" id="6_ai_player_manager"]
+[ext_resource type="Script" uid="uid://b836alqkh4467" path="res://classes/bot/ai_player_manager.gd" id="6_ai_player_manager"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_jq8tk"]
 size = Vector3(1.0458984, 50, 0)
@@ -82,7 +82,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.627635, 0.8835354, -2.49873
 script = ExtResource("1_4om3i")
 player_config = ExtResource("2_kh0mb")
 
-[node name="AIPlayerManager" type="Node" parent="."]
+[node name="AIPlayerManager" type="Node" parent="." unique_id=441092631]
 script = ExtResource("6_ai_player_manager")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=1022232431]

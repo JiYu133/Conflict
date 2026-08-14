@@ -129,7 +129,7 @@ func _on_damage_taken(info: DamageInfo) -> void:
 	if not info:
 		return
 
-	_spawn_impact_droplets(info)
+	# Temporarily disabled while the injury blood-particle pass is being replaced.
 	_spawn_character_wound(info)
 	_spawn_wall_splatter(info)
 
@@ -403,6 +403,9 @@ func _bleed_interval(rate: MedicalEnums.BleedRate) -> float:
 
 
 func _spawn_arterial_spurt(external_rate: float) -> void:
+	# Temporarily disabled; keep the method as an integration hook for the replacement effect.
+	return
+	# The legacy implementation remains below for easy restoration during the FX pass.
 	var parent := _world_parent()
 	if not parent:
 		return

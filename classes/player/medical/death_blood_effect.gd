@@ -184,25 +184,28 @@ func _fallback_bone_names(part: MedicalEnums.BodyPartId) -> Array[String]:
 	return [""]
 
 func _create_pool(ground_point: Vector3) -> void:
+	if not is_inside_tree():
+		call_deferred("_create_pool", ground_point)
+		return
 	if not _config.blood_pool_texture:
 		push_warning("DeathBloodEffect: blood_pool_texture is not assigned; blood pool creation skipped.")
 		return
 	var pool := Decal.new()
 	pool.name = "BloodPool"
+	add_child(pool)
 	pool.texture_albedo = _atlas_variant(_config.blood_pool_texture, 0)
 	pool.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	pool.size = Vector3(_config.pool_start_size.x, 0.08, _config.pool_start_size.y)
+	pool.size = Vector3(_config.pool_start_size.x, _config.pool_start_size.y, 0.08)
 	pool.position = ground_point + Vector3.UP * _config.ground_offset
-	# Decal 默认从 +Y 向 -Y 投影，适合水平地面。
-	pool.rotation = Vector3.ZERO
-	add_child(pool)
+	# Decal projects along local -Z; rotate it downward onto horizontal ground.
+	pool.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 	_pools.append(pool)
 
 	_pool_tween = create_tween()
 	_pool_tween.tween_interval(_config.pool_delay)
 	_pool_tween.tween_property(pool, "modulate:a", _config.pool_alpha, 0.35)
 	_pool_tween.parallel().tween_property(
-		pool, "size", Vector3(_config.pool_max_size.x, 0.08, _config.pool_max_size.y),
+		pool, "size", Vector3(_config.pool_max_size.x, _config.pool_max_size.y, 0.08),
 		_config.pool_growth_duration
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
