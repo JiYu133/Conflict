@@ -57,9 +57,56 @@ func _run() -> void:
 	if not spurt or spurt.amount > 11:
 		_fail("Arterial bleeding did not create a bounded directional pulse")
 		return
+	if not _check_death_blood_positioning(player, map):
+		return
 
 	print("combat_effects_check=ok")
 	get_tree().quit(0)
+
+
+func _check_death_blood_positioning(player: BasePlayer, map: Node3D) -> bool:
+	var skeleton := player.model_manager.skeleton
+	var head_index := skeleton.find_bone("mixamorig_Head")
+	if head_index < 0:
+		_fail("Death blood positioning requires the head bone")
+		return false
+	var wound := Wound.new()
+	wound.body_part = MedicalEnums.BodyPartId.HEAD
+	wound.anchor_bone = "mixamorig_Head"
+	wound.bleed_rate = MedicalEnums.BleedRate.VENOUS
+	wound.severity = 1.0
+	var bone_world := skeleton.global_transform * skeleton.get_bone_global_pose(head_index)
+	wound.bone_local_position = Vector3(0.0, 0.04, 0.0)
+	wound.has_bone_local_position = true
+	wound.hit_position = bone_world * wound.bone_local_position
+	wound.has_hit_position = true
+	player.health_system.vitals.get_region(wound.body_part).add_wound(wound)
+
+	var effect := player.death_blood_effect
+	if effect._blood_pool_variants.size() != 4:
+		_fail("Death blood effect did not cache all pool atlas variants")
+		return false
+	var pool_image := effect._blood_pool_variant.get_image()
+	if pool_image.get_pixel(0, 0).a > 0.05:
+		_fail("Death blood pool variant keeps an opaque atlas background")
+		return false
+	effect.reparent(map, true)
+	effect._global_position_for_ground_query()
+	var expected_source := effect._wound_world_position(wound)
+	if effect._drips and effect._drips.global_position.distance_to(expected_source) > 0.001:
+		_fail("Death drip emitter is not anchored to the resolved wound")
+		return false
+
+	var ground_point := Vector3(7.0, 0.0, -4.0)
+	effect._create_pool(ground_point)
+	var pool := effect._pools.back() as Decal
+	var expected_pool := ground_point + Vector3.UP * effect._config.ground_offset
+	var pool_offset := pool.global_position - expected_pool if pool else Vector3.INF
+	var horizontal_jitter := Vector2(pool_offset.x, pool_offset.z).length()
+	if not pool or absf(pool_offset.y) > 0.001 or horizontal_jitter > 0.18:
+		_fail("Death blood pool applies its world position more than once")
+		return false
+	return true
 
 
 func _check_atlas_variants(effects: CombatEffects) -> bool:

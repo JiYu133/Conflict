@@ -101,11 +101,18 @@ var console_system: ConsoleSystem
 var radial_menu_service
 var medical_treatment_component: MedicalTreatmentComponent
 
+## AI models and loadouts can be queued by AIPlayerManager so several bots do
+## not all instantiate their expensive scene trees on the same frame.
+var defer_ai_model_load: bool = false
+var _ai_model_load_started: bool = false
+var _ai_runtime_ready: bool = false
+
 # 信号
 
 
 signal died
 signal revived
+signal ai_runtime_ready
 @warning_ignore("unused_signal")
 signal faction_changed(new_faction: Faction)
 
@@ -125,14 +132,28 @@ func _ready() -> void:
 	# 加载配置中的模型
 	if player_config and player_config.model_scene:
 		if is_ai_player:
-			_load_model_deferred.call_deferred()
+			if not defer_ai_model_load:
+				begin_deferred_model_load.call_deferred()
 		else:
 			model_manager.load_model(player_config)
+	elif is_ai_player:
+		_mark_ai_runtime_ready()
 
 
-func _load_model_deferred() -> void:
+func begin_deferred_model_load() -> void:
+	if _ai_model_load_started or _ai_runtime_ready:
+		return
+	_ai_model_load_started = true
 	if is_inside_tree() and player_config and player_config.model_scene:
 		model_manager.load_model(player_config)
+		if not model_manager.model_node:
+			_mark_ai_runtime_ready()
+	else:
+		_mark_ai_runtime_ready()
+
+
+func is_ai_runtime_ready() -> bool:
+	return _ai_runtime_ready
 	
 
 # 子系统初始化
@@ -370,10 +391,30 @@ func _on_model_loaded(_model: Node3D) -> void:
 
 	if player_config and player_config.starting_weapon:
 		GlobalLogger.debug("Player", "Initializing player's starting weapon...")
-		weapon_manager.load_and_equip(player_config.starting_weapon)
+		if is_ai_player:
+			_load_ai_starting_weapon.call_deferred(player_config.starting_weapon)
+		else:
+			weapon_manager.load_and_equip(player_config.starting_weapon)
+	elif is_ai_player:
+		_mark_ai_runtime_ready()
 
 	if OS.is_debug_build() and free_camera_controller:
 		free_camera_controller.initialize(self, camera_controller)
+
+
+func _load_ai_starting_weapon(config: WeaponConfig) -> void:
+	# Separate the weapon scene from the model scene, then let WeaponManager
+	# spread default attachments over subsequent frames.
+	await get_tree().process_frame
+	await weapon_manager.load_and_equip_staggered(config)
+	_mark_ai_runtime_ready()
+
+
+func _mark_ai_runtime_ready() -> void:
+	if _ai_runtime_ready:
+		return
+	_ai_runtime_ready = true
+	ai_runtime_ready.emit()
 
 
 ## Bot 没有第一人称相机，模型的所有网格都必须能被世界相机看到。
