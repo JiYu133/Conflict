@@ -172,23 +172,54 @@ func set_aiming(aiming: bool) -> void:
 
 ## 根据配置创建武器实例，装备并自动装上预设配件
 func load_and_equip(config: WeaponConfig) -> void:
-	if not config:
-		GlobalLogger.error("WeaponManager", "WeaponConfig 为空，无法装备武器")
-		return
-	GlobalLogger.info("WeaponManager", "装备武器: " + config.weapon_name)
-	var weapon_scene = config.weapon_scene
-	if not weapon_scene:
-		GlobalLogger.error("WeaponManager", "武器 %s 缺少 weapon_scene" % config.weapon_name)
-		return
-	var weapon = weapon_scene.instantiate() as BaseWeapon
+	var weapon := _instantiate_weapon(config)
 	if not weapon:
-		GlobalLogger.error("WeaponManager", "武器场景根节点应为 BaseWeapon: " + config.weapon_name)
 		return
-	weapon.initialize(config)
 	equip_weapon(weapon, false)
 	_equip_default_attachments(config)
 	weapon_changed.emit(current_weapon)
 	_apply_ads_state()
+
+
+## AI spawn path: instantiate the receiver first, then spread its authored
+## attachment graph over multiple frames. SceneTree mutation remains on the
+## main thread, but no encounter frame has to build every attachment at once.
+func load_and_equip_staggered(config: WeaponConfig) -> BaseWeapon:
+	var weapon := _instantiate_weapon(config)
+	if not weapon:
+		return null
+	var configs := config.default_attachment_configs
+	var use_explicit_slots := not config.default_attachment_slots.is_empty() \
+		and config.default_attachment_slots.size() == configs.size()
+	for index in configs.size():
+		await get_tree().process_frame
+		if not is_inside_tree() or is_queued_for_deletion():
+			weapon.free()
+			return null
+		_equip_default_attachment(config, index, use_explicit_slots, weapon)
+	# Keep the partially assembled weapon outside the SceneTree so its runtime
+	# processors never observe a missing barrel/magazine between staggered jobs.
+	equip_weapon(weapon, false)
+	weapon_changed.emit(current_weapon)
+	_apply_ads_state()
+	return weapon
+
+
+func _instantiate_weapon(config: WeaponConfig) -> BaseWeapon:
+	if not config:
+		GlobalLogger.error("WeaponManager", "WeaponConfig 为空，无法装备武器")
+		return null
+	GlobalLogger.info("WeaponManager", "装备武器: " + config.weapon_name)
+	var weapon_scene = config.weapon_scene
+	if not weapon_scene:
+		GlobalLogger.error("WeaponManager", "武器 %s 缺少 weapon_scene" % config.weapon_name)
+		return null
+	var weapon := weapon_scene.instantiate() as BaseWeapon
+	if not weapon:
+		GlobalLogger.error("WeaponManager", "武器场景根节点应为 BaseWeapon: " + config.weapon_name)
+		return null
+	weapon.initialize(config)
+	return weapon
 
 
 ## 装上 WeaponConfig 里定义的预设配件。
@@ -197,29 +228,37 @@ func load_and_equip(config: WeaponConfig) -> void:
 func _equip_default_attachments(config: WeaponConfig) -> void:
 	var slots   := config.default_attachment_slots
 	var configs := config.default_attachment_configs
-	if not slots.is_empty() and slots.size() == configs.size():
-		for i in slots.size():
-			var slot_name: String        = slots[i]
-			var att_cfg: AttachmentConfig = configs[i]
-			if not att_cfg:
-				GlobalLogger.warn("WeaponManager", "预设配件 [%d] 配置为空，跳过" % i)
-				continue
-			var ok := equip_attachment(slot_name, att_cfg)
-			if ok:
-				GlobalLogger.debug("WeaponManager", "预设配件已装: %s → %s" % [slot_name, att_cfg.attachment_name])
-			else:
-				GlobalLogger.warn("WeaponManager", "预设配件装配失败: %s → %s" % [slot_name, att_cfg.attachment_name])
-		return
+	var use_explicit_slots := not slots.is_empty() and slots.size() == configs.size()
 	for i in configs.size():
-		var att_cfg: AttachmentConfig = configs[i]
-		if not att_cfg:
-			GlobalLogger.warn("WeaponManager", "预设配件 [%d] 配置为空，跳过" % i)
-			continue
-		var ok := equip_attachment_auto(att_cfg)
-		if ok:
-			GlobalLogger.debug("WeaponManager", "预设配件已自动装好: %s" % att_cfg.attachment_name)
+		_equip_default_attachment(config, i, use_explicit_slots)
+
+
+func _equip_default_attachment(
+	config: WeaponConfig,
+	index: int,
+	use_explicit_slots: bool,
+	target_weapon: BaseWeapon = null
+) -> void:
+	var weapon := target_weapon if target_weapon else current_weapon
+	if not weapon:
+		return
+	var att_cfg: AttachmentConfig = config.default_attachment_configs[index]
+	if not att_cfg:
+		GlobalLogger.warn("WeaponManager", "预设配件 [%d] 配置为空，跳过" % index)
+		return
+	if use_explicit_slots:
+		var slot_name: String = config.default_attachment_slots[index]
+		var equipped := weapon.equip_attachment(slot_name, att_cfg)
+		if equipped:
+			GlobalLogger.debug("WeaponManager", "预设配件已装: %s → %s" % [slot_name, att_cfg.attachment_name])
 		else:
-			GlobalLogger.warn("WeaponManager", "预设配件无可用槽位，已跳过: %s" % att_cfg.attachment_name)
+			GlobalLogger.warn("WeaponManager", "预设配件装配失败: %s → %s" % [slot_name, att_cfg.attachment_name])
+		return
+	var auto_equipped := weapon.equip_attachment_auto(att_cfg)
+	if auto_equipped:
+		GlobalLogger.debug("WeaponManager", "预设配件已自动装好: %s" % att_cfg.attachment_name)
+	else:
+		GlobalLogger.warn("WeaponManager", "预设配件无可用槽位，已跳过: %s" % att_cfg.attachment_name)
 
 
 func _apply_ads_state() -> void:

@@ -8,11 +8,15 @@ extends Node
 var last_error: String = ""
 var initial_spawn_transform: Transform3D = Transform3D.IDENTITY
 
+signal ai_player_ready(ai_player: AIPlayer)
+
 var _player: BasePlayer
 var _ai_players: Dictionary = {}
 var _brains: Dictionary = {}
 var _next_id: int = 1
 var _spawn_captured := false
+var _pending_model_loads: Array[WeakRef] = []
+var _model_load_worker_active := false
 
 
 func _ready() -> void:
@@ -99,13 +103,40 @@ func add_ai_player(
 	ai_player.faction = ai_faction
 	ai_player.ai_config = ai_config
 	ai_player.player_config = config
+	ai_player.defer_ai_model_load = true
 	add_child(ai_player)
 	if use_spawn_position:
 		ai_player.global_position = spawn_position
 	else:
 		ai_player.global_transform = initial_spawn_transform
 	_ai_players[id] = ai_player
+	_pending_model_loads.append(weakref(ai_player))
+	_drain_model_load_queue.call_deferred()
 	return ai_player
+
+
+func _drain_model_load_queue() -> void:
+	if _model_load_worker_active:
+		return
+	_model_load_worker_active = true
+	while not _pending_model_loads.is_empty():
+		# Always cross a frame boundary before a model scene is instantiated. This
+		# keeps bot add commands responsive and serializes encounter batch spawns.
+		await get_tree().process_frame
+		var pending_ref := _pending_model_loads.pop_front() as WeakRef
+		var ai_player := pending_ref.get_ref() as AIPlayer
+		if not is_instance_valid(ai_player) or ai_player.is_queued_for_deletion():
+			continue
+		ai_player.begin_deferred_model_load()
+		# A bot's weapon and default attachments are initialized incrementally.
+		# Wait for that work before beginning the next bot to avoid overlapping
+		# two expensive spawn stages on one rendered frame.
+		while is_instance_valid(ai_player) and not ai_player.is_queued_for_deletion() \
+				and not ai_player.is_ai_runtime_ready():
+			await get_tree().process_frame
+		if is_instance_valid(ai_player) and not ai_player.is_queued_for_deletion():
+			ai_player_ready.emit(ai_player)
+	_model_load_worker_active = false
 
 
 ## Registers the runtime brain owned by a director/squad. Keeping this registry

@@ -8,6 +8,9 @@ extends Node3D
 ## 贴图层使用 Godot 官方 Decal 与 GPUParticles3D 节点，方便替换资源。
 
 const DEFAULT_DROP_COLOR := Color(0.45, 0.01, 0.006, 1.0)
+const ATLAS_COLUMNS := 2
+const ATLAS_VARIANT_COUNT := 4
+const POOL_ALPHA_CUTOFF := 28
 
 var _player: BasePlayer
 var _config: BloodEffectConfig
@@ -19,11 +22,18 @@ var _pool_tween: Tween
 var _drip_timer: Timer
 var _drip_start_timer: Timer
 var _has_started := false
+var _blood_pool_variant: Texture2D
+var _blood_pool_variants: Array[Texture2D] = []
+var _blood_drop_variant: Texture2D
+var _rng := RandomNumberGenerator.new()
+
+static var _atlas_variant_cache: Dictionary = {}
 
 func initialize(player: BasePlayer, config: BloodEffectConfig = null, settings_service = null) -> void:
 	_player = player
 	_config = config if config else BloodEffectConfig.new()
 	_settings_service = settings_service if settings_service else (player.settings_service if player else null)
+	_rng.randomize()
 	add_to_group("blood_effects")
 	if not _player or not _player.health_system:
 		push_warning("DeathBloodEffect requires a player with HealthSystem.")
@@ -41,6 +51,13 @@ func initialize(player: BasePlayer, config: BloodEffectConfig = null, settings_s
 	_build_nodes()
 
 func _build_nodes() -> void:
+	if _config.blood_pool_texture:
+		for variant_index in ATLAS_VARIANT_COUNT:
+			_blood_pool_variants.append(_atlas_variant(_config.blood_pool_texture, variant_index, true))
+		_blood_pool_variant = _blood_pool_variants[0]
+	if _config.blood_drop_texture:
+		_blood_drop_variant = _atlas_variant(_config.blood_drop_texture, 1)
+
 	_ground_ray = RayCast3D.new()
 	_ground_ray.name = "BloodGroundRay"
 	_ground_ray.collision_mask = _config.ground_collision_mask
@@ -55,7 +72,10 @@ func _build_nodes() -> void:
 		_drips.one_shot = false
 		_drips.emitting = false
 		_drips.visibility_aabb = AABB(Vector3(-2.0, -_config.ground_ray_length, -2.0), Vector3(4.0, _config.ground_ray_length + 3.0, 4.0))
-		_drips.position = Vector3(0.0, 1.0, 0.0)
+		# The effect node itself is moved to the resolved wound position when the
+		# player dies. Keeping the old player-origin offset here would place the
+		# emitter one metre above the actual wound (and above head wounds entirely).
+		_drips.position = Vector3.ZERO
 		_drips.draw_pass_1 = _make_drop_mesh()
 		_drips.process_material = _make_drip_process_material()
 		add_child(_drips)
@@ -189,20 +209,31 @@ func _create_pool(ground_point: Vector3) -> void:
 		return
 	var pool := Decal.new()
 	pool.name = "BloodPool"
-	pool.texture_albedo = _atlas_variant(_config.blood_pool_texture, 0)
+	pool.texture_albedo = _blood_pool_variants[_rng.randi_range(0, _blood_pool_variants.size() - 1)] \
+		if not _blood_pool_variants.is_empty() else _blood_pool_variant
 	pool.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	pool.size = Vector3(_config.pool_start_size.x, 0.08, _config.pool_start_size.y)
-	pool.position = ground_point + Vector3.UP * _config.ground_offset
+	var size_variation := Vector2(_rng.randf_range(0.78, 1.12), _rng.randf_range(0.78, 1.12))
+	var start_size := _config.pool_start_size * size_variation
+	var final_size := _config.pool_max_size * size_variation
+	pool.size = Vector3(start_size.x, 0.08, start_size.y)
 	# Decal 默认从 +Y 向 -Y 投影，适合水平地面。
-	pool.rotation = Vector3.ZERO
+	pool.rotation = Vector3(0.0, _rng.randf_range(-PI, PI), 0.0)
 	add_child(pool)
+	# ground_point comes from RayCast3D in world space. Assign it after parenting
+	# through global_position so the wound-origin transform is not applied twice.
+	var position_jitter := Vector3(
+		_rng.randf_range(-0.12, 0.12),
+		0.0,
+		_rng.randf_range(-0.12, 0.12)
+	)
+	pool.global_position = ground_point + position_jitter + Vector3.UP * _config.ground_offset
 	_pools.append(pool)
 
 	_pool_tween = create_tween()
 	_pool_tween.tween_interval(_config.pool_delay)
-	_pool_tween.tween_property(pool, "modulate:a", _config.pool_alpha, 0.35)
+	_pool_tween.tween_property(pool, "modulate:a", _config.pool_alpha * _rng.randf_range(0.72, 0.92), 0.35)
 	_pool_tween.parallel().tween_property(
-		pool, "size", Vector3(_config.pool_max_size.x, 0.08, _config.pool_max_size.y),
+		pool, "size", Vector3(final_size.x, 0.08, final_size.y),
 		_config.pool_growth_duration
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
@@ -269,23 +300,59 @@ func _make_drop_mesh() -> QuadMesh:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	material.albedo_color = Color(1.0, 1.0, 1.0, _config.drip_alpha)
-	material.albedo_texture = _atlas_variant(_config.blood_drop_texture, 1)
+	material.albedo_texture = _blood_drop_variant
 	mesh.material = material
 	return mesh
 
-func _atlas_variant(texture: Texture2D, variant_index: int) -> Texture2D:
+func _atlas_variant(texture: Texture2D, variant_index: int, clean_pool_alpha: bool = false) -> Texture2D:
 	if not texture:
 		return null
 	var atlas_size := texture.get_size()
 	if atlas_size.x < 2.0 or atlas_size.y < 2.0:
 		return texture
-	var atlas := AtlasTexture.new()
-	atlas.atlas = texture
-	var cell_size := atlas_size / 2.0
-	var column := variant_index % 2
-	var row := int(variant_index / 2)
-	atlas.region = Rect2(Vector2(column, row) * cell_size, cell_size)
-	return atlas
+	var cache_key := "%d:%d:%d" % [texture.get_instance_id(), variant_index, int(clean_pool_alpha)]
+	if _atlas_variant_cache.has(cache_key):
+		return _atlas_variant_cache[cache_key] as Texture2D
+	# Decal does not accept AtlasTexture because it needs a concrete GPU image.
+	# Crop once and share the ImageTexture across all players/bots instead.
+	var atlas_image := texture.get_image()
+	if atlas_image.is_compressed():
+		var decompress_error := atlas_image.decompress()
+		if decompress_error != OK:
+			push_error("DeathBloodEffect: failed to decompress blood atlas (%s)" % error_string(decompress_error))
+			return texture
+	var cell_size := Vector2i(
+		atlas_image.get_width() / ATLAS_COLUMNS,
+		atlas_image.get_height() / ATLAS_COLUMNS
+	)
+	var column := variant_index % ATLAS_COLUMNS
+	var row := int(variant_index / ATLAS_COLUMNS)
+	var cell := atlas_image.get_region(Rect2i(Vector2i(column, row) * cell_size, cell_size))
+	if clean_pool_alpha:
+		cell = _remove_pool_background_haze(cell)
+	var variant := ImageTexture.create_from_image(cell)
+	_atlas_variant_cache[cache_key] = variant
+	return variant
+
+
+func _remove_pool_background_haze(image: Image) -> Image:
+	# The source atlas has a large number of nearly transparent black pixels.
+	# Texture compression and oblique decal sampling can blend those pixels into
+	# a visible dark rectangle. Clear only that imperceptible tail while retaining
+	# the authored splash edges and droplets.
+	image.convert(Image.FORMAT_RGBA8)
+	image.clear_mipmaps()
+	var pixel_data := image.get_data()
+	for alpha_index in range(3, pixel_data.size(), 4):
+		if pixel_data[alpha_index] < POOL_ALPHA_CUTOFF:
+			pixel_data[alpha_index] = 0
+	return Image.create_from_data(
+		image.get_width(),
+		image.get_height(),
+		false,
+		Image.FORMAT_RGBA8,
+		pixel_data
+	)
 
 func _make_drip_process_material() -> ParticleProcessMaterial:
 	var material := ParticleProcessMaterial.new()
