@@ -28,6 +28,9 @@ extends Resource
 @export var jump_cost: float = 15.0
 ## 半蹲持续消耗倍率（walk_cost_per_sec × stance_value × 此倍率）
 @export var crouch_cost_multiplier: float = 3.0
+@export var prone_roll_base_cost: float = 12.0
+@export var prone_roll_increment_cost: float = 4.0
+@export var prone_roll_max_cost: float = 28.0
 
 ## 进入负重耐力惩罚的参考重量（kg）
 @export var carry_weight_reference_kg: float = 3.5

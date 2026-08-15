@@ -82,6 +82,7 @@ func _ready() -> void:
 
 # ── 每帧更新 ────────────────────────────────────────────────
 func _process(delta: float) -> void:
+	_ensure_overlay_nodes()
 	if not _blur_rect:
 		return
 	_update_stamina_blur(delta)
@@ -147,6 +148,7 @@ func _update_coma_effect(delta: float) -> void:
 
 ## 昏迷/濒死：启用持续模糊、渐暗、画面扭曲和轻微重影
 func trigger_unconscious_blur() -> void:
+	_ensure_overlay_nodes()
 	if not _setting_enabled("graphics/coma_effect", true):
 		return
 	_unconscious_blur_active = true
@@ -154,18 +156,20 @@ func trigger_unconscious_blur() -> void:
 
 ## 死亡：渐黑 + 模糊
 func trigger_death_blur() -> void:
+	_ensure_overlay_nodes()
 	_unconscious_blur_active = false
 	_coma_effect_target = 0.0
 	_coma_effect_current = 0.0
+	_death_active = true
+	_death_progress = 0.0
 	if _coma_rect:
 		_coma_rect.visible = false
 	if not _setting_enabled("graphics/death_effect", true):
 		return
-	_death_active = true
-	_death_progress = 0.0
 
 ## 复活/恢复意识：清除所有覆盖
 func clear_death_blur() -> void:
+	_ensure_overlay_nodes()
 	_unconscious_blur_active = false
 	_coma_effect_target = 0.0
 	_coma_effect_current = 0.0
@@ -261,6 +265,13 @@ func _find_ui_canvas() -> CanvasLayer:
 		return null
 	return _find_canvas_recursive(get_tree().root)
 
+func _ensure_overlay_nodes() -> void:
+	if is_instance_valid(_blur_rect) and is_instance_valid(_death_rect):
+		return
+	var canvas := _find_ui_canvas()
+	if canvas:
+		_setup_overlay_nodes(canvas)
+
 func _find_canvas_recursive(node: Node) -> CanvasLayer:
 	if node is CanvasLayer and node.name == "UI":
 		return node as CanvasLayer
@@ -271,6 +282,10 @@ func _find_canvas_recursive(node: Node) -> CanvasLayer:
 	return null
 
 func _setup_overlay_nodes(canvas: CanvasLayer) -> void:
+	if is_instance_valid(_blur_rect) and is_instance_valid(_vignette_rect) \
+			and is_instance_valid(_coma_rect) and is_instance_valid(_death_rect):
+		return
+	_cleanup_partial_overlay_nodes()
 	# z=9  体力 vignette（在 UI CanvasLayer 内）
 	_vignette_rect = _make_fullscreen_rect(canvas, "StaminaVignetteRect", 9,
 		load("res://assets/shaders/vignette.gdshader"))
@@ -303,6 +318,18 @@ func _setup_overlay_nodes(canvas: CanvasLayer) -> void:
 	_death_canvas.add_child(_death_rect)
 
 	GlobalLogger.info("ScreenEffects", "Overlay nodes created.")
+
+
+func _cleanup_partial_overlay_nodes() -> void:
+	for node in [_vignette_rect, _blur_rect, _coma_canvas, _death_canvas]:
+		if is_instance_valid(node):
+			node.queue_free()
+	_vignette_rect = null
+	_blur_rect = null
+	_coma_canvas = null
+	_coma_rect = null
+	_death_canvas = null
+	_death_rect = null
 
 
 func _make_fullscreen_rect(canvas: CanvasLayer, node_name: String, z: int, shader: Shader) -> ColorRect:

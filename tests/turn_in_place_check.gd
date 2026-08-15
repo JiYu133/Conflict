@@ -34,12 +34,25 @@ func _run() -> void:
 			return
 
 	var camera := player.camera_controller
+	var look := player.look_controller
 	var config := player.player_config.movement_config
 	var skeleton := player.model_manager.skeleton
 	var leg_idx := skeleton.find_bone("mixamorig_LeftUpLeg")
 	var spine_idx := skeleton.find_bone("mixamorig_Spine2")
 	var idle_leg := skeleton.get_bone_pose_rotation(leg_idx)
 	var idle_spine := skeleton.get_bone_pose_rotation(spine_idx)
+	look.set_base_yaw(player.rotation.y)
+	look.begin_free_look()
+	look._free_yaw_offset = deg_to_rad(30.0)
+	if not _check(absf(camera.get_body_yaw_offset()) < 0.001, "free look does not affect turn offset"):
+		return
+	if not _check(absf(camera.get_visual_body_yaw_offset()) > deg_to_rad(29.0), "free look rotates the visual view"):
+		return
+	look.end_free_look()
+	look._process(0.1)
+	if not _check(absf(look._free_yaw_offset) < deg_to_rad(30.0), "free look returns smoothly after release"):
+		return
+	look._free_yaw_offset = 0.0
 	camera._view_yaw = player.rotation.y + deg_to_rad(39.0)
 	if not _check(not controller.is_turning(), "sub-threshold turns remain idle"):
 		return
@@ -94,6 +107,47 @@ func _run() -> void:
 	await get_tree().create_timer(controller._clip_length + 0.2).timeout
 	controller._process_turn()
 	if not _check(not controller.is_turning(), "crouching turn completes instead of looping"):
+		return
+	controller._cancel_turn()
+	player.stance_controller.set_stance(0.0)
+	player.stance_controller._enter_prone()
+	if not _check(player.stance_controller.is_prone_transitioning(), "prone entry starts a transition"):
+		return
+	if not _check(player.animation_controller._prone_animation_override == &"prone_enter/mixamo_com", "prone entry clip owns the animator"):
+		return
+	await get_tree().create_timer(player.animation_controller.get_prone_transition_length("enter") + 0.1).timeout
+	if not _check(player.stance_controller.is_prone() and not player.stance_controller.is_prone_transitioning(), "prone entry completes"):
+		return
+	if not _check(player.animation_controller._prone_animation_override == &"prone_idle/mixamo_com", "prone entry settles into prone idle"):
+		return
+	player.animation_controller.update_prone_motion(Vector2(-1.0, 0.0), true)
+	if not _check(player.animation_controller._prone_animation_override == &"prone_turn_left/mixamo_com", "left prone crawl reuses the prone left-turn clip"):
+		return
+	player.animation_controller.update_prone_motion(Vector2(1.0, 0.0), true)
+	if not _check(player.animation_controller._prone_animation_override == &"prone_turn_right/mixamo_com", "right prone crawl reuses the prone right-turn clip"):
+		return
+	player.animation_controller.play_prone_idle()
+	player.rotation.y = 0.0
+	camera._view_yaw = -deg_to_rad(50.0)
+	controller._try_start_turn()
+	if not _check(controller.is_turning(), "prone view offset starts a prone turn"):
+		return
+	if not _check(player.animation_controller.get_current_state() == PlayerAnimationController.State.PRONE_TURN_RIGHT, "prone turn selects the authored direction"):
+		return
+	controller._process_turn(controller._clip_length)
+	if not _check(not controller.is_turning(), "prone turn completes"):
+		return
+	if not _check(absf(camera.get_body_yaw_offset()) < deg_to_rad(1.0), "prone turn consumes the camera/body yaw offset"):
+		return
+	player.stance_controller._handle_crouch_toggle()
+	if not _check(player.animation_controller._prone_animation_override == &"prone_exit/mixamo_com", "prone exit clip owns the animator"):
+		return
+	if not _check(not player.stance_controller._prone_exit_to_stand, "C exits prone toward crouch instead of standing"):
+		return
+	await get_tree().create_timer(player.animation_controller.get_prone_transition_length("exit") + 0.1).timeout
+	if not _check(not player.stance_controller.is_prone_transitioning(), "prone exit completes"):
+		return
+	if not _check(not player.stance_controller.is_prone() and is_equal_approx(player.stance_controller._target_stance, 1.0), "C leaves the player in the crouched stance"):
 		return
 	player.stance_controller.set_stance(0.0)
 	player.rotation.y = 0.0

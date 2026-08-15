@@ -14,6 +14,7 @@ const ACTIONS: Array[Dictionary] = [
 	{ "action": "crouch", "display": SettingsText.ACTION_CROUCH, "category": SettingsText.CATEGORY_STANCE },
 	{ "action": "stance_raise", "display": SettingsText.ACTION_STANCE_RAISE, "category": SettingsText.CATEGORY_STANCE },
 	{ "action": "stance_lower", "display": SettingsText.ACTION_STANCE_LOWER, "category": SettingsText.CATEGORY_STANCE },
+	{ "action": "free_look", "display": SettingsText.ACTION_FREE_LOOK, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "fire", "display": SettingsText.ACTION_FIRE, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "reload", "display": SettingsText.ACTION_RELOAD, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "cycle_fire_mode", "display": SettingsText.ACTION_CYCLE_FIRE_MODE, "category": SettingsText.CATEGORY_COMBAT },

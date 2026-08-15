@@ -59,7 +59,7 @@ extends Resource
 @export var turn_in_place_enabled: bool = true
 ## 视角与身体偏差达到此角度后触发原地转身。
 @export_range(0.0, 180.0, 0.5) var turn_trigger_angle_degrees: float = 40.0
-## 原地转身期间允许视角偏离身体的最大角度。
+## 原地转身和自由观察期间允许视角偏离身体的最大角度。
 @export_range(0.0, 180.0, 0.5) var turn_view_limit_degrees: float = 90.0
 ## 视角受限时保留的最低输入灵敏度比例。
 @export_range(0.0, 1.0, 0.01) var turn_view_min_sensitivity_ratio: float = 0.25
@@ -73,7 +73,7 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var turn_constrained_speed_ratio: float = 0.25
 ## 原地转身受限时的加速度比例。
 @export_range(0.0, 1.0, 0.01) var turn_constrained_acceleration_ratio: float = 0.25
-## 原地转身动画切换的混合时长（秒）。
+## 原地转身动画切换和身体 yaw 过渡的混合时长（秒）。
 @export_range(0.0, 1.0, 0.01) var turn_transition_time: float = 0.12
 
 # 运动手感 ────────────────────────────────────────────────────
@@ -107,6 +107,17 @@ extends Resource
 @export var crouch_y_offset: float = -0.85
 ## Walk → CrouchWalk 动画过渡时间（秒），建议与 1/stance_transition_speed 一致
 @export var crouch_walk_xfade_time: float = 0.3
+@export var prone_forward_speed: float = 0.8
+@export var prone_backward_speed: float = 0.55
+@export var prone_lateral_speed: float = 0.65
+@export var prone_roll_speed: float = 3.2
+@export var prone_roll_cooldown: float = 0.15
+@export var prone_roll_chain_reset_time: float = 1.0
+@export var prone_roll_duration: float = 0.45
+@export var prone_roll_acceleration: float = 18.0
+@export var prone_capsule_height: float = 0.42
+@export var prone_collision_y_offset: float = -0.52
+@export var prone_model_y_offset: float = -1.18
 
 # 碰撞体 ──────────────────────────────────────────────────────
 @export_group("碰撞体")

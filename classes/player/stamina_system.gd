@@ -36,6 +36,8 @@ var _movement_state: MovementState = MovementState.IDLE
 var _is_exhausted: bool = false
 var _recovery_timer: float = 0.0
 var _carry_weight_kg: float = 0.0
+var _prone_roll_chain_count: int = 0
+var _prone_roll_chain_timer: float = 0.0
 var _prev_low_breath: bool = false  # 上一帧是否处于低体力喘气状态
 
 # 初始化 ────────────────────────────────────────────────────────
@@ -55,6 +57,10 @@ func initialize(player: BasePlayer, config: StaminaConfig) -> void:
 func _physics_process(delta: float) -> void:
 	if not _config or not _player or not _player.is_alive:
 		return
+	if _prone_roll_chain_timer > 0.0:
+		_prone_roll_chain_timer -= delta
+		if _prone_roll_chain_timer <= 0.0:
+			_prone_roll_chain_count = 0
 
 	# 1. 每帧重算动态上限（肺部伤情可能在任意时刻改变）
 	var new_max := _config.max_stamina * _compute_breathing_factor()
@@ -200,6 +206,23 @@ func on_stopped_running() -> void:
 func on_jumped() -> void:
 	stamina = maxf(0.0, stamina - _config.jump_cost * get_movement_cost_multiplier())
 	stamina_changed.emit(get_stamina_pct())
+
+func get_prone_roll_cost() -> float:
+	return minf(_config.prone_roll_base_cost + _config.prone_roll_increment_cost * _prone_roll_chain_count, _config.prone_roll_max_cost) if _config else 12.0
+
+func allows_prone_roll() -> bool:
+	return stamina >= get_prone_roll_cost()
+
+func consume_prone_roll() -> bool:
+	if not allows_prone_roll():
+		return false
+	stamina = maxf(0.0, stamina - get_prone_roll_cost())
+	_prone_roll_chain_count += 1
+	_prone_roll_chain_timer = 1.0
+	if _player and _player.movement_controller and _player.movement_controller._config:
+		_prone_roll_chain_timer = _player.movement_controller._config.prone_roll_chain_reset_time
+	stamina_changed.emit(get_stamina_pct())
+	return true
 
 
 # 私有 ──────────────────────────────────────────────────────────

@@ -1,12 +1,6 @@
-[gd_resource type="Resource" script_class="SpineAimConfig" format=3]
+[gd_resource type="Resource" script_class="SpineAimConfig" format=3 uid="uid://dajgluoo4sy1f"]
 
-[ext_resource type="Script" path="res://classes/player/spine_aim_config.gd" id="1_spine"]
+[ext_resource type="Script" uid="uid://jc0pbcd3bsyq" path="res://classes/player/spine_aim_config.gd" id="1_spine"]
 
 [resource]
 script = ExtResource("1_spine")
-bone_names = Array[String](["mixamorig_Spine", "mixamorig_Spine1", "mixamorig_Spine2"])
-bone_weights = Array[float]([0.2, 0.35, 0.45])
-max_look_up_degrees = 55.0
-max_look_down_degrees = 45.0
-response_speed = 14.0
-influence = 1.0

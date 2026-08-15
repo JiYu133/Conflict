@@ -143,3 +143,25 @@ var collision_shape_y_offset: float:
 	get: return movement_config.collision_shape_y_offset if movement_config else 0.0
 var model_y_offset: float:
 	get: return movement_config.model_y_offset if movement_config else -0.5
+var prone_forward_speed: float:
+	get: return movement_config.prone_forward_speed if movement_config else 0.8
+var prone_backward_speed: float:
+	get: return movement_config.prone_backward_speed if movement_config else 0.55
+var prone_lateral_speed: float:
+	get: return movement_config.prone_lateral_speed if movement_config else 0.65
+var prone_roll_speed: float:
+	get: return movement_config.prone_roll_speed if movement_config else 3.2
+var prone_roll_cooldown: float:
+	get: return movement_config.prone_roll_cooldown if movement_config else 0.15
+var prone_roll_chain_reset_time: float:
+	get: return movement_config.prone_roll_chain_reset_time if movement_config else 1.0
+var prone_roll_duration: float:
+	get: return movement_config.prone_roll_duration if movement_config else 0.45
+var prone_roll_acceleration: float:
+	get: return movement_config.prone_roll_acceleration if movement_config else 18.0
+var prone_capsule_height: float:
+	get: return movement_config.prone_capsule_height if movement_config else 0.42
+var prone_collision_y_offset: float:
+	get: return movement_config.prone_collision_y_offset if movement_config else -0.68
+var prone_model_y_offset: float:
+	get: return movement_config.prone_model_y_offset if movement_config else -1.18

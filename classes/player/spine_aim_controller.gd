@@ -8,6 +8,8 @@ var _config: SpineAimConfig
 var _modifier: SpineAimModifier
 var _current_pitch: float = 0.0
 var _current_yaw: float = 0.0
+var _current_free_pitch: float = 0.0
+var _current_free_yaw: float = 0.0
 
 
 func setup(
@@ -21,6 +23,8 @@ func setup(
 	_skeleton = skeleton
 	_config = config if config else SpineAimConfig.new()
 	_current_pitch = 0.0
+	_current_free_pitch = 0.0
+	_current_free_yaw = 0.0
 	if is_instance_valid(_modifier):
 		_modifier.queue_free()
 	_modifier = null
@@ -49,28 +53,37 @@ func process_aim(delta: float, enabled: bool = true) -> void:
 	if not enabled:
 		_current_pitch = 0.0
 		_current_yaw = 0.0
+		_current_free_pitch = 0.0
+		_current_free_yaw = 0.0
 		_modifier.pitch_radians = 0.0
 		_modifier.yaw_radians = 0.0
+		_modifier.free_pitch_radians = 0.0
+		_modifier.free_yaw_radians = 0.0
 		return
-	var view_pitch := 0.0
+	var base_pitch := 0.0
+	var free_pitch := 0.0
 	if is_instance_valid(_camera_controller):
-		view_pitch = _camera_controller.get_vertical_angle()
+		base_pitch = _camera_controller.get_base_vertical_angle()
+		free_pitch = _camera_controller.get_free_pitch_offset()
 
 	var min_pitch := -deg_to_rad(_config.max_look_down_degrees)
 	var max_pitch := deg_to_rad(_config.max_look_up_degrees)
-	var target_pitch := clampf(view_pitch, min_pitch, max_pitch) * _config.influence
+	var target_pitch := clampf(base_pitch, min_pitch, max_pitch) * _config.influence
 	var blend := 1.0 - exp(-maxf(_config.response_speed, 0.0) * maxf(delta, 0.0))
 	_current_pitch = lerpf(_current_pitch, target_pitch, blend)
 	var target_yaw := 0.0
+	var free_yaw := 0.0
 	if is_instance_valid(_camera_controller):
-		var max_yaw := deg_to_rad(40.0)
-		if _player.player_config and _player.player_config.movement_config:
-			var movement_config := _player.player_config.movement_config
-			max_yaw = deg_to_rad(movement_config.turn_trigger_angle_degrees)
+		var max_yaw := deg_to_rad(_config.max_look_yaw_degrees)
 		target_yaw = clampf(_camera_controller.get_body_yaw_offset(), -max_yaw, max_yaw) * _config.influence
+		free_yaw = clampf(_camera_controller.get_free_yaw_offset(), -max_yaw, max_yaw)
 	_current_yaw = lerpf(_current_yaw, target_yaw, blend)
+	_current_free_pitch = lerpf(_current_free_pitch, clampf(free_pitch, min_pitch, max_pitch), blend)
+	_current_free_yaw = lerpf(_current_free_yaw, free_yaw, blend)
 	_modifier.pitch_radians = _current_pitch
 	_modifier.yaw_radians = _current_yaw
+	_modifier.free_pitch_radians = _current_free_pitch
+	_modifier.free_yaw_radians = _current_free_yaw
 
 
 func _move_before_first_ik_modifier() -> void:
@@ -86,10 +99,14 @@ class SpineAimModifier extends SkeletonModifier3D:
 	var apply_aim: bool = true
 	var pitch_radians: float = 0.0
 	var yaw_radians: float = 0.0
+	var free_pitch_radians: float = 0.0
+	var free_yaw_radians: float = 0.0
 
 	var _player: BasePlayer
 	var _bone_indices: Array[int] = []
 	var _bone_weights: Array[float] = []
+	var _free_look_bone_indices: Array[int] = []
+	var _free_look_bone_weights: Array[float] = []
 
 
 	func setup(player: BasePlayer, config: SpineAimConfig) -> void:
@@ -98,30 +115,41 @@ class SpineAimModifier extends SkeletonModifier3D:
 		if not skeleton:
 			return
 
+		var body_data := _collect_bones(skeleton, config.bone_names, config.bone_weights)
+		_bone_indices.assign(body_data["indices"])
+		_bone_weights.assign(body_data["weights"])
+		var free_data := _collect_bones(skeleton, config.free_look_bone_names, config.free_look_bone_weights)
+		_free_look_bone_indices.assign(free_data["indices"])
+		_free_look_bone_weights.assign(free_data["weights"])
+
+
+	func _collect_bones(skeleton: Skeleton3D, names: Array[String], weights: Array[float]) -> Dictionary:
+		var indices: Array[int] = []
+		var normalized_weights: Array[float] = []
 		var weight_sum := 0.0
-		for i in config.bone_names.size():
-			var bone_idx := skeleton.find_bone(config.bone_names[i])
+		for i in names.size():
+			var bone_idx := skeleton.find_bone(names[i])
 			if bone_idx == -1:
 				continue
-			var weight := config.bone_weights[i] if i < config.bone_weights.size() else 1.0
+			var weight := weights[i] if i < weights.size() else 1.0
 			weight = maxf(weight, 0.0)
 			if weight <= 0.0:
 				continue
-			_bone_indices.append(bone_idx)
-			_bone_weights.append(weight)
+			indices.append(bone_idx)
+			normalized_weights.append(weight)
 			weight_sum += weight
-
 		if weight_sum > 0.0:
-			for i in _bone_weights.size():
-				_bone_weights[i] /= weight_sum
+			for i in normalized_weights.size():
+				normalized_weights[i] /= weight_sum
+		return {"indices": indices, "weights": normalized_weights}
 
 
 	func get_valid_bone_count() -> int:
-		return _bone_indices.size()
+		return _bone_indices.size() + _free_look_bone_indices.size()
 
 
 	func _process_modification() -> void:
-		if not apply_aim or (absf(pitch_radians) < 0.00001 and absf(yaw_radians) < 0.00001) or not is_instance_valid(_player):
+		if not apply_aim or (absf(pitch_radians) < 0.00001 and absf(yaw_radians) < 0.00001 and absf(free_pitch_radians) < 0.00001 and absf(free_yaw_radians) < 0.00001) or not is_instance_valid(_player):
 			return
 		var skeleton := get_skeleton()
 		if not skeleton:
@@ -140,6 +168,12 @@ class SpineAimModifier extends SkeletonModifier3D:
 				skeleton,
 				_bone_indices[i],
 				Quaternion(skeleton_up, yaw_radians * _bone_weights[i]) * Quaternion(skeleton_right, pitch_radians * _bone_weights[i])
+			)
+		for i in _free_look_bone_indices.size():
+			_apply_global_rotation(
+				skeleton,
+				_free_look_bone_indices[i],
+				Quaternion(skeleton_up, free_yaw_radians * _free_look_bone_weights[i]) * Quaternion(skeleton_right, free_pitch_radians * _free_look_bone_weights[i])
 			)
 
 

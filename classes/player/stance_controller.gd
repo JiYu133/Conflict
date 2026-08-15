@@ -13,8 +13,17 @@ signal stance_changed(new_value: float)
 
 
 # 私有变量 ────────────────────────────────────────────────
+signal prone_changed(active: bool)
+signal prone_transition_changed(active: bool)
+
 var _player: BasePlayer
 var _config: PlayerConfig
+var _is_prone: bool = false
+var _prone_transition: bool = false
+var _prone_entering: bool = false
+var _prone_exit_to_stand: bool = false
+var _prone_timer: float = 0.0
+var _stand_after_prone_timer: float = -1.0
 
 var _stance_value: float = 0.0  # 当前姿态（平滑插值后的值）
 var _target_stance: float = 0.0  # 目标姿态（滚轮设定的目标）
@@ -37,6 +46,16 @@ func _input(event: InputEvent) -> void:
 	# 只在存活、可控时处理（移动时也可调整）
 	if not _player.is_alive or not _player.controllable:
 		return
+	var prone_pressed := event.is_action_pressed("prone")
+	if event is InputEventKey:
+		var key_event := event as InputEventKey
+		prone_pressed = prone_pressed or (key_event.pressed and not key_event.echo and key_event.physical_keycode == KEY_Z)
+	if prone_pressed:
+		if _is_prone:
+			_exit_prone(true)
+		else:
+			_enter_prone()
+		return
 
 	# 姿态微调：默认绑定滚轮上/下，可在设置菜单改绑按键（允许 echo → 按住连续调整）
 	if event.is_action_pressed("stance_raise", true):
@@ -44,7 +63,7 @@ func _input(event: InputEvent) -> void:
 	elif event.is_action_pressed("stance_lower", true):
 		adjust_stance(0.1)   # 蹲下一档
 
-	# C 键：完全站立 → 最低姿态；非完全站立 → 完全站立
+	# C 键：站立/蹲姿互切；趴下时先回到蹲姿。
 	if event.is_action_pressed("crouch"):
 		_handle_crouch_toggle()
 
@@ -86,7 +105,90 @@ func set_stance(value: float) -> void:
 
 # 每帧更新 ──────────────────────────────────────────────────
 
+func is_prone() -> bool:
+	return _is_prone
+
+func is_prone_transitioning() -> bool:
+	return _prone_transition
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Prone is handled in _input so it is not affected by UI/event consumption.
+	return
+
+func _enter_prone() -> void:
+	if _prone_transition or _is_prone:
+		return
+	_target_stance = 1.0
+	_stand_after_prone_timer = -1.0
+	_is_prone = true
+	_prone_transition = true
+	_prone_entering = true
+	_prone_timer = 0.55
+	prone_changed.emit(true)
+	prone_transition_changed.emit(true)
+	if _player.get("animation_controller"):
+		var animation: PlayerAnimationController = _player.animation_controller
+		if animation.play_prone_transition("enter"):
+			_prone_timer = maxf(animation.get_prone_transition_length("enter"), 0.01)
+		else:
+			_prone_transition = false
+			prone_transition_changed.emit(false)
+			_player.animation_controller.play_prone_idle()
+
+func _exit_prone(to_stand: bool) -> void:
+	if _prone_transition or not _is_prone:
+		return
+	_prone_transition = true
+	_prone_entering = false
+	_prone_exit_to_stand = to_stand
+	# Start raising the collision volume with the stance interpolation. Keeping
+	# the prone flag until the clip ends made the capsule jump upward at the
+	# final frame after the stance value had already returned to zero.
+	_is_prone = false
+	prone_changed.emit(false)
+	_prone_timer = 1.97
+	prone_transition_changed.emit(true)
+	if _player.get("animation_controller"):
+		var animation: PlayerAnimationController = _player.animation_controller
+		if animation.play_prone_transition("exit"):
+			_prone_timer = maxf(animation.get_prone_transition_length("exit"), 0.01)
+		else:
+			_finish_prone_exit()
+	else:
+		_finish_prone_exit()
+
+func _finish_prone_exit() -> void:
+	if not _prone_transition:
+		return
+	_prone_transition = false
+	prone_transition_changed.emit(false)
+	var completing_entry := _prone_entering
+	_prone_entering = false
+	var was_prone := _is_prone
+	_is_prone = completing_entry
+	# prone_exit lands in the crouched pose. Hold that pose briefly so the
+	# existing crouch-to-stand Idle blend is visible instead of skipping it.
+	_target_stance = 1.0
+	_stand_after_prone_timer = 0.22 if not completing_entry and _prone_exit_to_stand else -1.0
+	_prone_exit_to_stand = false
+	if was_prone != _is_prone:
+		prone_changed.emit(_is_prone)
+	if _player and _player.get("animation_controller"):
+		if _is_prone:
+			_player.animation_controller.play_prone_idle()
+		else:
+			_player.animation_controller.clear_prone_override()
+
 func _process(delta: float) -> void:
+	if _stand_after_prone_timer >= 0.0:
+		_stand_after_prone_timer -= delta
+		if _stand_after_prone_timer <= 0.0:
+			_stand_after_prone_timer = -1.0
+			_target_stance = 0.0
+	if _prone_transition:
+		_prone_timer -= delta
+		if _prone_timer <= 0.0:
+			_finish_prone_exit()
 	# 防抖计时器递减
 	if _input_cooldown > 0.0:
 		_input_cooldown -= delta
@@ -99,6 +201,11 @@ func _process(delta: float) -> void:
 
 
 func _handle_crouch_toggle() -> void:
+	if _prone_transition:
+		return
+	if _is_prone:
+		_exit_prone(false)
+		return
 	const STAND_THRESHOLD := 0.05  # 目标值接近 0 视为完全站立
 	if _target_stance <= STAND_THRESHOLD:
 		# 当前已是完全站立 → 直接蹲到最低

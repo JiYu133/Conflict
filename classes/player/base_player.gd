@@ -77,6 +77,7 @@ var _controllable_fallback: bool = true
 
 var stance_controller: StanceController
 var model_manager: PlayerModelManager
+var look_controller: PlayerLookController
 var camera_controller: PlayerCameraController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
@@ -166,6 +167,7 @@ func _initialize_subsystems() -> void:
 	control_state.set_base_enabled(_controllable_fallback)
 	settings_service = _create_subsystem(SETTINGS_SERVICE_SCRIPT.new(), "SettingsService")
 	model_manager = _create_subsystem(PlayerModelManager.new(), "ModelManager")
+	look_controller = _create_subsystem(PlayerLookController.new(), "LookController") as PlayerLookController
 	camera_controller = _create_subsystem(PlayerCameraController.new(),"CameraController")
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
 	stance_controller = _create_subsystem(StanceController.new(), "StanceController")
@@ -182,6 +184,11 @@ func _initialize_subsystems() -> void:
 
 	# 初始化子系统
 	settings_service.initialize()
+	look_controller.initialize(
+		self,
+		player_config.camera_config if player_config else null,
+		settings_service
+	)
 
 	stance_controller.initialize(self, player_config)
 
@@ -191,7 +198,8 @@ func _initialize_subsystems() -> void:
 		player_config.model_config if player_config else null,
 		player_config.camera_config if player_config else null,
 		settings_service,
-		not is_ai_player
+		not is_ai_player,
+		look_controller
 		)
 
 	movement_controller.initialize(
@@ -297,6 +305,7 @@ func _connect_signals() -> void:
 	weapon_manager.weapon_stats_changed.connect(_sync_weapon_weight_to_stamina)
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
+	stance_controller.prone_changed.connect(func(_active): movement_controller._on_stance_changed(stance_controller.get_stance_value()))
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
 	# 运动状态 → 左手 IK 权重过渡
@@ -465,7 +474,11 @@ func _sync_weapon_weight_to_stamina() -> void:
 
 func _process(delta: float) -> void:
 	var procedural_animation_active := is_alive and not is_ragdolled
-	spine_aim_controller.process_aim(delta, procedural_animation_active)
+	var prone := stance_controller and (stance_controller.is_prone() or stance_controller.is_prone_transitioning())
+	# Prone authored poses own the upper body, while the left hand still needs
+	# to follow the weapon grip on every frame.
+	spine_aim_controller.process_aim(delta, procedural_animation_active and not prone)
+	hand_ik_controller.set_prone_state(prone)
 	hand_ik_controller.process_ik(delta, procedural_animation_active)
 	if procedural_animation_active:
 		foot_ik_controller.process_ik(delta)

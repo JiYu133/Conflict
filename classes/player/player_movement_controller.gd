@@ -55,6 +55,11 @@ var _ai_input_active: bool = false
 var _ai_input_direction: Vector3 = Vector3.ZERO
 var _ai_input_running: bool = false
 var _ai_input_sprinting: bool = false
+var _prone_roll_cooldown: float = 0.0
+var _prone_roll_timer: float = 0.0
+var _prone_roll_duration: float = 0.0
+var _prone_rolling: bool = false
+var _prone_roll_direction: float = 0.0
 
 
 func is_running() -> bool:
@@ -62,6 +67,20 @@ func is_running() -> bool:
 
 func is_sprinting() -> bool:
 	return _is_sprinting
+
+func is_prone_rolling() -> bool:
+	return _prone_rolling
+
+func is_prone_roll_active() -> bool:
+	return _prone_rolling
+
+func get_prone_roll_direction() -> float:
+	return _prone_roll_direction
+
+func get_prone_roll_progress() -> float:
+	if not _prone_rolling or _prone_roll_duration <= 0.0:
+		return 0.0
+	return clampf(1.0 - _prone_roll_timer / _prone_roll_duration, 0.0, 1.0)
 
 func set_turn_constraint(active: bool, speed_ratio: float = 1.0, acceleration_ratio: float = 1.0) -> void:
 	_turn_constraint_active = active
@@ -180,6 +199,21 @@ func _physics_process(delta: float) -> void:
 		_velocity = _player.velocity
 		return
 	_was_controllable = true
+	if _prone_roll_cooldown > 0.0:
+		_prone_roll_cooldown -= delta
+	if _prone_rolling:
+		_prone_roll_timer -= delta
+		var has_roll_animation := _player.animation_controller != null
+		var animation_finished := has_roll_animation and not _player.animation_controller.is_prone_roll_playing()
+		var fallback_finished := not has_roll_animation and _prone_roll_timer <= 0.0
+		if animation_finished or fallback_finished:
+			_prone_rolling = false
+			_prone_roll_cooldown = _config.prone_roll_cooldown
+			_prone_roll_timer = 0.0
+			if _camera_controller:
+				_camera_controller.set_prone_roll_camera_angle(0.0)
+			if _player.animation_controller and _player.stance_controller and _player.stance_controller.is_prone():
+				_player.animation_controller.play_prone_idle()
 
 	# ──────────────────────────────────────────────────────
 	# 1. 读取输入方向
@@ -201,6 +235,9 @@ func _physics_process(delta: float) -> void:
 		shift_held = Input.is_action_pressed("sprint")
 		has_forward = Input.is_action_pressed("move_forward")
 	var has_input := input_dir.length() > _config.input_dead_zone
+	if _player.stance_controller and (_player.stance_controller.is_prone() or _player.stance_controller.is_prone_transitioning()):
+		_process_prone_movement(delta, input_dir, has_input, ai_driving)
+		return
 
 	# ──────────────────────────────────────────────────────
 	# 2. Shift 按压检测：区分单击（切换 Run）和长按（Sprint）
@@ -344,7 +381,7 @@ func _physics_process(delta: float) -> void:
 	# ──────────────────────────────────────────────────────
 	# 5. 跳跃（不变）
 	# ──────────────────────────────────────────────────────
-	if not ai_driving and Input.is_action_just_pressed("jump") and _player.is_on_floor():
+	if not ai_driving and Input.is_action_just_pressed("jump") and _player.is_on_floor() and not (_player.stance_controller and _player.stance_controller.is_prone()):
 		# 腿骨折时禁止跳跃
 		var can_jump := true
 		if _player.health_system:
@@ -474,6 +511,56 @@ func _on_stance_changed(value: float) -> void:
 	_update_collision_shape(value)
 	_update_model_offset(value)
 
+func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, ai_driving: bool) -> void:
+	_is_running = false
+	_is_sprinting = false
+	if _player.stance_controller.is_prone_transitioning():
+		input_dir = Vector2.ZERO
+		has_input = false
+	if not _player.is_on_floor():
+		_velocity.y -= _config.gravity * delta
+	else:
+		_velocity.y = _config.floor_snap_velocity
+	var basis: Basis = _camera_controller.get_view_basis() if _camera_controller else _player.global_basis
+	var direction: Vector3 = (basis.x * input_dir.x + basis.z * input_dir.y).normalized() if has_input else Vector3.ZERO
+	var space: bool = not ai_driving and Input.is_action_pressed("jump")
+	var side: bool = abs(input_dir.x) > abs(input_dir.y) and abs(input_dir.x) > _config.input_dead_zone
+	if side and space and not _prone_rolling and _prone_roll_cooldown <= 0.0:
+		if not _player.stamina_system or _player.stamina_system.consume_prone_roll():
+			_prone_rolling = true
+			_prone_roll_direction = sign(input_dir.x)
+			_prone_roll_duration = _config.prone_roll_duration
+			if _player.animation_controller:
+				var clip_length := _player.animation_controller.play_prone_roll(_prone_roll_direction < 0.0)
+				if clip_length > 0.0:
+					_prone_roll_duration = clip_length
+			_prone_roll_timer = _prone_roll_duration
+			if _camera_controller:
+				_camera_controller.set_prone_roll_camera_angle(0.55 * _prone_roll_direction)
+	var speed: float = 0.0
+	if _prone_rolling:
+		speed = _config.prone_roll_speed
+	elif has_input:
+		if side:
+			speed = _config.prone_lateral_speed
+		elif input_dir.y < 0.0:
+			speed = _config.prone_forward_speed
+		else:
+			speed = _config.prone_backward_speed
+	if has_input:
+		_velocity.x = move_toward(_velocity.x, direction.x * speed, _config.prone_roll_acceleration * delta)
+		_velocity.z = move_toward(_velocity.z, direction.z * speed, _config.prone_roll_acceleration * delta)
+	else:
+		_velocity.x = move_toward(_velocity.x, 0.0, _config.stop_brake_strength * delta)
+		_velocity.z = move_toward(_velocity.z, 0.0, _config.stop_brake_strength * delta)
+	_player.velocity = _velocity
+	_player.move_and_slide()
+	_velocity = _player.velocity
+	# Enter/exit clips own the skeleton until StanceController marks the
+	# transition complete. Locomotion must not replace them frame-by-frame.
+	if _player.animation_controller and not _prone_rolling and not _player.stance_controller.is_prone_transitioning():
+		_player.animation_controller.update_prone_motion(input_dir, has_input)
+
 
 func _update_collision_shape(stance: float) -> void:
 	"""根据姿态值更新碰撞体高度"""
@@ -489,10 +576,11 @@ func _update_collision_shape(stance: float) -> void:
 
 	var shape := collision_shape.shape as CapsuleShape3D
 	var standing_height: float = _config.collision_shape_height
-	var target_height: float = lerp(standing_height, _config.crouch_capsule_height, stance)
+	var prone: bool = _player.stance_controller != null and _player.stance_controller.is_prone()
+	var target_height: float = _config.prone_capsule_height if prone else lerp(standing_height, _config.crouch_capsule_height, stance)
 	shape.height = target_height
 	# 胶囊体底部保持在站立时的高度，避免蹲下时碰撞体整体抬高。
-	collision_shape.position.y = _config.collision_shape_y_offset \
+	collision_shape.position.y = (_config.prone_collision_y_offset if prone else _config.collision_shape_y_offset) \
 		+ (standing_height - target_height) * 0.5
 
 
@@ -501,5 +589,5 @@ func _update_model_offset(stance: float) -> void:
 	var model_node: Node3D = _player.model_manager.model_node if _player.model_manager else null
 	if not model_node:
 		return
-	var target_y : float = lerp(_config.model_y_offset, _config.crouch_y_offset, stance)
+	var target_y : float = _config.prone_model_y_offset if (_player.stance_controller and _player.stance_controller.is_prone()) else lerp(_config.model_y_offset, _config.crouch_y_offset, stance)
 	model_node.position.y = target_y

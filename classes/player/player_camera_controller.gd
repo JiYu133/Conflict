@@ -41,6 +41,7 @@ var _camera_mount: Node3D
 var _model_camera: Camera3D
 var _active_camera: Camera3D
 var _model_manager: PlayerModelManager
+var _look_controller: PlayerLookController
 var _model_lookup_config: ModelLookupConfig
 var _camera_config: CameraConfig
 var _player: BasePlayer
@@ -48,8 +49,18 @@ var _settings_service
 var _bone_attachment: BoneAttachment3D
 
 var _mouse_sensitivity: float
-var _vertical_angle: float = 0.0
-var _view_yaw: float = 0.0
+var _vertical_angle: float:
+	get:
+		return _look_controller.get_view_pitch() if is_instance_valid(_look_controller) else 0.0
+	set(value):
+		if is_instance_valid(_look_controller):
+			_look_controller.set_base_pitch(value)
+var _view_yaw: float:
+	get:
+		return _look_controller.get_base_yaw() if is_instance_valid(_look_controller) else 0.0
+	set(value):
+		if is_instance_valid(_look_controller):
+			_look_controller.set_base_yaw(value)
 var _max_vertical_angle: float
 
 # 弹簧系统 - 3 轴独立弹簧，对头部位置在玩家局部空间做低通滤波
@@ -91,6 +102,9 @@ var _ragdoll_bone_idx: int = -1
 var _ragdoll_head_bone: PhysicalBone3D = null  # 头部物理骨骼
 var _ragdoll_physics_active: bool = false
 var _head_spring_enabled: bool = true
+var _prone_roll_camera_angle: float = 0.0
+var _prone_roll_head_to_camera_basis: Basis = Basis.IDENTITY
+var _prone_roll_head_conversion_valid: bool = false
 ## 头部没有对应 PhysicalBone3D 时，使用颈部等最近物理父骨骼，
 ## 该变换把物理骨骼坐标转换为头部坐标，因此仍能保持头部位置/滚转。
 var _ragdoll_head_from_physical: Transform3D = Transform3D.IDENTITY
@@ -118,14 +132,17 @@ func initialize(
 	model_lookup_config: ModelLookupConfig,
 	camera_config: CameraConfig,
 	settings_service,
-	create_local_camera: bool = true
+	create_local_camera: bool = true,
+	look_controller: PlayerLookController = null
 ) -> void:
 	_model_manager = model_manager
 	_model_lookup_config = model_lookup_config if model_lookup_config else ModelLookupConfig.new()
 	_camera_config = camera_config if camera_config else CameraConfig.new()
+	_look_controller = look_controller
 	_settings_service = settings_service
 	_player = player
-	_view_yaw = player.rotation.y if player else 0.0
+	if not is_instance_valid(_look_controller):
+		_view_yaw = player.rotation.y if player else 0.0
 
 	_spring_x = CameraSpring1D.new()
 	_spring_y = CameraSpring1D.new()
@@ -202,6 +219,8 @@ func enable_camera() -> void:
 		_active_camera.fov = _camera_config.fov
 
 	_bone_attachment = _find_bone_attachment()
+	_prone_roll_head_to_camera_basis = Basis.IDENTITY
+	_prone_roll_head_conversion_valid = false
 	if _bone_attachment:
 		GlobalLogger.info("Camera", "Head BoneAttachment found: " + _bone_attachment.bone_name)
 	else:
@@ -427,43 +446,6 @@ func _find_bone_attachment() -> BoneAttachment3D:
 
 
 # ============================================================
-# 鼠标输入
-# ============================================================
-func _input(event: InputEvent) -> void:
-	if event is not InputEventMouseMotion:
-		return
-	if not is_instance_valid(_player) or not controllable:
-		return
-	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
-		return
-	var unified_multiplier := float(_settings_service.get_value("controls/sensitivity", 1.0)) if _settings_service else 1.0
-	var invert_sign := -1.0 if _settings_service and bool(_settings_service.get_value("controls/invert_y", false)) else 1.0
-	var input_yaw : float = -event.relative.x * _mouse_sensitivity * unified_multiplier
-	var body_offset := get_body_yaw_offset()
-	var movement_config := _player.player_config.movement_config if _player and _player.player_config else null
-	if movement_config and movement_config.turn_in_place_enabled:
-		var moving := _is_moving()
-		if moving:
-			# Turn-in-place limits only apply while stationary. Moving keeps the
-			# body aligned to the view so locomotion and the model turn together.
-			_view_yaw += input_yaw
-			_sync_moving_body_yaw()
-		else:
-			var trigger := deg_to_rad(movement_config.turn_trigger_angle_degrees)
-			var limit := deg_to_rad(movement_config.turn_view_limit_degrees)
-			var ratio := 1.0
-			if absf(body_offset) > trigger:
-				var t := inverse_lerp(trigger, maxf(limit * 2.0, limit + 0.001), absf(body_offset))
-				ratio = lerpf(1.0, movement_config.turn_view_min_sensitivity_ratio, clampf(t, 0.0, 1.0))
-			var desired_yaw := _view_yaw + input_yaw * ratio
-			_view_yaw = _player.rotation.y + clampf(angle_difference(_player.rotation.y, desired_yaw), -limit, limit)
-	else:
-		_view_yaw += input_yaw
-	_vertical_angle -= event.relative.y * _mouse_sensitivity * unified_multiplier * invert_sign
-	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
-
-
-# ============================================================
 # 每帧更新（核心）
 # ============================================================
 func _process(delta: float) -> void:
@@ -507,6 +489,9 @@ func _process(delta: float) -> void:
 
 	if not controllable:
 		return
+	_update_prone_roll_camera(delta)
+	if not is_instance_valid(_look_controller) or not _look_controller.is_free_look_active():
+		_sync_moving_body_yaw()
 
 	# 1. 读取头部在玩家局部空间的位置（弹簧不感知玩家旋转，只过滤动画位移）
 	var head_local := _get_head_local_position()
@@ -531,13 +516,24 @@ func _process(delta: float) -> void:
 	)
 
 	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧
-	_active_camera.global_position = _player.global_transform * filtered_local
-
-	_active_camera.global_rotation = Vector3(
-		_vertical_angle + _pain_pitch,
-		_view_yaw + _pain_yaw,
-		_pain_roll
-	)
+	# Normal prone uses the same spring camera path as standing. A roll is the
+	# sole authored-pose exception: inherit the head bone's complete rotation.
+	var follow_head := _player and _player.movement_controller and _player.movement_controller.is_prone_rolling()
+	if follow_head and is_instance_valid(_bone_attachment):
+		var head_xform := _bone_attachment.global_transform
+		var offset_xform := head_xform * Transform3D(Basis.IDENTITY, _camera_config.head_offset)
+		_active_camera.global_position = offset_xform.origin
+		_active_camera.global_basis = (
+			head_xform.basis.orthonormalized() * _prone_roll_head_to_camera_basis
+		).orthonormalized()
+	else:
+		_active_camera.global_position = _player.global_transform * filtered_local
+		_active_camera.global_rotation = Vector3(
+			get_vertical_angle() + _pain_pitch,
+			get_view_yaw() + _pain_yaw,
+			_pain_roll + _prone_roll_camera_angle
+		)
+		_cache_prone_roll_head_conversion()
 
 	_update_ads(delta)
 	_update_weapon_spring(delta)
@@ -692,28 +688,89 @@ func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
 func get_active_camera() -> Camera3D:
 	return _active_camera
 
+func set_prone_roll_camera_angle(angle: float) -> void:
+	_prone_roll_camera_angle = angle
+
+
+func _cache_prone_roll_head_conversion() -> void:
+	if not is_instance_valid(_bone_attachment) or not is_instance_valid(_active_camera):
+		return
+	var head_basis := _bone_attachment.global_basis.orthonormalized()
+	_prone_roll_head_to_camera_basis = head_basis.inverse() * _active_camera.global_basis.orthonormalized()
+	_prone_roll_head_conversion_valid = true
+
+func _update_prone_roll_camera(delta: float) -> void:
+	if _player and _player.movement_controller and _player.movement_controller.is_prone_rolling():
+		var progress := _player.movement_controller.get_prone_roll_progress()
+		var direction := _player.movement_controller.get_prone_roll_direction()
+		# Do not use lerp_angle here: 0 and TAU are equivalent and interpolation
+		# would reverse near the half-turn instead of completing the roll.
+		_prone_roll_camera_angle = direction * TAU * progress
+		return
+	_prone_roll_camera_angle = wrapf(
+		lerp_angle(
+			_prone_roll_camera_angle,
+			0.0,
+			clampf(delta * 14.0, 0.0, 1.0)
+		),
+		-PI,
+		PI
+	)
+
 
 func get_base_mouse_sensitivity() -> float:
 	return _mouse_sensitivity
 
 
 func get_vertical_angle() -> float:
-	return _vertical_angle
+	return _look_controller.get_view_pitch() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_base_vertical_angle() -> float:
+	return _look_controller.get_base_pitch() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_free_pitch_offset() -> float:
+	return _look_controller.get_free_pitch_offset() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_free_yaw_offset() -> float:
+	return _look_controller.get_free_yaw_offset() if is_instance_valid(_look_controller) else 0.0
+
 
 func get_view_yaw() -> float:
-	return _view_yaw
+	return _look_controller.get_view_yaw() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_base_view_yaw() -> float:
+	return _look_controller.get_base_yaw() if is_instance_valid(_look_controller) else _view_yaw
 
 func get_body_yaw_offset() -> float:
-	return angle_difference(_player.rotation.y, _view_yaw) if is_instance_valid(_player) else 0.0
+	return _look_controller.get_body_yaw_offset() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_visual_body_yaw_offset() -> float:
+	return _look_controller.get_visual_body_yaw_offset() if is_instance_valid(_look_controller) else get_body_yaw_offset()
 
 func get_view_basis() -> Basis:
-	return Basis(Vector3.UP, _view_yaw)
+	return _look_controller.get_movement_basis() if is_instance_valid(_look_controller) else Basis(Vector3.UP, _view_yaw)
 
 
 func _sync_moving_body_yaw() -> void:
-	if is_instance_valid(_player) and _is_moving():
+	if not is_instance_valid(_player) or not _player.is_on_floor() or not _is_moving():
+		return
+	# Landing keeps horizontal velocity for a few frames. Do not let the
+	# locomotion follow path snap the body before TurnController evaluates the
+	# pending view offset and starts the authored turn clip.
+	if _player.turn_controller and _player.turn_controller.is_turning():
+		return
+	if _player.animation_controller and _player.animation_controller.get_current_state() == PlayerAnimationController.State.LAND:
+		return
+	if is_instance_valid(_look_controller) and _look_controller.is_free_look_active():
+		return
+	if is_instance_valid(_player):
 		if _body_yaw_blend_remaining <= 0.0:
-			_player.rotation.y = _view_yaw
+			_player.rotation.y = get_base_view_yaw()
 
 
 var _body_yaw_blend_remaining: float = 0.0
@@ -726,7 +783,7 @@ func begin_moving_body_yaw_blend(duration: float) -> void:
 	_body_yaw_blend_duration = maxf(duration, 0.001)
 	_body_yaw_blend_remaining = _body_yaw_blend_duration
 	_body_yaw_blend_start = _player.rotation.y if is_instance_valid(_player) else _view_yaw
-	_body_yaw_blend_target = _view_yaw
+	_body_yaw_blend_target = get_base_view_yaw()
 
 
 func process_moving_body_yaw_blend(delta: float) -> void:
@@ -740,6 +797,10 @@ func process_moving_body_yaw_blend(delta: float) -> void:
 	_player.rotation.y = lerp_angle(_body_yaw_blend_start, _body_yaw_blend_target, clampf(weight, 0.0, 1.0))
 	if _body_yaw_blend_remaining <= 0.0:
 		_player.rotation.y = _body_yaw_blend_target
+
+
+func is_body_yaw_blending() -> bool:
+	return _body_yaw_blend_remaining > 0.0
 
 
 func _is_moving() -> bool:

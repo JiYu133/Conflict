@@ -48,6 +48,10 @@ extends Resource
 ## ADS 时的 IK 权重
 @export_range(0.0, 1.0) var ads_ik_weight: float = 0.8
 
+## 趴下及趴下过渡时的 IK 权重。
+## 趴下动画的左臂基姿态离握把较远，需要完整求解到腕骨目标。
+@export_range(0.0, 1.0) var prone_ik_weight: float = 1.0
+
 ## 状态切换时权重平滑过渡时间（秒）
 @export_range(0.0, 0.5) var weight_blend_time: float = 0.12
 
@@ -71,3 +75,7 @@ extends Resource
 ## 让手掌略微离开握把中心，避免手指穿进护木、看起来"焊"在枪上。
 ## 数值很小即可（1~2 cm）；X = 握把左右，Y = 上下，Z = 沿枪身前后。
 @export var grip_position_offset: Vector3 = Vector3(0.0, -0.015, 0.0)
+
+## 趴下完整 IK 时，将握持点视为手掌接触点，而不是腕骨原点。
+## 数值表示腕骨到中指掌根距离的使用比例；0 为腕骨直接对齐，1 为掌根对齐。
+@export_range(0.0, 1.0) var prone_palm_contact_ratio: float = 0.55

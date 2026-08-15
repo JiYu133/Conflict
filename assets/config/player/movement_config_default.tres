@@ -6,8 +6,9 @@
 script = ExtResource("1_movcfg")
 sprint_speed = 5.0
 turn_view_limit_degrees = 85.0
-turn_min_playback_speed = 1.5
-turn_max_playback_speed = 2.0
+turn_min_playback_speed = 3.0
+turn_max_playback_speed = 3.0
 crouch_capsule_height = 1.2
+prone_collision_y_offset = -0.8
 collision_shape_radius = 0.3
 model_y_offset = -1.0

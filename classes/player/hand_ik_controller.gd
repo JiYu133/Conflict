@@ -24,12 +24,19 @@ var _ik_weight: float = 1.0
 # 这里记录「动画手腕朝向 相对于 握把朝向」的差值，每帧还原，手腕即保持自然姿态。
 var _skeleton: Skeleton3D = null
 var _hand_bone_idx: int = -1
+var _middle_finger_bone_idx: int = -1
+var _forearm_bone_idx: int = -1
+var _arm_bone_idx: int = -1
+var _wrist_to_palm_local: Vector3 = Vector3.ZERO
+var _elbow_pole: Marker3D = null
+var _authored_elbow_pole_transform: Transform3D = Transform3D.IDENTITY
 var _grip_to_hand_basis: Basis = Basis.IDENTITY
 var _wrist_calibrated: bool = false
 
 var _is_running: bool = false
 var _is_sprinting: bool = false
 var _is_ads: bool = false
+var _is_prone: bool = false
 
 var _current_weight: float = 0.0
 var _target_weight: float = 0.0
@@ -51,6 +58,11 @@ func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 	_hand_bone_idx = skeleton.find_bone(_config.tip_bone_name)
 	if _hand_bone_idx == -1:
 		GlobalLogger.warn("HandIK", "未找到手腕骨骼 '%s'，手腕朝向标定不可用" % _config.tip_bone_name)
+	_middle_finger_bone_idx = skeleton.find_bone("mixamorig_LeftHandMiddle1")
+	if _hand_bone_idx >= 0 and _middle_finger_bone_idx >= 0:
+		var hand_rest := skeleton.get_bone_global_rest(_hand_bone_idx)
+		var middle_rest := skeleton.get_bone_global_rest(_middle_finger_bone_idx)
+		_wrist_to_palm_local = hand_rest.basis.inverse() * (middle_rest.origin - hand_rest.origin)
 
 	var node_name := _config.ik_node_name
 	_ik_node = skeleton.get_node_or_null(node_name) as TwoBoneIK3D
@@ -77,6 +89,11 @@ func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 	skeleton.add_child(_target_modifier)
 	_target_modifier.setup(self)
 	skeleton.move_child(_target_modifier, _ik_node.get_index())
+	_forearm_bone_idx = skeleton.get_bone_parent(_hand_bone_idx) if _hand_bone_idx >= 0 else -1
+	_arm_bone_idx = skeleton.get_bone_parent(_forearm_bone_idx) if _forearm_bone_idx >= 0 else -1
+	_elbow_pole = _ik_node.get_node_or_null("LeftElbowPole") as Marker3D
+	if is_instance_valid(_elbow_pole):
+		_authored_elbow_pole_transform = _elbow_pole.transform
 	GlobalLogger.info("HandIK", "TwoBoneIK3D '%s' 已绑定，目标点: LeftHandTarget" % node_name)
 
 
@@ -141,9 +158,20 @@ func set_ads_state(ads: bool) -> void:
 	_update_target_weight()
 
 
+func set_prone_state(prone: bool) -> void:
+	if _is_prone == prone:
+		return
+	_is_prone = prone
+	if not prone and is_instance_valid(_elbow_pole):
+		_elbow_pole.transform = _authored_elbow_pole_transform
+	_update_target_weight()
+
+
 func _update_target_weight() -> void:
 	var base := _ik_weight
-	if _is_sprinting:
+	if _is_prone:
+		_target_weight = base * (_config.prone_ik_weight if _config else 1.0)
+	elif _is_sprinting:
 		_target_weight = base * (_config.sprint_ik_weight if _config else 0.1)
 	elif _is_running:
 		_target_weight = base * (_config.run_ik_weight if _config else 0.6)
@@ -182,24 +210,49 @@ func _update_hand_target() -> void:
 	_refresh_weapon_mount()
 	var grip_xf := _get_current_grip_transform()
 	var grip_basis: Basis = grip_xf.basis.orthonormalized()
-	# 握持点偏移在握把局部坐标系下施加，手掌略微离开握把表面
-	var origin: Vector3 = grip_xf.origin + grip_basis * _config.grip_position_offset
+	var target_basis := grip_basis * Basis.from_euler(_wrist_offset_rad())
 
-	if not _config.auto_calibrate_wrist:
-		_hand_target.global_transform = Transform3D(
-			grip_basis * Basis.from_euler(_wrist_offset_rad()), origin
-		)
+	if _config.auto_calibrate_wrist:
+		# 首帧（或换武器/换配件后）标定：此时 influence 仍在 0 附近，
+		# 手腕姿态来自动画，未被 IK 污染，正好用作参考姿态。
+		if not _wrist_calibrated:
+			_calibrate_wrist(grip_basis)
+		target_basis = grip_basis * _grip_to_hand_basis * Basis.from_euler(_wrist_offset_rad())
+
+	# Marker 表达的是手掌与护木的接触点。站立的部分 IK 混合维持原行为；
+	# 趴下完整求解时把目标反推到腕骨，避免腕骨直接进入枪体。
+	var origin: Vector3 = grip_xf.origin + grip_basis * _config.grip_position_offset
+	if _is_prone:
+		origin -= target_basis * _wrist_to_palm_local * _config.prone_palm_contact_ratio
+	_hand_target.global_transform = Transform3D(target_basis, origin)
+
+
+## Full IK influence should only move the wrist to the grip. Preserve the
+## animation's current elbow bend plane so prone does not inherit the standing
+## elbow pole and lift the arm away from the ground.
+func _update_prone_elbow_pole() -> void:
+	if not _is_prone or not is_instance_valid(_skeleton) or not is_instance_valid(_elbow_pole):
+		return
+	if _arm_bone_idx < 0 or _forearm_bone_idx < 0 or _hand_bone_idx < 0:
 		return
 
-	# 首帧（或换武器/换配件后）标定：此时 influence 仍在 0 附近，
-	# 手腕姿态来自动画，未被 IK 污染，正好用作参考姿态。
-	if not _wrist_calibrated:
-		_calibrate_wrist(grip_basis)
+	var skeleton_xf := _skeleton.global_transform
+	var shoulder := (skeleton_xf * _skeleton.get_bone_global_pose(_arm_bone_idx)).origin
+	var elbow := (skeleton_xf * _skeleton.get_bone_global_pose(_forearm_bone_idx)).origin
+	var wrist := (skeleton_xf * _skeleton.get_bone_global_pose(_hand_bone_idx)).origin
+	var arm_axis := wrist - shoulder
+	if arm_axis.length_squared() < 0.000001:
+		return
+	arm_axis = arm_axis.normalized()
+	var bend_center := shoulder + arm_axis * (elbow - shoulder).dot(arm_axis)
+	var bend_direction := elbow - bend_center
+	if bend_direction.length_squared() < 0.000001:
+		return
 
-	_hand_target.global_transform = Transform3D(
-		grip_basis * _grip_to_hand_basis * Basis.from_euler(_wrist_offset_rad()),
-		origin
-	)
+	var upper_length := shoulder.distance_to(elbow)
+	var lower_length := elbow.distance_to(wrist)
+	var pole_distance := maxf(upper_length + lower_length, 0.25)
+	_elbow_pole.global_position = bend_center + bend_direction.normalized() * pole_distance
 
 
 ## The rendered grip is the source of truth. BoneAttachment3D owns the exact
@@ -254,3 +307,4 @@ class HandTargetModifier extends SkeletonModifier3D:
 	func _process_modification() -> void:
 		if sync_enabled and is_instance_valid(_controller):
 			_controller._update_hand_target()
+			_controller._update_prone_elbow_pole()
