@@ -26,6 +26,9 @@ const SM_CROUCH_TURN_RIGHT := "CrouchTurnRight"
 const SM_PRONE_TURN_LEFT := "ProneTurnLeft"
 const SM_PRONE_TURN_RIGHT := "ProneTurnRight"
 const TURN_THRESHOLD_EPSILON := deg_to_rad(0.1)
+## Direct prone locomotion clips bypass AnimationTree, so they need an
+## explicit blend time when switching between idle and crawl directions.
+const PRONE_LOCOMOTION_BLEND_TIME := 0.16
 
 # AnimationTree 参数路径 ──────────────────────────────────────
 const PARAM_PLAYBACK           := "parameters/playback"
@@ -580,7 +583,8 @@ func play_prone_idle() -> void:
 	var clip: Animation = player.get_animation(anim)
 	clip.loop_mode = Animation.LOOP_LINEAR
 	_prone_animation_override = anim
-	player.play(anim)
+	if player.current_animation != anim:
+		player.play(anim, PRONE_LOCOMOTION_BLEND_TIME)
 
 func play_prone_roll(left: bool) -> float:
 	var player := _prone_player()
@@ -629,7 +633,7 @@ func update_prone_motion(input_dir: Vector2, has_input: bool) -> void:
 	var clip: Animation = player.get_animation(anim)
 	clip.loop_mode = Animation.LOOP_LINEAR
 	if player.current_animation != anim:
-		player.play(anim)
+		player.play(anim, PRONE_LOCOMOTION_BLEND_TIME)
 
 
 func begin_external_turn(turn_state: State, playback_speed: float) -> void:

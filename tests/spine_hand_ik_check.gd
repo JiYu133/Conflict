@@ -89,15 +89,26 @@ func _run() -> void:
 		return
 	if not _check(hand_ik._is_prone, "prone state is forwarded to hand IK"):
 		return
+	if not _check(is_equal_approx(hand_ik._target_weight, hand_ik._ik_weight * hand_ik._config.prone_ik_weight), "prone uses its dedicated hand IK weight"):
+		return
 	if not _check(hand_ik._elbow_pole != null, "left-hand IK has an elbow pole"):
+		return
+	if not _check(hand_ik._wrist_to_palm_local.length() > 0.02, "hand IK derives a wrist-to-palm offset from the skeleton"):
 		return
 	var authored_pole := hand_ik._authored_elbow_pole_transform
 	hand_ik._target_modifier._process_modification()
-	if not _check(hand_ik._elbow_pole.transform == authored_pole, "prone keeps the authored elbow bend"):
+	if not _check(hand_ik._elbow_pole.transform != authored_pole, "prone elbow pole follows the animated bend plane"):
 		return
-	if not _check(not hand_ik._target_modifier.sync_enabled, "prone transition disables left-hand IK target syncing"):
+	if not _check(hand_ik._target_modifier.sync_enabled, "prone transition keeps left-hand IK active"):
 		return
-	if not _check(is_zero_approx(hand_ik._ik_node.influence), "prone transition clears hand IK influence"):
+	if not _check(hand_ik._ik_node.influence > 0.0, "prone transition does not clear hand IK influence"):
+		return
+	var transition_grip := hand_ik._get_current_grip_transform()
+	var transition_expected := transition_grip.origin \
+		+ transition_grip.basis.orthonormalized() * hand_ik._config.grip_position_offset \
+		- hand_ik._hand_target.global_basis.orthonormalized() * hand_ik._wrist_to_palm_local \
+			* hand_ik._config.prone_palm_contact_ratio
+	if not _check(hand_ik._hand_target.global_position.distance_to(transition_expected) < 0.002, "hand target continues following the grip during prone transition"):
 		return
 	player.stance_controller._prone_transition = false
 	player.stance_controller._is_prone = false

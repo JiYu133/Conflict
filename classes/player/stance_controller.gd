@@ -23,7 +23,6 @@ var _prone_transition: bool = false
 var _prone_entering: bool = false
 var _prone_exit_to_stand: bool = false
 var _prone_timer: float = 0.0
-var _stand_after_prone_timer: float = -1.0
 
 var _stance_value: float = 0.0  # 当前姿态（平滑插值后的值）
 var _target_stance: float = 0.0  # 目标姿态（滚轮设定的目标）
@@ -119,7 +118,6 @@ func _enter_prone() -> void:
 	if _prone_transition or _is_prone:
 		return
 	_target_stance = 1.0
-	_stand_after_prone_timer = -1.0
 	_is_prone = true
 	_prone_transition = true
 	_prone_entering = true
@@ -166,10 +164,9 @@ func _finish_prone_exit() -> void:
 	_prone_entering = false
 	var was_prone := _is_prone
 	_is_prone = completing_entry
-	# prone_exit lands in the crouched pose. Hold that pose briefly so the
-	# existing crouch-to-stand Idle blend is visible instead of skipping it.
-	_target_stance = 1.0
-	_stand_after_prone_timer = 0.22 if not completing_entry and _prone_exit_to_stand else -1.0
+	# C exits into crouch. Z exits directly toward standing as soon as the
+	# authored prone-exit clip releases the skeleton.
+	_target_stance = 0.0 if not completing_entry and _prone_exit_to_stand else 1.0
 	_prone_exit_to_stand = false
 	if was_prone != _is_prone:
 		prone_changed.emit(_is_prone)
@@ -180,11 +177,6 @@ func _finish_prone_exit() -> void:
 			_player.animation_controller.clear_prone_override()
 
 func _process(delta: float) -> void:
-	if _stand_after_prone_timer >= 0.0:
-		_stand_after_prone_timer -= delta
-		if _stand_after_prone_timer <= 0.0:
-			_stand_after_prone_timer = -1.0
-			_target_stance = 0.0
 	if _prone_transition:
 		_prone_timer -= delta
 		if _prone_timer <= 0.0:
