@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dpj3dfhndc2fv"]
 
 [ext_resource type="Script" uid="uid://d3by0ot54w0n1" path="res://classes/weapon/weaponattachments/selector_switch.gd" id="1_selector"]
-[ext_resource type="PackedScene" uid="uid://dya4j6luga2jt" path="res://assets/models/attachments/selector_switches/ak12_selector_switch/ak12_selector_switch.glb" id="2_mesh"]
+[ext_resource type="PackedScene" uid="uid://c3ramqfthh21j" path="res://assets/models/attachments/selector_switches/ak12_selector_switch/ak12_selector_switch.glb" id="2_mesh"]
 
 [node name="SelectorSwitch" type="Node3D" unique_id=1881019192]
 script = ExtResource("1_selector")

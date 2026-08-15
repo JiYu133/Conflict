@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://cia7vaq46uhgf"]
 
-[ext_resource type="Script" uid="uid://bkj3rrp4owfbl" path="res://classes/ui/loading_screen.gd" id="1_loading"]
+[ext_resource type="Script" uid="uid://c4sgj2eqxx6oc" path="res://classes/ui/loading_screen.gd" id="1_loading"]
 [ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://assets/fonts/ConflictCJKUI.ttf" id="2_o1nf5"]
 
 [sub_resource type="StyleBoxFlat" id="DeploymentPanelStyle"]
