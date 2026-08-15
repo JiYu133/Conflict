@@ -489,7 +489,39 @@ settings/0/extend_end_bone = false
 [node name="LeftElbowPole" type="Marker3D" parent="Skeleton3D/LeftHandIK" index="0" unique_id=1229097913]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.49126345, 1.4615586, -0.13809228)
 
-[node name="PhysicalBoneSimulator3D" type="PhysicalBoneSimulator3D" parent="Skeleton3D" index="5" unique_id=504052545]
+[node name="LeftFootTarget" type="Marker3D" parent="Skeleton3D" index="5"]
+
+[node name="LeftFootIK" type="TwoBoneIK3D" parent="Skeleton3D" index="6"]
+influence = 0.0
+setting_count = 1
+settings/0/target_node = NodePath("../LeftFootTarget")
+settings/0/pole_node = NodePath("LeftKneePole")
+settings/0/root_bone_name = "mixamorig_LeftUpLeg"
+settings/0/middle_bone_name = "mixamorig_LeftLeg"
+settings/0/pole_direction = 0
+settings/0/end_bone_name = "mixamorig_LeftFoot"
+settings/0/use_virtual_end = false
+settings/0/extend_end_bone = false
+
+[node name="LeftKneePole" type="Marker3D" parent="Skeleton3D/LeftFootIK" index="0"]
+
+[node name="RightFootTarget" type="Marker3D" parent="Skeleton3D" index="7"]
+
+[node name="RightFootIK" type="TwoBoneIK3D" parent="Skeleton3D" index="8"]
+influence = 0.0
+setting_count = 1
+settings/0/target_node = NodePath("../RightFootTarget")
+settings/0/pole_node = NodePath("RightKneePole")
+settings/0/root_bone_name = "mixamorig_RightUpLeg"
+settings/0/middle_bone_name = "mixamorig_RightLeg"
+settings/0/pole_direction = 0
+settings/0/end_bone_name = "mixamorig_RightFoot"
+settings/0/use_virtual_end = false
+settings/0/extend_end_bone = false
+
+[node name="RightKneePole" type="Marker3D" parent="Skeleton3D/RightFootIK" index="0"]
+
+[node name="PhysicalBoneSimulator3D" type="PhysicalBoneSimulator3D" parent="Skeleton3D" index="9" unique_id=504052545]
 
 [node name="Physical Bone mixamorig_Hips" type="PhysicalBone3D" parent="Skeleton3D/PhysicalBoneSimulator3D" index="0" unique_id=1220814342]
 transform = Transform3D(-0.9768337, -0.21222262, 0.02752401, -0.21286972, 0.97680557, -0.023182688, -0.021965714, -0.028504658, -0.9993523, 0.0025746198, 0.20252527, -0.36531597)

@@ -86,9 +86,7 @@ func _check_death_blood_positioning(player: BasePlayer, map: Node3D) -> bool:
 	if effect._blood_pool_variants.size() != 4:
 		_fail("Death blood effect did not cache all pool atlas variants")
 		return false
-	var pool_image := effect._blood_pool_variant.get_image()
-	if pool_image.get_pixel(0, 0).a > 0.05:
-		_fail("Death blood pool variant keeps an opaque atlas background")
+	if not _check_death_pool_alpha(effect):
 		return false
 	effect.reparent(map, true)
 	effect._global_position_for_ground_query()
@@ -106,6 +104,36 @@ func _check_death_blood_positioning(player: BasePlayer, map: Node3D) -> bool:
 	if not pool or absf(pool_offset.y) > 0.001 or horizontal_jitter > 0.18:
 		_fail("Death blood pool applies its world position more than once")
 		return false
+	return true
+
+
+func _check_death_pool_alpha(effect: DeathBloodEffect) -> bool:
+	for variant in effect._blood_pool_variants:
+		var image := (variant as Texture2D).get_image()
+		if image.has_mipmaps():
+			_fail("Death blood pool runtime variant keeps mipmaps that can restore the dark border")
+			return false
+		var data := image.get_data()
+		var transparent_pixels := 0
+		var visible_pixels := 0
+		var minimum_visible_alpha := 255
+		for alpha_index in range(3, data.size(), 4):
+			var alpha := data[alpha_index]
+			if alpha == 0:
+				transparent_pixels += 1
+				if data[alpha_index - 3] != 0 or data[alpha_index - 2] != 0 or data[alpha_index - 1] != 0:
+					_fail("Death blood pool leaves RGB colour in a transparent background pixel")
+					return false
+			else:
+				visible_pixels += 1
+				minimum_visible_alpha = mini(minimum_visible_alpha, alpha)
+		var pixel_count := transparent_pixels + visible_pixels
+		if pixel_count == 0 or float(transparent_pixels) / float(pixel_count) < 0.4:
+			_fail("Death blood pool variant still covers most of its rectangular cell")
+			return false
+		if visible_pixels == 0 or minimum_visible_alpha < effect.POOL_ALPHA_CUTOFF:
+			_fail("Death blood pool keeps the low-alpha black haze that forms a box")
+			return false
 	return true
 
 
