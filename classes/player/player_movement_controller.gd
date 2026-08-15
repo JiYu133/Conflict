@@ -60,6 +60,7 @@ var _prone_roll_timer: float = 0.0
 var _prone_roll_duration: float = 0.0
 var _prone_rolling: bool = false
 var _prone_roll_direction: float = 0.0
+var _prone_roll_world_direction: Vector3 = Vector3.ZERO
 
 
 func is_running() -> bool:
@@ -208,6 +209,7 @@ func _physics_process(delta: float) -> void:
 		var fallback_finished := not has_roll_animation and _prone_roll_timer <= 0.0
 		if animation_finished or fallback_finished:
 			_prone_rolling = false
+			_prone_roll_world_direction = Vector3.ZERO
 			_prone_roll_cooldown = _config.prone_roll_cooldown
 			_prone_roll_timer = 0.0
 			if _camera_controller:
@@ -523,12 +525,17 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 		_velocity.y = _config.floor_snap_velocity
 	var basis: Basis = _camera_controller.get_view_basis() if _camera_controller else _player.global_basis
 	var direction: Vector3 = (basis.x * input_dir.x + basis.z * input_dir.y).normalized() if has_input else Vector3.ZERO
-	var space: bool = not ai_driving and Input.is_action_pressed("jump")
 	var side: bool = abs(input_dir.x) > abs(input_dir.y) and abs(input_dir.x) > _config.input_dead_zone
-	if side and space and not _prone_rolling and _prone_roll_cooldown <= 0.0:
+	if _is_prone_roll_combo_pressed(side, ai_driving) and not _prone_rolling and _prone_roll_cooldown <= 0.0:
 		if not _player.stamina_system or _player.stamina_system.consume_prone_roll():
 			_prone_rolling = true
 			_prone_roll_direction = sign(input_dir.x)
+			var planar_right := basis.x
+			planar_right.y = 0.0
+			if planar_right.length_squared() < 0.000001:
+				planar_right = _player.global_basis.x
+				planar_right.y = 0.0
+			_prone_roll_world_direction = planar_right.normalized() * _prone_roll_direction
 			_prone_roll_duration = _config.prone_roll_duration
 			if _player.animation_controller:
 				var clip_length := _player.animation_controller.play_prone_roll(_prone_roll_direction < 0.0)
@@ -536,10 +543,14 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 					_prone_roll_duration = clip_length
 			_prone_roll_timer = _prone_roll_duration
 			if _camera_controller:
-				_camera_controller.set_prone_roll_camera_angle(0.55 * _prone_roll_direction)
+				_camera_controller.set_prone_roll_camera_angle(0.0)
 	var speed: float = 0.0
+	var movement_direction := direction
+	var should_move := has_input
 	if _prone_rolling:
 		speed = _config.prone_roll_speed
+		movement_direction = _prone_roll_world_direction
+		should_move = not movement_direction.is_zero_approx()
 	elif has_input:
 		if side:
 			speed = _config.prone_lateral_speed
@@ -547,9 +558,9 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 			speed = _config.prone_forward_speed
 		else:
 			speed = _config.prone_backward_speed
-	if has_input:
-		_velocity.x = move_toward(_velocity.x, direction.x * speed, _config.prone_roll_acceleration * delta)
-		_velocity.z = move_toward(_velocity.z, direction.z * speed, _config.prone_roll_acceleration * delta)
+	if should_move:
+		_velocity.x = move_toward(_velocity.x, movement_direction.x * speed, _config.prone_roll_acceleration * delta)
+		_velocity.z = move_toward(_velocity.z, movement_direction.z * speed, _config.prone_roll_acceleration * delta)
 	else:
 		_velocity.x = move_toward(_velocity.x, 0.0, _config.stop_brake_strength * delta)
 		_velocity.z = move_toward(_velocity.z, 0.0, _config.stop_brake_strength * delta)
@@ -560,6 +571,16 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 	# transition complete. Locomotion must not replace them frame-by-frame.
 	if _player.animation_controller and not _prone_rolling and not _player.stance_controller.is_prone_transitioning():
 		_player.animation_controller.update_prone_motion(input_dir, has_input)
+
+
+func _is_prone_roll_combo_pressed(side: bool, ai_driving: bool) -> bool:
+	if ai_driving or not side or not Input.is_action_pressed("jump"):
+		return false
+	# Accept both input orders: hold A/D then press Space, or hold Space then
+	# press A/D. Requiring a fresh edge prevents held keys from chaining rolls.
+	return Input.is_action_just_pressed("jump") \
+		or Input.is_action_just_pressed("move_left") \
+		or Input.is_action_just_pressed("move_right")
 
 
 func _update_collision_shape(stance: float) -> void:

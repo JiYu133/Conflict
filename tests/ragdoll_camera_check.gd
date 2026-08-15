@@ -19,9 +19,9 @@ func _ready() -> void:
 	if not _check(camera != null, "active camera exists"):
 		return
 	var normal_camera_parent := camera.get_parent()
+	controller._vertical_angle = deg_to_rad(-11.0)
+	controller._view_yaw = deg_to_rad(23.0)
 	controller._process(0.016)
-	if not _check(controller._prone_roll_head_conversion_valid, "roll camera caches the normal head-to-camera orientation"):
-		return
 
 	player.stance_controller._is_prone = true
 	var roll_clip_length := player.animation_controller.play_prone_roll(false)
@@ -36,19 +36,23 @@ func _ready() -> void:
 		return
 	player.movement_controller._prone_roll_timer = roll_clip_length * 0.25
 	controller._update_prone_roll_camera(0.016)
-	if not _check(is_equal_approx(controller._prone_roll_camera_angle, TAU * 0.75), "right prone roll camera rotates in the input direction"):
+	var expected_bank := sin(PI * 0.75) * PlayerCameraController.PRONE_ROLL_MAX_CAMERA_BANK
+	if not _check(is_equal_approx(controller._prone_roll_camera_angle, expected_bank), "right prone roll camera uses a bounded bank"):
 		return
 	controller._process(0.016)
-	if controller._bone_attachment:
-		var expected_roll_basis := (
-			controller._bone_attachment.global_basis.orthonormalized()
-			* controller._prone_roll_head_to_camera_basis
-		).orthonormalized()
-		var roll_basis_error := expected_roll_basis.get_rotation_quaternion().angle_to(camera.global_basis.get_rotation_quaternion())
-		if not _check(roll_basis_error < 0.03, "prone roll camera inherits the calibrated head orientation"):
-			return
-		if not _check((-camera.global_basis.z).dot(-expected_roll_basis.z) > 0.99, "prone roll camera does not reverse its forward axis"):
-			return
+	var expected_roll_basis := Basis.from_euler(Vector3(
+		controller.get_vertical_angle() + controller._pain_pitch,
+		controller.get_view_yaw() + controller._pain_yaw,
+		controller._pain_roll + expected_bank
+	)).orthonormalized()
+	var roll_basis_error := expected_roll_basis.get_rotation_quaternion().angle_to(camera.global_basis.get_rotation_quaternion())
+	if not _check(roll_basis_error < 0.03, "prone roll camera remains aligned to look input"):
+		return
+	var level_view_basis := Basis.from_euler(Vector3(
+		controller.get_vertical_angle(), controller.get_view_yaw(), 0.0
+	)).orthonormalized()
+	if not _check((-camera.global_basis.z).dot(-level_view_basis.z) > 0.99, "prone roll camera keeps the player's forward view"):
+		return
 	await get_tree().create_timer(roll_clip_length - player.player_config.prone_roll_duration + 0.2).timeout
 	if not _check(not player.movement_controller.is_prone_rolling(), "roll camera releases only after the animation finishes"):
 		return

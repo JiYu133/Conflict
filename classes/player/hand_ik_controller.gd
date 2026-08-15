@@ -162,6 +162,8 @@ func set_prone_state(prone: bool) -> void:
 	if _is_prone == prone:
 		return
 	_is_prone = prone
+	# While prone, HandTargetModifier derives the pole from the authored clip's
+	# current bend plane. Restore the standing pole only when leaving prone.
 	if not prone and is_instance_valid(_elbow_pole):
 		_elbow_pole.transform = _authored_elbow_pole_transform
 	_update_target_weight()

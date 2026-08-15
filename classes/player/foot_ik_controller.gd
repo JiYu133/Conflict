@@ -87,10 +87,23 @@ func _setup_ankle_modifier() -> void:
 	_ankle_modifier.setup(_skeleton, self)
 
 
-func process_ik(delta: float) -> void:
+func process_ik(delta: float, active: bool = true) -> void:
 	if not _left_ik and not _right_ik:
 		return
 	if not is_instance_valid(_skeleton):
+		return
+	if not active:
+		# Full-body clips (prone/roll) already author both feet. Clear every
+		# procedural layer immediately so stale standing IK cannot bend them.
+		_left_blend = 0.0
+		_right_blend = 0.0
+		if _left_ik:
+			_left_ik.influence = 0.0
+		if _right_ik:
+			_right_ik.influence = 0.0
+		if _ankle_modifier:
+			_ankle_modifier.left_blend = 0.0
+			_ankle_modifier.right_blend = 0.0
 		return
 
 	var left_hit  := _raycast_foot(_left_foot_idx)
