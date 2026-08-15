@@ -75,6 +75,8 @@ var _sway_pivot: Node3D = null
 # 蹲下眼部高度插值
 var _eye_height: float = 1.6
 var _target_eye_height: float = 1.6
+var _turn_height_locked: bool = false
+var _turn_height_local_y: float = 0.0
 
 # 受击疼痛镜头冲击：独立于鼠标视角和武器后座的短促阻尼弹簧。
 # 位置是当前角度偏移，速度由受击瞬间注入，随后自动回到零，
@@ -506,9 +508,27 @@ func _process(delta: float) -> void:
 	_spring_y.stiffness = _stiffness_v * stiffness_mult * stability
 	_spring_z.stiffness = _stiffness_h * stiffness_mult * stability
 
+	var lock_turn_height := _should_lock_turn_in_place_height()
+	if lock_turn_height and not _turn_height_locked:
+		# Capture the already rendered eye height on the first turn frame. The
+		# imported turn clips move the head vertically; letting that motion enter
+		# the camera spring produces a visible crouch/prone view bump.
+		_turn_height_local_y = (
+			_player.global_transform.affine_inverse() * _active_camera.global_position
+		).y
+		_spring_y.position = _turn_height_local_y
+		_spring_y.velocity = 0.0
+		_turn_height_locked = true
+	elif not lock_turn_height and _turn_height_locked:
+		# Resume from the locked value so releasing the turn cannot snap to the
+		# current animation frame.
+		_spring_y.position = _turn_height_local_y
+		_spring_y.velocity = 0.0
+		_turn_height_locked = false
+
 	var filtered_local := Vector3(
 		_spring_x.update(delta, head_local.x),
-		_spring_y.update(delta, head_local.y),
+		_turn_height_local_y if _turn_height_locked else _spring_y.update(delta, head_local.y),
 		_spring_z.update(delta, head_local.z)
 	)
 
@@ -525,6 +545,13 @@ func _process(delta: float) -> void:
 
 	_update_ads(delta)
 	_update_weapon_spring(delta)
+
+
+func _should_lock_turn_in_place_height() -> bool:
+	if not is_instance_valid(_player) or not _player.turn_controller:
+		return false
+	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+	return _player.turn_controller.is_turning() and horizontal_velocity.length_squared() < 0.0001
 
 
 # ============================================================

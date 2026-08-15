@@ -10,7 +10,7 @@ extends Node3D
 const DEFAULT_DROP_COLOR := Color(0.45, 0.01, 0.006, 1.0)
 const ATLAS_COLUMNS := 2
 const ATLAS_VARIANT_COUNT := 4
-const POOL_ALPHA_CUTOFF := 28
+const POOL_ALPHA_CUTOFF := 64
 
 var _player: BasePlayer
 var _config: BloodEffectConfig
@@ -310,7 +310,9 @@ func _atlas_variant(texture: Texture2D, variant_index: int, clean_pool_alpha: bo
 	var atlas_size := texture.get_size()
 	if atlas_size.x < 2.0 or atlas_size.y < 2.0:
 		return texture
-	var cache_key := "%d:%d:%d" % [texture.get_instance_id(), variant_index, int(clean_pool_alpha)]
+	var cache_key := "%d:%d:%d:%d" % [
+		texture.get_instance_id(), variant_index, int(clean_pool_alpha), POOL_ALPHA_CUTOFF
+	]
 	if _atlas_variant_cache.has(cache_key):
 		return _atlas_variant_cache[cache_key] as Texture2D
 	# Decal does not accept AtlasTexture because it needs a concrete GPU image.
@@ -337,14 +339,17 @@ func _atlas_variant(texture: Texture2D, variant_index: int, clean_pool_alpha: bo
 
 func _remove_pool_background_haze(image: Image) -> Image:
 	# The source atlas has a large number of nearly transparent black pixels.
-	# Texture compression and oblique decal sampling can blend those pixels into
-	# a visible dark rectangle. Clear only that imperceptible tail while retaining
-	# the authored splash edges and droplets.
+	# Oblique decal sampling can turn that tail into a visible dark rectangle.
+	# Remove the whole low-alpha pixel (including RGB) so filtering cannot pull
+	# black colour back across a transparent edge.
 	image.convert(Image.FORMAT_RGBA8)
 	image.clear_mipmaps()
 	var pixel_data := image.get_data()
 	for alpha_index in range(3, pixel_data.size(), 4):
 		if pixel_data[alpha_index] < POOL_ALPHA_CUTOFF:
+			pixel_data[alpha_index - 3] = 0
+			pixel_data[alpha_index - 2] = 0
+			pixel_data[alpha_index - 1] = 0
 			pixel_data[alpha_index] = 0
 	return Image.create_from_data(
 		image.get_width(),

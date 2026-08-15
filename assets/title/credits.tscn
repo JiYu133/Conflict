@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://4m2gn8p1gks5"]
 
-[ext_resource type="Script" uid="uid://ddo7hshqrwhs1" path="res://assets/title/credits.gd" id="1"]
+[ext_resource type="Script" uid="uid://bryjibsn00dbb" path="res://assets/title/credits.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://assets/fonts/ConflictCJKUI.ttf" id="2_53lk8"]
 
 [sub_resource type="StyleBoxFlat" id="CreditsButtonNormal"]

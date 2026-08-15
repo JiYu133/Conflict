@@ -100,7 +100,11 @@ func _run() -> void:
 	var collision_shape := player.get_node_or_null("PlayerCollisionShape") as CollisionShape3D
 	var crouch_collision_height := (collision_shape.shape as CapsuleShape3D).height
 	await get_tree().create_timer(0.2).timeout
-	if not _check(absf(active_camera.position.y - crouch_camera_y) < 0.01, "crouching turn keeps camera height stable"):
+	var crouch_camera_delta := absf(active_camera.position.y - crouch_camera_y)
+	if not _check(
+		crouch_camera_delta < 0.01,
+		"crouching turn keeps camera height stable (delta=%.4f)" % crouch_camera_delta
+	):
 		return
 	if not _check(is_equal_approx((collision_shape.shape as CapsuleShape3D).height, crouch_collision_height), "crouching turn does not resize the collision capsule"):
 		return
