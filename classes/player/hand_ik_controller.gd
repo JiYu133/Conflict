@@ -162,7 +162,9 @@ func set_prone_state(prone: bool) -> void:
 	if _is_prone == prone:
 		return
 	_is_prone = prone
-	if not prone and is_instance_valid(_elbow_pole):
+	# Prone is animation-owned, so always restore the authored pole instead of
+	# carrying a procedural bend plane into or out of the clip.
+	if is_instance_valid(_elbow_pole):
 		_elbow_pole.transform = _authored_elbow_pole_transform
 	_update_target_weight()
 

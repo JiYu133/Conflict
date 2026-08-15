@@ -102,9 +102,8 @@ var _ragdoll_bone_idx: int = -1
 var _ragdoll_head_bone: PhysicalBone3D = null  # 头部物理骨骼
 var _ragdoll_physics_active: bool = false
 var _head_spring_enabled: bool = true
+const PRONE_ROLL_MAX_CAMERA_BANK: float = deg_to_rad(18.0)
 var _prone_roll_camera_angle: float = 0.0
-var _prone_roll_head_to_camera_basis: Basis = Basis.IDENTITY
-var _prone_roll_head_conversion_valid: bool = false
 ## 头部没有对应 PhysicalBone3D 时，使用颈部等最近物理父骨骼，
 ## 该变换把物理骨骼坐标转换为头部坐标，因此仍能保持头部位置/滚转。
 var _ragdoll_head_from_physical: Transform3D = Transform3D.IDENTITY
@@ -219,8 +218,6 @@ func enable_camera() -> void:
 		_active_camera.fov = _camera_config.fov
 
 	_bone_attachment = _find_bone_attachment()
-	_prone_roll_head_to_camera_basis = Basis.IDENTITY
-	_prone_roll_head_conversion_valid = false
 	if _bone_attachment:
 		GlobalLogger.info("Camera", "Head BoneAttachment found: " + _bone_attachment.bone_name)
 	else:
@@ -515,25 +512,16 @@ func _process(delta: float) -> void:
 		_spring_z.update(delta, head_local.z)
 	)
 
-	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧
-	# Normal prone uses the same spring camera path as standing. A roll is the
-	# sole authored-pose exception: inherit the head bone's complete rotation.
-	var follow_head := _player and _player.movement_controller and _player.movement_controller.is_prone_rolling()
-	if follow_head and is_instance_valid(_bone_attachment):
-		var head_xform := _bone_attachment.global_transform
-		var offset_xform := head_xform * Transform3D(Basis.IDENTITY, _camera_config.head_offset)
-		_active_camera.global_position = offset_xform.origin
-		_active_camera.global_basis = (
-			head_xform.basis.orthonormalized() * _prone_roll_head_to_camera_basis
-		).orthonormalized()
-	else:
-		_active_camera.global_position = _player.global_transform * filtered_local
-		_active_camera.global_rotation = Vector3(
-			get_vertical_angle() + _pain_pitch,
-			get_view_yaw() + _pain_yaw,
-			_pain_roll + _prone_roll_camera_angle
-		)
-		_cache_prone_roll_head_conversion()
+	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧。
+	# The roll animation may rotate the head bone through arbitrary imported
+	# axes. Keep the first-person view driven by look input and add only a small
+	# cosmetic bank, otherwise the camera can reverse or point at the ground.
+	_active_camera.global_position = _player.global_transform * filtered_local
+	_active_camera.global_rotation = Vector3(
+		get_vertical_angle() + _pain_pitch,
+		get_view_yaw() + _pain_yaw,
+		_pain_roll + _prone_roll_camera_angle
+	)
 
 	_update_ads(delta)
 	_update_weapon_spring(delta)
@@ -692,20 +680,13 @@ func set_prone_roll_camera_angle(angle: float) -> void:
 	_prone_roll_camera_angle = angle
 
 
-func _cache_prone_roll_head_conversion() -> void:
-	if not is_instance_valid(_bone_attachment) or not is_instance_valid(_active_camera):
-		return
-	var head_basis := _bone_attachment.global_basis.orthonormalized()
-	_prone_roll_head_to_camera_basis = head_basis.inverse() * _active_camera.global_basis.orthonormalized()
-	_prone_roll_head_conversion_valid = true
-
 func _update_prone_roll_camera(delta: float) -> void:
 	if _player and _player.movement_controller and _player.movement_controller.is_prone_rolling():
 		var progress := _player.movement_controller.get_prone_roll_progress()
 		var direction := _player.movement_controller.get_prone_roll_direction()
-		# Do not use lerp_angle here: 0 and TAU are equivalent and interpolation
-		# would reverse near the half-turn instead of completing the roll.
-		_prone_roll_camera_angle = direction * TAU * progress
+		# A half-sine gives one readable bank and returns to a level horizon at
+		# the end without ever flipping the player's view upside down.
+		_prone_roll_camera_angle = direction * sin(progress * PI) * PRONE_ROLL_MAX_CAMERA_BANK
 		return
 	_prone_roll_camera_angle = wrapf(
 		lerp_angle(

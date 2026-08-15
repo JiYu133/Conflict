@@ -536,7 +536,7 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 					_prone_roll_duration = clip_length
 			_prone_roll_timer = _prone_roll_duration
 			if _camera_controller:
-				_camera_controller.set_prone_roll_camera_angle(0.55 * _prone_roll_direction)
+				_camera_controller.set_prone_roll_camera_angle(0.0)
 	var speed: float = 0.0
 	if _prone_rolling:
 		speed = _config.prone_roll_speed

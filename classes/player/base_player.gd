@@ -475,13 +475,12 @@ func _sync_weapon_weight_to_stamina() -> void:
 func _process(delta: float) -> void:
 	var procedural_animation_active := is_alive and not is_ragdolled
 	var prone := stance_controller and (stance_controller.is_prone() or stance_controller.is_prone_transitioning())
-	# Prone authored poses own the upper body, while the left hand still needs
-	# to follow the weapon grip on every frame.
+	# Prone clips are full-body authored animations. Running hand/foot IK on top
+	# of them pulls the limbs toward standing targets and distorts the pose.
 	spine_aim_controller.process_aim(delta, procedural_animation_active and not prone)
 	hand_ik_controller.set_prone_state(prone)
-	hand_ik_controller.process_ik(delta, procedural_animation_active)
-	if procedural_animation_active:
-		foot_ik_controller.process_ik(delta)
+	hand_ik_controller.process_ik(delta, procedural_animation_active and not prone)
+	foot_ik_controller.process_ik(delta, procedural_animation_active and not prone)
 
 
 func _input(event: InputEvent) -> void:
