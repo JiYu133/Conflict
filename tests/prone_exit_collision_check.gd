@@ -19,11 +19,11 @@ func _run() -> void:
 	if not _check(player != null, "player initializes"):
 		return
 	var stance := player.stance_controller
-	var movement := player.movement_controller
-	var collision := player.get_node_or_null("PlayerCollisionShape") as CollisionShape3D
+	var collision_controller := player.collision_controller
+	var collision := collision_controller.get_collision_shape() if collision_controller else null
 	var model := player.model_manager.model_node
 	if not _check(
-		stance != null and movement != null and collision != null
+		stance != null and collision_controller != null and collision != null
 		and collision.shape is CapsuleShape3D and model != null,
 		"prone exit geometry initializes"
 	):
@@ -38,7 +38,10 @@ func _run() -> void:
 	stance._target_stance = 1.0
 	stance._prone_geometry_blend = 1.0
 	stance._prone_geometry_target = 1.0
-	movement._on_stance_changed(1.0)
+	# Disable hitbox sampling here to isolate the fallback transition. A separate
+	# bounds test verifies that live BodyHitbox geometry drives the controller.
+	collision_controller._hitbox_provider = Callable()
+	collision_controller.refresh_immediately()
 
 	var shape := collision.shape as CapsuleShape3D
 	var prone_height := shape.height
@@ -65,6 +68,7 @@ func _run() -> void:
 	var max_bottom_drift := 0.0
 	for _frame in 12:
 		stance._process(1.0 / 60.0)
+		collision_controller._update_collision_bounds(1.0 / 60.0, false)
 		max_height_step = maxf(max_height_step, absf(shape.height - previous_height))
 		max_center_step = maxf(max_center_step, absf(collision.position.y - previous_center_y))
 		max_model_step = maxf(max_model_step, absf(model.position.y - previous_model_y))
@@ -76,7 +80,7 @@ func _run() -> void:
 		previous_center_y = collision.position.y
 		previous_model_y = model.position.y
 
-	if not _check(shape.height > prone_height + 0.1, "capsule starts expanding during the exit clip"):
+	if not _check(shape.height > prone_height + 0.04, "capsule starts expanding during the exit clip"):
 		return
 	if not _check(max_height_step < 0.1, "capsule height changes smoothly"):
 		return

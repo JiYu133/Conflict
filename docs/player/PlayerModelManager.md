@@ -5,20 +5,20 @@
 
 ## 功能概述
 
-负责加载和卸载玩家的 3D 模型场景，实例化后自动查找并缓存骨骼系统（Skeleton3D）和动画播放器（AnimationPlayer），同时根据 PlayerConfig 的参数为玩家创建胶囊碰撞体。
+负责加载和卸载玩家的 3D 模型场景，实例化后自动查找并缓存骨骼系统（Skeleton3D）、动画播放器（AnimationPlayer）和动画树（AnimationTree）。主环境碰撞体由 `PlayerCollisionController` 独占，本组件不再创建或修改碰撞体。
 
 ## 初始化
 
 该类无独立的 `initialize()` 方法，通过 `load_model(player_config)` 完成初始化：
 
 - **调用时机：** 在 `BasePlayer` 完成自身初始化后调用，通常在 `_ready()` 阶段。
-- **参数：** `player_config: PlayerConfig` — 包含 `model_scene`（PackedScene）、`model_config`（ModelLookupConfig）和碰撞体尺寸参数。
+- **参数：** `player_config: PlayerConfig` — 包含 `model_scene`（PackedScene）和 `model_config`（ModelLookupConfig）。
 
 ## 信号（Signals）
 
 | 信号 | 参数 | 触发时机 |
 |------|------|---------|
-| `model_loaded` | `model: Node3D` | 模型实例化并添加到场景树后，碰撞体创建前 |
+| `model_loaded` | `model: Node3D` | 模型实例化、关键组件缓存完成后 |
 | `model_unloaded` | 无 | 旧模型被 `queue_free()` 并清除缓存后 |
 
 ## 公开属性（Properties）
@@ -33,7 +33,7 @@
 
 ### `load_model(player_config: PlayerConfig) -> void`
 
-从 `PlayerConfig.model_scene` 实例化模型，挂载到父节点（BasePlayer）下，查找骨骼与动画组件，发射 `model_loaded` 信号，最后创建胶囊碰撞体。加载新模型前会先调用 `unload_model()` 安全卸载旧模型。
+从 `PlayerConfig.model_scene` 实例化模型，挂载到父节点（BasePlayer）下，查找骨骼与动画组件并发射 `model_loaded` 信号。加载新模型前会先调用 `unload_model()` 安全卸载旧模型。
 
 ### `unload_model() -> void`
 
@@ -46,7 +46,7 @@
 ## 依赖关系
 
 - **依赖：**
-  - `PlayerConfig` — 提供模型场景路径和碰撞体参数
+  - `PlayerConfig` — 提供模型场景路径与模型偏移
   - `ModelLookupConfig` — 提供骨骼节点名称和动画节点名称的查找规则
 - **被依赖：**
   - `BasePlayer` — 持有该节点并调用 `load_model()`
@@ -57,6 +57,5 @@
 ## 注意事项
 
 - 采用"先实例化新模型、验证成功后再卸载旧模型"的顺序，防止新模型失败时玩家变成隐形状态。
-- `_create_collision_body()` 在 `model_loaded` 信号发射之后执行，监听该信号的模块（如摄像机）在回调时碰撞体可能尚未就绪。
-- 碰撞体的 `position` 固定为 `Vector3.ZERO`，若模型骨骼原点不在角色脚底需要手动偏移。
+- 不要把 `_create_collision_body()` 或姿态碰撞逻辑重新加入本类；模型热重载不应改变物理对象的所有权。
 - 若 `player_config` 为 `null`，会使用默认的 `PlayerConfig.new()` 和 `ModelLookupConfig.new()`，可能导致找不到骨骼或动画，并输出 `push_warning`。

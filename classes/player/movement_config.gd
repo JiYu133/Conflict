@@ -115,8 +115,8 @@ extends Resource
 @export var prone_roll_chain_reset_time: float = 1.0
 @export var prone_roll_duration: float = 0.45
 @export var prone_roll_acceleration: float = 18.0
-@export var prone_capsule_height: float = 0.42
-@export var prone_collision_y_offset: float = -0.69
+@export var prone_capsule_height: float = 0.6
+@export var prone_collision_y_offset: float = -0.6
 @export var prone_model_y_offset: float = -1.18
 
 # 碰撞体 ──────────────────────────────────────────────────────
@@ -127,5 +127,14 @@ extends Resource
 @export var collision_shape_radius: float = 0.4
 ## 碰撞体 Y 轴偏移（m）
 @export var collision_shape_y_offset: float = 0.0
+## 根据当前 BodyHitbox 的上下边界自动调整主碰撞胶囊，避免每个动画手填高度。
+@export var hitbox_driven_collision: bool = true
+## 命中箱边界之外保留的统一安全余量（m）。
+@export_range(0.0, 0.2, 0.005) var collision_bounds_margin: float = 0.025
+## 主碰撞胶囊上下边界追随命中箱的最大速度（m/s）。
+@export_range(0.1, 10.0, 0.1) var collision_bounds_follow_speed: float = 2.0
+## 自动尺寸的通用安全范围；不是动画专用参数。
+@export_range(0.2, 2.5, 0.05) var collision_bounds_min_height: float = 0.6
+@export_range(0.5, 4.0, 0.05) var collision_bounds_max_height: float = 3.0
 ## 模型垂直偏移（m）
 @export var model_y_offset: float = -0.5

@@ -23,6 +23,7 @@ const WOUND_MARK_ATLAS: Texture2D = preload("res://assets/textures/combat_effect
 const ENVIRONMENT_MASK: int = 1
 const ATLAS_COLUMNS: int = 2
 const ATLAS_VARIANT_COUNT: int = 4
+const FLOOR_POOL_ALPHA_CUTOFF: int = 64
 const MAX_WORLD_DECALS: int = 96
 const MAX_CHARACTER_DECALS: int = 18
 const WALL_TRACE_DISTANCE_M: float = 4.0
@@ -66,13 +67,15 @@ func initialize(player: BasePlayer) -> void:
 	_rng.randomize()
 	# Atlas 只裁切一次并由所有玩家共享，避免每个 bot 重复解压/上传 16 张纹理。
 	if _wall_splatter_variants.is_empty():
-		_wall_splatter_variants = _build_atlas_variants(WALL_SPLATTER_ATLAS)
+		_wall_splatter_variants = DecalAtlasCache.build_variants(WALL_SPLATTER_ATLAS, ATLAS_COLUMNS, ATLAS_VARIANT_COUNT)
 	if _floor_pool_variants.is_empty():
-		_floor_pool_variants = _build_atlas_variants(FLOOR_POOL_ATLAS)
+		_floor_pool_variants = DecalAtlasCache.build_variants(
+			FLOOR_POOL_ATLAS, ATLAS_COLUMNS, ATLAS_VARIANT_COUNT, FLOOR_POOL_ALPHA_CUTOFF
+		)
 	if _floor_droplet_variants.is_empty():
-		_floor_droplet_variants = _build_atlas_variants(FLOOR_DROPLET_ATLAS)
+		_floor_droplet_variants = DecalAtlasCache.build_variants(FLOOR_DROPLET_ATLAS, ATLAS_COLUMNS, ATLAS_VARIANT_COUNT)
 	if _wound_mark_variants.is_empty():
-		_wound_mark_variants = _build_atlas_variants(WOUND_MARK_ATLAS)
+		_wound_mark_variants = DecalAtlasCache.build_variants(WOUND_MARK_ATLAS, ATLAS_COLUMNS, ATLAS_VARIANT_COUNT)
 
 	if _health and not _health.damage_taken.is_connected(_on_damage_taken):
 		_health.damage_taken.connect(_on_damage_taken)
@@ -327,26 +330,6 @@ func _random_variant(variants: Array[Texture2D]) -> Texture2D:
 	if variants.is_empty():
 		return null
 	return variants[_rng.randi_range(0, variants.size() - 1)]
-
-
-func _build_atlas_variants(atlas: Texture2D) -> Array[Texture2D]:
-	var variants: Array[Texture2D] = []
-	var atlas_image := atlas.get_image()
-	if atlas_image.is_compressed():
-		var decompress_error := atlas_image.decompress()
-		if decompress_error != OK:
-			push_error("CombatEffects: failed to decompress decal atlas (%s)" % error_string(decompress_error))
-			return variants
-	var cell_size := Vector2i(
-		atlas_image.get_width() / ATLAS_COLUMNS,
-		atlas_image.get_height() / ATLAS_COLUMNS
-	)
-	for variant_index in range(ATLAS_VARIANT_COUNT):
-		var column := variant_index % ATLAS_COLUMNS
-		var row := variant_index / ATLAS_COLUMNS
-		var cell := atlas_image.get_region(Rect2i(Vector2i(column, row) * cell_size, cell_size))
-		variants.append(ImageTexture.create_from_image(cell))
-	return variants
 
 
 func _resolve_wound_bone(info: DamageInfo, skeleton: Skeleton3D) -> StringName:

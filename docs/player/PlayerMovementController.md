@@ -7,6 +7,8 @@
 
 处理玩家（`CharacterBody3D`）的全部移动逻辑。在 `_physics_process` 中每帧运行，实现地面移动、空中漂移、跳跃与重力。相较于基础移动系统，新增了起步爆发、步态波动、基于 dot product 的转向减速、停止卸力以及横向/后退方向速度上限五项机制。由 `BasePlayer._initialize_subsystems()` 创建并初始化。
 
+本组件不拥有主碰撞胶囊，也不负责模型姿态偏移；这些职责属于 `PlayerCollisionController`。`_on_stance_changed()` 仅切换移动状态和速度上限。
+
 ## 初始化
 
 ### `initialize(player: CharacterBody3D, config: PlayerConfig) -> void`

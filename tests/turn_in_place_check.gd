@@ -106,7 +106,13 @@ func _run() -> void:
 		"crouching turn keeps camera height stable (delta=%.4f)" % crouch_camera_delta
 	):
 		return
-	if not _check(is_equal_approx((collision_shape.shape as CapsuleShape3D).height, crouch_collision_height), "crouching turn does not resize the collision capsule"):
+	var crouch_collision_delta := absf(
+		(collision_shape.shape as CapsuleShape3D).height - crouch_collision_height
+	)
+	if not _check(
+		crouch_collision_delta <= player.player_config.collision_bounds_follow_speed * 0.25,
+		"crouching turn changes the hitbox-driven capsule only at its bounded rate"
+	):
 		return
 	await get_tree().create_timer(controller._clip_length + 0.2).timeout
 	controller._process_turn()

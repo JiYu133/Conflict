@@ -10,6 +10,7 @@ extends Area3D
 # ============================================================
 
 var _part_id: MedicalEnums.BodyPartId = MedicalEnums.BodyPartId.TORSO
+var _collision_shape: CollisionShape3D = null
 var _debug_mesh: MeshInstance3D = null
 var _anatomy_debug_meshes: Array[MeshInstance3D] = []  # P2 内部结构可视化
 
@@ -25,8 +26,10 @@ func setup(part_id: MedicalEnums.BodyPartId, shape: Shape3D = null, debug_color:
 
 	if shape:
 		var col := CollisionShape3D.new()
+		col.name = "CollisionShape3D"
 		col.shape = shape
 		add_child(col)
+		_collision_shape = col
 
 		# 创建调试可视化网格（默认隐藏）
 		_create_debug_mesh(shape, debug_color)
@@ -35,6 +38,51 @@ func setup(part_id: MedicalEnums.BodyPartId, shape: Shape3D = null, debug_color:
 ## 供 HitResolver 查询部位 ID
 func get_body_part_id() -> MedicalEnums.BodyPartId:
 	return _part_id
+
+
+## Returns this hitbox's lowest/highest Y coordinate in another Node3D's local
+## space.  PlayerCollisionController consumes this geometry-only API, so it does
+## not need to know that HealthSystem owns the hitbox lifecycle.
+func get_vertical_bounds(relative_to: Node3D) -> Vector2:
+	if not relative_to:
+		return Vector2(INF, -INF)
+	var collision := _collision_shape
+	if not collision or collision.disabled or not collision.shape:
+		return Vector2(INF, -INF)
+	var half_extents := _shape_half_extents(collision.shape)
+	if half_extents == Vector3.ZERO:
+		return Vector2(INF, -INF)
+	var relative_transform := relative_to.global_transform.affine_inverse() \
+		* collision.global_transform
+	var minimum_y := INF
+	var maximum_y := -INF
+	for x_sign in [-1.0, 1.0]:
+		for y_sign in [-1.0, 1.0]:
+			for z_sign in [-1.0, 1.0]:
+				var corner := Vector3(
+					half_extents.x * x_sign,
+					half_extents.y * y_sign,
+					half_extents.z * z_sign
+				)
+				var y := (relative_transform * corner).y
+				minimum_y = minf(minimum_y, y)
+				maximum_y = maxf(maximum_y, y)
+	return Vector2(minimum_y, maximum_y)
+
+
+func _shape_half_extents(shape: Shape3D) -> Vector3:
+	if shape is SphereShape3D:
+		var radius := (shape as SphereShape3D).radius
+		return Vector3(radius, radius, radius)
+	if shape is CapsuleShape3D:
+		var capsule := shape as CapsuleShape3D
+		return Vector3(capsule.radius, capsule.height * 0.5, capsule.radius)
+	if shape is BoxShape3D:
+		return (shape as BoxShape3D).size * 0.5
+	if shape is CylinderShape3D:
+		var cylinder := shape as CylinderShape3D
+		return Vector3(cylinder.radius, cylinder.height * 0.5, cylinder.radius)
+	return Vector3.ZERO
 
 
 ## 切换碰撞体可视化（含 P2 内部结构网格）

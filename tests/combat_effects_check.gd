@@ -48,6 +48,12 @@ func _run() -> void:
 
 	if not _check_atlas_variants(player.combat_effects):
 		return
+	if not _check_pool_alpha_variants(
+		player.combat_effects._floor_pool_variants,
+		player.combat_effects.FLOOR_POOL_ALPHA_CUTOFF,
+		"active-bleed floor pool"
+	):
+		return
 	if not _check_body_part_wounds(player):
 		return
 
@@ -90,7 +96,7 @@ func _check_death_blood_positioning(player: BasePlayer, map: Node3D) -> bool:
 		return false
 	effect.reparent(map, true)
 	effect._global_position_for_ground_query()
-	var expected_source := effect._wound_world_position(wound)
+	var expected_source := player.health_system.get_major_external_bleed_world_position()
 	if effect._drips and effect._drips.global_position.distance_to(expected_source) > 0.001:
 		_fail("Death drip emitter is not anchored to the resolved wound")
 		return false
@@ -104,14 +110,30 @@ func _check_death_blood_positioning(player: BasePlayer, map: Node3D) -> bool:
 	if not pool or absf(pool_offset.y) > 0.001 or horizontal_jitter > 0.18:
 		_fail("Death blood pool applies its world position more than once")
 		return false
+	if pool.get_parent() == effect:
+		_fail("Persistent death pool is still parented to the movable wound emitter")
+		return false
+	var stable_pool_position := pool.global_position
+	effect.global_position += Vector3(3.0, 1.0, -2.0)
+	if pool.global_position.distance_to(stable_pool_position) > 0.001:
+		_fail("A later death can relocate an existing world blood pool")
+		return false
 	return true
 
 
 func _check_death_pool_alpha(effect: DeathBloodEffect) -> bool:
-	for variant in effect._blood_pool_variants:
+	return _check_pool_alpha_variants(
+		effect._blood_pool_variants,
+		effect.POOL_ALPHA_CUTOFF,
+		"death floor pool"
+	)
+
+
+func _check_pool_alpha_variants(variants: Array[Texture2D], alpha_cutoff: int, label: String) -> bool:
+	for variant in variants:
 		var image := (variant as Texture2D).get_image()
 		if image.has_mipmaps():
-			_fail("Death blood pool runtime variant keeps mipmaps that can restore the dark border")
+			_fail("%s runtime variant keeps mipmaps that can restore the dark border" % label)
 			return false
 		var data := image.get_data()
 		var transparent_pixels := 0
@@ -122,17 +144,17 @@ func _check_death_pool_alpha(effect: DeathBloodEffect) -> bool:
 			if alpha == 0:
 				transparent_pixels += 1
 				if data[alpha_index - 3] != 0 or data[alpha_index - 2] != 0 or data[alpha_index - 1] != 0:
-					_fail("Death blood pool leaves RGB colour in a transparent background pixel")
+					_fail("%s leaves RGB colour in a transparent background pixel" % label)
 					return false
 			else:
 				visible_pixels += 1
 				minimum_visible_alpha = mini(minimum_visible_alpha, alpha)
 		var pixel_count := transparent_pixels + visible_pixels
 		if pixel_count == 0 or float(transparent_pixels) / float(pixel_count) < 0.4:
-			_fail("Death blood pool variant still covers most of its rectangular cell")
+			_fail("%s variant still covers most of its rectangular cell" % label)
 			return false
-		if visible_pixels == 0 or minimum_visible_alpha < effect.POOL_ALPHA_CUTOFF:
-			_fail("Death blood pool keeps the low-alpha black haze that forms a box")
+		if visible_pixels == 0 or minimum_visible_alpha <= alpha_cutoff:
+			_fail("%s keeps the low-alpha black haze that forms a box" % label)
 			return false
 	return true
 

@@ -502,7 +502,7 @@ func _set_ai_locomotion_state() -> void:
 # ──────────────────────────────────────────────────────
 
 func _on_stance_changed(value: float) -> void:
-	"""响应姿态变化，同步物理参数"""
+	"""响应姿态变化，只同步移动状态；碰撞体由 PlayerCollisionController 独占。"""
 	# 进入蹲伏时强制退出 Run/Sprint，确保速度上限切换为 crouch_speed
 	if value > 0.05:
 		if _is_sprinting:
@@ -510,8 +510,6 @@ func _on_stance_changed(value: float) -> void:
 		if _is_running:
 			_is_running = false
 			stopped_running.emit()
-	_update_collision_shape(value)
-	_update_model_offset(value)
 
 func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, ai_driving: bool) -> void:
 	_is_running = false
@@ -581,46 +579,3 @@ func _is_prone_roll_combo_pressed(side: bool, ai_driving: bool) -> bool:
 	return Input.is_action_just_pressed("jump") \
 		or Input.is_action_just_pressed("move_left") \
 		or Input.is_action_just_pressed("move_right")
-
-
-func _update_collision_shape(stance: float) -> void:
-	"""根据姿态值更新碰撞体高度"""
-	# 懒加载碰撞体
-	var collision_shape: CollisionShape3D = null
-	for child in _player.get_children():
-		if child is CollisionShape3D:
-			collision_shape = child
-			break
-
-	if not collision_shape or not (collision_shape.shape is CapsuleShape3D):
-		return
-
-	var shape := collision_shape.shape as CapsuleShape3D
-	var standing_height: float = _config.collision_shape_height
-	var prone_blend: float = _player.stance_controller.get_prone_geometry_blend() \
-		if _player.stance_controller else 0.0
-	var non_prone_height: float = lerpf(standing_height, _config.crouch_capsule_height, stance)
-	var target_height: float = lerpf(non_prone_height, _config.prone_capsule_height, prone_blend)
-	shape.height = target_height
-	# Keep the non-prone capsule bottom anchored. The old sign moved the center
-	# upward as the capsule shrank, making CharacterBody fall and then get pushed
-	# upward again when standing — the visible one-frame camera bump.
-	var non_prone_center_y: float = _config.collision_shape_y_offset \
-		+ (non_prone_height - standing_height) * 0.5
-	collision_shape.position.y = lerpf(
-		non_prone_center_y,
-		_config.prone_collision_y_offset,
-		prone_blend
-	)
-
-
-func _update_model_offset(stance: float) -> void:
-	"""根据姿态值更新模型Y偏移（让脚部贴地）"""
-	var model_node: Node3D = _player.model_manager.model_node if _player.model_manager else null
-	if not model_node:
-		return
-	var prone_blend: float = _player.stance_controller.get_prone_geometry_blend() \
-		if _player.stance_controller else 0.0
-	var non_prone_y: float = lerpf(_config.model_y_offset, _config.crouch_y_offset, stance)
-	var target_y: float = lerpf(non_prone_y, _config.prone_model_y_offset, prone_blend)
-	model_node.position.y = target_y

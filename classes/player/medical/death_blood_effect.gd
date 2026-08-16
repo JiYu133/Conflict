@@ -3,8 +3,8 @@ extends Node3D
 
 ## 独立的死亡后外部渗血表现。
 ##
-## 依赖方向：HealthSystem.medically_died / BasePlayer.revived -> 本节点。
-## 本节点不读取、不修改伤口数值；缺少美术纹理时只跳过对应视觉层。
+## 依赖方向：BasePlayer died/revived + 注入的出血点 Callable -> 本节点。
+## 本节点不读取、不修改 HealthSystem/Wound/骨骼；缺少美术纹理时只跳过对应视觉层。
 ## 贴图层使用 Godot 官方 Decal 与 GPUParticles3D 节点，方便替换资源。
 
 const DEFAULT_DROP_COLOR := Color(0.45, 0.01, 0.006, 1.0)
@@ -15,6 +15,7 @@ const POOL_ALPHA_CUTOFF := 64
 var _player: BasePlayer
 var _config: BloodEffectConfig
 var _settings_service = null
+var _bleed_origin_provider: Callable
 var _pools: Array[Decal] = []
 var _drips: GPUParticles3D
 var _ground_ray: RayCast3D
@@ -27,19 +28,21 @@ var _blood_pool_variants: Array[Texture2D] = []
 var _blood_drop_variant: Texture2D
 var _rng := RandomNumberGenerator.new()
 
-static var _atlas_variant_cache: Dictionary = {}
-
-func initialize(player: BasePlayer, config: BloodEffectConfig = null, settings_service = null) -> void:
+func initialize(
+	player: BasePlayer,
+	config: BloodEffectConfig = null,
+	settings_service = null,
+	bleed_origin_provider: Callable = Callable()
+) -> void:
 	_player = player
 	_config = config if config else BloodEffectConfig.new()
 	_settings_service = settings_service if settings_service else (player.settings_service if player else null)
+	_bleed_origin_provider = bleed_origin_provider
 	_rng.randomize()
 	add_to_group("blood_effects")
-	if not _player or not _player.health_system:
-		push_warning("DeathBloodEffect requires a player with HealthSystem.")
+	if not _player:
+		push_warning("DeathBloodEffect requires a player lifecycle source.")
 		return
-	if not _player.health_system.medically_died.is_connected(_on_medically_died):
-		_player.health_system.medically_died.connect(_on_medically_died)
 	if not _player.died.is_connected(_on_player_died):
 		_player.died.connect(_on_player_died)
 	if not _player.revived.is_connected(_on_player_revived):
@@ -52,11 +55,15 @@ func initialize(player: BasePlayer, config: BloodEffectConfig = null, settings_s
 
 func _build_nodes() -> void:
 	if _config.blood_pool_texture:
-		for variant_index in ATLAS_VARIANT_COUNT:
-			_blood_pool_variants.append(_atlas_variant(_config.blood_pool_texture, variant_index, true))
-		_blood_pool_variant = _blood_pool_variants[0]
+		_blood_pool_variants = DecalAtlasCache.build_variants(
+			_config.blood_pool_texture, ATLAS_COLUMNS, ATLAS_VARIANT_COUNT, POOL_ALPHA_CUTOFF
+		)
+		_blood_pool_variant = _blood_pool_variants[0] if not _blood_pool_variants.is_empty() else null
 	if _config.blood_drop_texture:
-		_blood_drop_variant = _atlas_variant(_config.blood_drop_texture, 1)
+		var drop_variants := DecalAtlasCache.build_variants(
+			_config.blood_drop_texture, ATLAS_COLUMNS, ATLAS_VARIANT_COUNT
+		)
+		_blood_drop_variant = drop_variants[1] if drop_variants.size() > 1 else null
 
 	_ground_ray = RayCast3D.new()
 	_ground_ray.name = "BloodGroundRay"
@@ -93,9 +100,6 @@ func _build_nodes() -> void:
 	add_child(_drip_start_timer)
 	_drip_start_timer.timeout.connect(_begin_drips)
 
-func _on_medically_died(_death_type: PlayerRagdollSystem.DeathType, _direction: Vector3) -> void:
-	_start_once()
-
 func _on_player_died() -> void:
 	# 覆盖控制台/脚本直接调用 BasePlayer.die() 的非医疗死亡路径。
 	_start_once()
@@ -104,7 +108,7 @@ func _start_once() -> void:
 	if _has_started:
 		return
 	_has_started = true
-	# 医疗信号早于 BasePlayer.die() 发出；延迟一帧等待玩家/布娃娃完成状态切换。
+	# 延迟一帧等待玩家/布娃娃完成状态切换。
 	call_deferred("_start_effect")
 
 func _start_effect() -> void:
@@ -139,69 +143,11 @@ func _global_position_for_ground_query() -> void:
 	_ground_ray.target_position = Vector3(0.0, -_config.ground_ray_length, 0.0)
 
 func _find_major_bleed_origin() -> Vector3:
-	if not _player.health_system or not _player.health_system.vitals:
-		return _player.global_position
-	var best_wound: Wound = null
-	for region_value in _player.health_system.vitals.regions.values():
-		var region: BodyRegion = region_value as BodyRegion
-		if not region:
-			continue
-		for wound_value in region.wounds:
-			var wound: Wound = wound_value as Wound
-			if not wound or wound.is_bandaged or wound.is_tourniqueted:
-				continue
-			if wound.bleed_rate == MedicalEnums.BleedRate.NONE:
-				continue
-			if best_wound == null or _is_higher_priority_bleed(wound, best_wound):
-				best_wound = wound
-	if not best_wound:
-		return _player.global_position
-	return _wound_world_position(best_wound)
-
-
-func _is_higher_priority_bleed(candidate: Wound, current: Wound) -> bool:
-	if candidate.bleed_rate != current.bleed_rate:
-		return candidate.bleed_rate > current.bleed_rate
-	return candidate.severity > current.severity
-
-
-func _wound_world_position(wound: Wound) -> Vector3:
-	if wound.has_bone_local_position and not wound.anchor_bone.is_empty():
-		var anchored_position := _bone_world_position(wound.anchor_bone, wound.bone_local_position)
-		if anchored_position != Vector3.INF:
-			return anchored_position
-	if wound.has_hit_position:
-		return wound.hit_position
-	for fallback_name in _fallback_bone_names(wound.body_part):
-		var fallback_position := _bone_world_position(fallback_name, Vector3.ZERO)
-		if fallback_position != Vector3.INF:
-			return fallback_position
+	if _bleed_origin_provider.is_valid():
+		var provided: Variant = _bleed_origin_provider.call()
+		if provided is Vector3 and provided != Vector3.INF:
+			return provided as Vector3
 	return _player.global_position
-
-func _bone_world_position(bone_name: String, local_entry: Vector3) -> Vector3:
-	if not _player.model_manager or not _player.model_manager.skeleton:
-		return Vector3.INF
-	var skeleton: Skeleton3D = _player.model_manager.skeleton
-	var bone_index := skeleton.find_bone(bone_name)
-	if bone_index < 0:
-		return Vector3.INF
-	var bone_world_transform := skeleton.global_transform * skeleton.get_bone_global_pose(bone_index)
-	return bone_world_transform * local_entry
-
-
-func _fallback_bone_names(part: MedicalEnums.BodyPartId) -> Array[String]:
-	match part:
-		MedicalEnums.BodyPartId.HEAD: return ["mixamorig_Head", "Head"]
-		MedicalEnums.BodyPartId.TORSO: return ["mixamorig_Spine2", "mixamorig_Spine1", "Spine2"]
-		MedicalEnums.BodyPartId.LEFT_UPPER_ARM: return ["mixamorig_LeftArm", "LeftArm"]
-		MedicalEnums.BodyPartId.LEFT_FOREARM: return ["mixamorig_LeftForeArm", "LeftForeArm"]
-		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM: return ["mixamorig_RightArm", "RightArm"]
-		MedicalEnums.BodyPartId.RIGHT_FOREARM: return ["mixamorig_RightForeArm", "RightForeArm"]
-		MedicalEnums.BodyPartId.LEFT_THIGH: return ["mixamorig_LeftUpLeg", "LeftUpLeg"]
-		MedicalEnums.BodyPartId.LEFT_CALF: return ["mixamorig_LeftLeg", "LeftLeg"]
-		MedicalEnums.BodyPartId.RIGHT_THIGH: return ["mixamorig_RightUpLeg", "RightUpLeg"]
-		MedicalEnums.BodyPartId.RIGHT_CALF: return ["mixamorig_RightLeg", "RightLeg"]
-	return [""]
 
 func _create_pool(ground_point: Vector3) -> void:
 	if not _config.blood_pool_texture:
@@ -218,7 +164,15 @@ func _create_pool(ground_point: Vector3) -> void:
 	pool.size = Vector3(start_size.x, 0.08, start_size.y)
 	# Decal 默认从 +Y 向 -Y 投影，适合水平地面。
 	pool.rotation = Vector3(0.0, _rng.randf_range(-PI, PI), 0.0)
-	add_child(pool)
+	# Persistent stains belong to the world, not this movable wound emitter.
+	# Otherwise a revive followed by another death relocates every old pool when
+	# DeathBloodEffect moves to the new wound origin.
+	var world_parent := _world_parent()
+	if not world_parent:
+		push_warning("DeathBloodEffect: no world parent; blood pool creation skipped.")
+		pool.queue_free()
+		return
+	world_parent.add_child(pool)
 	# ground_point comes from RayCast3D in world space. Assign it after parenting
 	# through global_position so the wound-origin transform is not applied twice.
 	var position_jitter := Vector3(
@@ -265,8 +219,16 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 func _blood_effects_enabled() -> bool:
 	return bool(_settings_service.get_value("graphics/blood_effects", true)) if _settings_service else true
 
+
+func _world_parent() -> Node:
+	if is_instance_valid(_player) and is_instance_valid(_player.get_parent()):
+		return _player.get_parent()
+	return get_tree().current_scene if get_tree() else null
+
+
 func _on_player_exiting() -> void:
 	# 死亡效果脱离玩家节点后，仍需跟随玩家实例的生命周期清理。
+	clear_bloodstains()
 	queue_free()
 
 ## 清除该效果节点创建的全部血迹。由 ConsoleSystem 的 clear_blood 指令调用。
@@ -303,61 +265,6 @@ func _make_drop_mesh() -> QuadMesh:
 	material.albedo_texture = _blood_drop_variant
 	mesh.material = material
 	return mesh
-
-func _atlas_variant(texture: Texture2D, variant_index: int, clean_pool_alpha: bool = false) -> Texture2D:
-	if not texture:
-		return null
-	var atlas_size := texture.get_size()
-	if atlas_size.x < 2.0 or atlas_size.y < 2.0:
-		return texture
-	var cache_key := "%d:%d:%d:%d" % [
-		texture.get_instance_id(), variant_index, int(clean_pool_alpha), POOL_ALPHA_CUTOFF
-	]
-	if _atlas_variant_cache.has(cache_key):
-		return _atlas_variant_cache[cache_key] as Texture2D
-	# Decal does not accept AtlasTexture because it needs a concrete GPU image.
-	# Crop once and share the ImageTexture across all players/bots instead.
-	var atlas_image := texture.get_image()
-	if atlas_image.is_compressed():
-		var decompress_error := atlas_image.decompress()
-		if decompress_error != OK:
-			push_error("DeathBloodEffect: failed to decompress blood atlas (%s)" % error_string(decompress_error))
-			return texture
-	var cell_size := Vector2i(
-		atlas_image.get_width() / ATLAS_COLUMNS,
-		atlas_image.get_height() / ATLAS_COLUMNS
-	)
-	var column := variant_index % ATLAS_COLUMNS
-	var row := int(variant_index / ATLAS_COLUMNS)
-	var cell := atlas_image.get_region(Rect2i(Vector2i(column, row) * cell_size, cell_size))
-	if clean_pool_alpha:
-		cell = _remove_pool_background_haze(cell)
-	var variant := ImageTexture.create_from_image(cell)
-	_atlas_variant_cache[cache_key] = variant
-	return variant
-
-
-func _remove_pool_background_haze(image: Image) -> Image:
-	# The source atlas has a large number of nearly transparent black pixels.
-	# Oblique decal sampling can turn that tail into a visible dark rectangle.
-	# Remove the whole low-alpha pixel (including RGB) so filtering cannot pull
-	# black colour back across a transparent edge.
-	image.convert(Image.FORMAT_RGBA8)
-	image.clear_mipmaps()
-	var pixel_data := image.get_data()
-	for alpha_index in range(3, pixel_data.size(), 4):
-		if pixel_data[alpha_index] < POOL_ALPHA_CUTOFF:
-			pixel_data[alpha_index - 3] = 0
-			pixel_data[alpha_index - 2] = 0
-			pixel_data[alpha_index - 1] = 0
-			pixel_data[alpha_index] = 0
-	return Image.create_from_data(
-		image.get_width(),
-		image.get_height(),
-		false,
-		Image.FORMAT_RGBA8,
-		pixel_data
-	)
 
 func _make_drip_process_material() -> ParticleProcessMaterial:
 	var material := ParticleProcessMaterial.new()

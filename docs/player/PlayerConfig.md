@@ -51,6 +51,11 @@
 | `camera_config` | `CameraConfig` | `null` | 摄像机与视角效果配置资源 |
 | `collision_shape_height` | `float` | `1.8` | 碰撞胶囊体高度（m） |
 | `collision_shape_radius` | `float` | `0.4` | 碰撞胶囊体半径（m） |
+| `hitbox_driven_collision` | `bool` | `true` | 从当前 BodyHitbox 自动推导环境胶囊高度 |
+| `collision_bounds_margin` | `float` | `0.025` | 自动边界通用安全余量（m） |
+| `collision_bounds_follow_speed` | `float` | `2.0` | 胶囊边界最大追随速度（m/s） |
+| `collision_bounds_min_height` | `float` | `0.6` | 自动胶囊最小合法高度（m） |
+| `collision_bounds_max_height` | `float` | `3.0` | 异常动作保护的最大高度（m） |
 
 ### 武器配置
 

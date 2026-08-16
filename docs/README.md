@@ -25,6 +25,7 @@ BasePlayer (CharacterBody3D)
 │
 ├── PlayerModelManager         模型加载与骨骼缓存
 ├── PlayerMovementController   移动物理（起步/步态/转向/制动）
+├── PlayerCollisionController  hitbox 驱动的主环境碰撞体
 ├── PlayerCameraController     摄像机效果（5层叠加）
 ├── PlayerAnimationController  动画状态机
 ├── PlayerRagdollSystem        死亡布娃娃
@@ -120,6 +121,7 @@ BaseWeapon
 | [ModelLookupConfig](player/ModelLookupConfig.md) | `Classes/Player/model_lookup_config.gd` | 模型节点自动查找规则 |
 | [PlayerModelManager](player/PlayerModelManager.md) | `Classes/Player/player_model_manager.gd` | 模型加载与骨骼缓存 |
 | [PlayerMovementController](player/PlayerMovementController.md) | `Classes/Player/player_movement_controller.gd` | 移动物理与信号发射 |
+| [PlayerCollisionController](player/PlayerCollisionController.md) | `classes/player/player_collision_controller.gd` | 主碰撞体唯一所有者、实时 hitbox 边界追随 |
 | [PlayerCameraController](player/PlayerCameraController.md) | `Classes/Player/player_camera_controller.gd` | 摄像机挂载与5层程序化效果 |
 | [PlayerAnimationController](player/PlayerAnimationController.md) | `Classes/Player/player_animation_controller.gd` | 信号驱动的动画状态机 |
 | [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `Classes/Player/player_ragdoll_system.gd` | 死亡布娃娃开关 |

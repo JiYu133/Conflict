@@ -81,6 +81,7 @@ var look_controller: PlayerLookController
 var camera_controller: PlayerCameraController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
+var collision_controller: PlayerCollisionController
 var foot_ik_controller: FootIKController
 var hand_ik_controller: HandIKController
 var spine_aim_controller: SpineAimController
@@ -172,6 +173,7 @@ func _initialize_subsystems() -> void:
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
 	stance_controller = _create_subsystem(StanceController.new(), "StanceController")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
+	collision_controller = _create_subsystem(PlayerCollisionController.new(), "CollisionController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
 	spine_aim_controller = _create_subsystem(SpineAimController.new(), "SpineAimController")
@@ -227,11 +229,19 @@ func _initialize_subsystems() -> void:
 		self,
 		player_config.health_config if player_config else null
 		)
+	collision_controller.initialize(
+		self,
+		stance_controller,
+		model_manager,
+		player_config.movement_config if player_config and player_config.movement_config else MovementConfig.new(),
+		Callable(health_system, "get_active_hitboxes")
+		)
 	death_blood_effect = _create_subsystem(DEATH_BLOOD_EFFECT_SCRIPT.new(), "DeathBloodEffect") as DeathBloodEffect
 	death_blood_effect.initialize(
 		self,
 		player_config.blood_effect_config if player_config else null,
-		settings_service
+		settings_service,
+		Callable(health_system, "get_major_external_bleed_world_position")
 		)
 
 	# 命中反馈只消费医疗系统结果：伤口、喷溅、滴落与血泊不反向影响伤害判定。
@@ -305,9 +315,6 @@ func _connect_signals() -> void:
 	weapon_manager.weapon_stats_changed.connect(_sync_weapon_weight_to_stamina)
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
-	stance_controller.prone_geometry_changed.connect(
-		func(_blend): movement_controller._on_stance_changed(stance_controller.get_stance_value())
-	)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
 	# 运动状态 → 左手 IK 权重过渡

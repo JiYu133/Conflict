@@ -243,6 +243,87 @@ func get_hitbox_rids() -> Array[RID]:
 			rids.append(hitbox.get_rid())
 	return rids
 
+
+## Read-only view of the current bone-following hitboxes.  Consumers should use
+## BodyHitbox's geometry API and must not mutate or free these nodes; HealthSystem
+## remains the sole owner of their death/revive/model-reload lifecycle.
+func get_active_hitboxes() -> Array[BodyHitbox]:
+	var active: Array[BodyHitbox] = []
+	for hitbox in _hitboxes:
+		if is_instance_valid(hitbox):
+			active.append(hitbox)
+	return active
+
+
+## Resolves a presentation-safe snapshot of the most important external bleed.
+## Visual components receive this world position through an injected Callable;
+## they never traverse VitalsModel, Wound, or the player skeleton themselves.
+func get_major_external_bleed_world_position() -> Vector3:
+	if not _player:
+		return Vector3.INF
+	var best_wound: Wound = null
+	for region_value in vitals.regions.values():
+		var region := region_value as BodyRegion
+		if not region:
+			continue
+		for wound_value in region.wounds:
+			var wound := wound_value as Wound
+			if not wound or wound.is_bandaged or wound.is_tourniqueted:
+				continue
+			if wound.bleed_rate == MedicalEnums.BleedRate.NONE:
+				continue
+			if best_wound == null or _is_higher_priority_external_bleed(wound, best_wound):
+				best_wound = wound
+	if not best_wound:
+		return _player.global_position
+	return _wound_world_position(best_wound)
+
+
+func _is_higher_priority_external_bleed(candidate: Wound, current: Wound) -> bool:
+	if candidate.bleed_rate != current.bleed_rate:
+		return candidate.bleed_rate > current.bleed_rate
+	return candidate.severity > current.severity
+
+
+func _wound_world_position(wound: Wound) -> Vector3:
+	if wound.has_bone_local_position and not wound.anchor_bone.is_empty():
+		var anchored_position := _bone_world_position(wound.anchor_bone, wound.bone_local_position)
+		if anchored_position != Vector3.INF:
+			return anchored_position
+	if wound.has_hit_position:
+		return wound.hit_position
+	for fallback_name in _fallback_bone_names(wound.body_part):
+		var fallback_position := _bone_world_position(fallback_name, Vector3.ZERO)
+		if fallback_position != Vector3.INF:
+			return fallback_position
+	return _player.global_position
+
+
+func _bone_world_position(bone_name: String, local_entry: Vector3) -> Vector3:
+	if not _player.model_manager or not _player.model_manager.skeleton:
+		return Vector3.INF
+	var skeleton: Skeleton3D = _player.model_manager.skeleton
+	var bone_index := skeleton.find_bone(bone_name)
+	if bone_index < 0:
+		return Vector3.INF
+	var bone_world_transform := skeleton.global_transform * skeleton.get_bone_global_pose(bone_index)
+	return bone_world_transform * local_entry
+
+
+func _fallback_bone_names(part: MedicalEnums.BodyPartId) -> Array[String]:
+	match part:
+		MedicalEnums.BodyPartId.HEAD: return ["mixamorig_Head", "Head"]
+		MedicalEnums.BodyPartId.TORSO: return ["mixamorig_Spine2", "mixamorig_Spine1", "Spine2"]
+		MedicalEnums.BodyPartId.LEFT_UPPER_ARM: return ["mixamorig_LeftArm", "LeftArm"]
+		MedicalEnums.BodyPartId.LEFT_FOREARM: return ["mixamorig_LeftForeArm", "LeftForeArm"]
+		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM: return ["mixamorig_RightArm", "RightArm"]
+		MedicalEnums.BodyPartId.RIGHT_FOREARM: return ["mixamorig_RightForeArm", "RightForeArm"]
+		MedicalEnums.BodyPartId.LEFT_THIGH: return ["mixamorig_LeftUpLeg", "LeftUpLeg"]
+		MedicalEnums.BodyPartId.LEFT_CALF: return ["mixamorig_LeftLeg", "LeftLeg"]
+		MedicalEnums.BodyPartId.RIGHT_THIGH: return ["mixamorig_RightUpLeg", "RightUpLeg"]
+		MedicalEnums.BodyPartId.RIGHT_CALF: return ["mixamorig_RightLeg", "RightLeg"]
+	return [""]
+
 # 状态乘数查询（P4）
 func get_movement_speed_multiplier() -> float:
 	if not vitals:
