@@ -39,8 +39,10 @@ func _run() -> void:
 	stance._prone_geometry_blend = 1.0
 	stance._prone_geometry_target = 1.0
 	# Disable hitbox sampling here to isolate the fallback transition. A separate
-	# bounds test verifies that live BodyHitbox geometry drives the controller.
-	collision_controller._hitbox_provider = Callable()
+	# envelope test verifies that live BodyHitbox geometry drives the controller.
+	collision_controller.set_physics_process(false)
+	collision_controller.set_envelope_provider(Callable())
+	stance.prone_geometry_changed.emit(1.0)
 	collision_controller.refresh_immediately()
 
 	var shape := collision.shape as CapsuleShape3D
@@ -61,20 +63,20 @@ func _run() -> void:
 	var previous_height := shape.height
 	var previous_center_y := collision.position.y
 	var previous_model_y := model.position.y
-	var prone_bottom_y := collision.position.y - shape.height * 0.5
+	var prone_bottom_y := collision_controller.get_floor_contact_y()
 	var max_height_step := 0.0
 	var max_center_step := 0.0
 	var max_model_step := 0.0
 	var max_bottom_drift := 0.0
 	for _frame in 12:
 		stance._process(1.0 / 60.0)
-		collision_controller._update_collision_bounds(1.0 / 60.0, false)
+		collision_controller._update_geometry(1.0 / 60.0, false)
 		max_height_step = maxf(max_height_step, absf(shape.height - previous_height))
 		max_center_step = maxf(max_center_step, absf(collision.position.y - previous_center_y))
 		max_model_step = maxf(max_model_step, absf(model.position.y - previous_model_y))
 		max_bottom_drift = maxf(
 			max_bottom_drift,
-			absf(collision.position.y - shape.height * 0.5 - prone_bottom_y)
+			absf(collision_controller.get_floor_contact_y() - prone_bottom_y)
 		)
 		previous_height = shape.height
 		previous_center_y = collision.position.y

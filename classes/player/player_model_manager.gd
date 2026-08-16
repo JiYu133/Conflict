@@ -106,6 +106,13 @@ func unload_model() -> void:
 		model_unloaded.emit()
 
 
+## Public value interface used by the BasePlayer composition root. The model
+## manager does not know which stance or animation produced this offset.
+func set_model_vertical_offset(value: float) -> void:
+	if is_instance_valid(_model_node):
+		_model_node.position.y = value
+
+
 # ============================================================
 # 节点查找
 # ============================================================

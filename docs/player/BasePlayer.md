@@ -44,6 +44,8 @@
 | `weapon_manager` | `WeaponManager` | 武器管理器引用 |
 | `animation_controller` | `PlayerAnimationController` | 动画控制器引用 |
 
+`BasePlayer` 同时是玩家子系统的组合根：它负责连接 stance 信号，并通过公开的纯数值接口更新 movement、camera、model 与 collision。在这条姿态/碰撞数据流中，业务组件不互相保存引用；医疗 hitbox 包络以 `Callable -> AABB` 注入碰撞控制器。
+
 ## 公开方法（Methods）
 
 ### `die() -> void`

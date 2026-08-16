@@ -1,79 +1,114 @@
 class_name PlayerCollisionController
 extends Node
 
-## Owns the CharacterBody3D environment capsule.
+## Sole owner of the CharacterBody3D environment capsule.
 ##
-## The rendered model and its medical hitboxes are allowed to change with any
-## authored animation.  This controller samples those hitboxes through an
-## injected provider and follows their vertical extent with one generic speed;
-## no animation-specific capsule height is required.  When hitboxes are not yet
-## available, the old stance configuration is used only as a safe fallback.
+## This component knows only its body, configuration, and a value-only AABB
+## provider. It does not know StanceController, PlayerModelManager,
+## HealthSystem, BodyHitbox, or animation names. BasePlayer is the composition
+## root that injects the provider and forwards fallback pose values.
 ##
-## Dependency direction:
-##   StanceController signals + hitbox provider -> this controller -> capsule
-## PlayerModelManager and PlayerMovementController never create or resize the
-## capsule, so there is a single owner of the physical volume.
+## A complete 3D envelope is fitted into a capsule. The longest stable envelope
+## axis becomes the capsule axis: standing bodies remain vertical while a prone
+## body automatically rotates the same capsule horizontally. Axis hysteresis,
+## bounded dimension changes, and bounded rotation prevent one-frame jumps.
 
-var _player: BasePlayer
-var _stance: StanceController
-var _model_manager: PlayerModelManager
+signal geometry_changed(
+	height: float,
+	radius: float,
+	axis: Vector3,
+	center: Vector3,
+	floor_y: float
+)
+
+var _body: CharacterBody3D
 var _config: MovementConfig
-var _hitbox_provider: Callable
+var _envelope_provider: Callable
 var _collision_shape: CollisionShape3D
-var _floor_bottom: float = 0.0
+var _floor_y: float = 0.0
+var _fallback_height: float = 1.8
+var _target_axis := Vector3.UP
+var _pending_axis := Vector3.UP
+var _pending_axis_frames: int = 0
+var _fit_axis := Vector3.UP
+var _fit_center := Vector3.ZERO
+var _fit_height: float = 1.8
+var _fit_radius: float = 0.4
 
 
 func initialize(
-	player: BasePlayer,
-	stance: StanceController,
-	model_manager: PlayerModelManager,
+	body: CharacterBody3D,
 	config: MovementConfig,
-	hitbox_provider: Callable = Callable()
+	envelope_provider: Callable = Callable()
 ) -> void:
-	_player = player
-	_stance = stance
-	_model_manager = model_manager
+	_body = body
 	_config = config if config else MovementConfig.new()
-	_hitbox_provider = hitbox_provider
+	_envelope_provider = envelope_provider
+	_fallback_height = _config.collision_shape_height
+	_floor_y = _config.collision_shape_y_offset - _config.collision_shape_height * 0.5
 	_ensure_collision_shape()
 
-	if _stance:
-		if not _stance.stance_changed.is_connected(_on_stance_geometry_changed):
-			_stance.stance_changed.connect(_on_stance_geometry_changed)
-		if not _stance.prone_geometry_changed.is_connected(_on_prone_geometry_changed):
-			_stance.prone_geometry_changed.connect(_on_prone_geometry_changed)
-	if _model_manager and not _model_manager.model_loaded.is_connected(_on_model_loaded):
-		_model_manager.model_loaded.connect(_on_model_loaded)
-	_update_model_offset()
-	_floor_bottom = _config.collision_shape_y_offset - _config.collision_shape_height * 0.5
+
+## Replaces the source of player-local 3D envelope snapshots. The callable must
+## return AABB and should not expose nodes or mutable component state.
+func set_envelope_provider(provider: Callable) -> void:
+	_envelope_provider = provider
 
 
-## Returns the only environment collision shape owned by this controller.
-## Tests and debug UI may inspect it, but other gameplay components must not
-## replace its shape or write its height/position.
+## Supplies a value-only fallback for startup/model reload. Live hitbox data
+## takes priority whenever the injected provider returns a valid envelope.
+func set_fallback_height(height: float) -> void:
+	_fallback_height = maxf(height, 0.01)
+
+
+## Returns the only environment collision shape owned by this component.
+## Callers may inspect it but must not replace its shape or write its transform.
 func get_collision_shape() -> CollisionShape3D:
 	return _collision_shape
 
 
-## Re-evaluates visual and physical geometry without smoothing.  Intended for
-## deterministic setup/tests; normal gameplay uses _physics_process().
+func get_capsule_axis() -> Vector3:
+	if not _collision_shape:
+		return Vector3.UP
+	return _collision_shape.transform.basis.y.normalized()
+
+
+func get_floor_contact_y() -> float:
+	if not _collision_shape or not (_collision_shape.shape is CapsuleShape3D):
+		return _floor_y
+	var capsule := _collision_shape.shape as CapsuleShape3D
+	return _collision_shape.position.y - _vertical_half_extent(
+		capsule.height,
+		capsule.radius,
+		get_capsule_axis()
+	)
+
+
+func get_vertical_extent() -> float:
+	if not _collision_shape or not (_collision_shape.shape is CapsuleShape3D):
+		return 0.0
+	var capsule := _collision_shape.shape as CapsuleShape3D
+	return _vertical_half_extent(capsule.height, capsule.radius, get_capsule_axis()) * 2.0
+
+
+## Deterministic setup/test hook. Normal gameplay follows the same target from
+## _physics_process with speed limits and axis-switch stability.
 func refresh_immediately() -> void:
-	_update_model_offset()
-	_update_collision_bounds(0.0, true)
+	_update_geometry(0.0, true)
 
 
 func _physics_process(delta: float) -> void:
-	if not _player or not _player.is_alive:
+	if not _body:
 		return
-	_update_collision_bounds(delta, false)
+	_update_geometry(delta, false)
 
 
 func _ensure_collision_shape() -> void:
-	_collision_shape = _player.get_node_or_null("PlayerCollisionShape") as CollisionShape3D
+	_collision_shape = _body.get_node_or_null("PlayerCollisionShape") as CollisionShape3D
 	if not _collision_shape:
 		_collision_shape = CollisionShape3D.new()
 		_collision_shape.name = "PlayerCollisionShape"
-		_player.add_child(_collision_shape)
+		_body.add_child(_collision_shape)
 
 	var capsule := _collision_shape.shape as CapsuleShape3D
 	if not capsule:
@@ -82,115 +117,200 @@ func _ensure_collision_shape() -> void:
 	capsule.radius = _config.collision_shape_radius
 	capsule.height = maxf(_config.collision_shape_height, capsule.radius * 2.0)
 	_collision_shape.position = Vector3(0.0, _config.collision_shape_y_offset, 0.0)
+	_collision_shape.quaternion = Quaternion.IDENTITY
 
 
-func _on_model_loaded(_model: Node3D) -> void:
-	_update_model_offset()
-
-
-func _on_stance_geometry_changed(_value: float) -> void:
-	_update_model_offset()
-
-
-func _on_prone_geometry_changed(_value: float) -> void:
-	_update_model_offset()
-
-
-func _update_model_offset() -> void:
-	if not _model_manager or not is_instance_valid(_model_manager.model_node):
-		return
-	var stance_value: float = _stance.get_stance_value() if _stance else 0.0
-	var prone_blend: float = _stance.get_prone_geometry_blend() if _stance else 0.0
-	var non_prone_y := lerpf(_config.model_y_offset, _config.crouch_y_offset, stance_value)
-	_model_manager.model_node.position.y = lerpf(
-		non_prone_y,
-		_config.prone_model_y_offset,
-		prone_blend
-	)
-
-
-func _update_collision_bounds(delta: float, snap: bool) -> void:
+func _update_geometry(delta: float, snap: bool) -> void:
 	if not _collision_shape or not (_collision_shape.shape is CapsuleShape3D):
 		return
-	var target_bounds := _sample_hitbox_bounds()
-	if not _bounds_are_valid(target_bounds):
-		target_bounds = _fallback_stance_bounds()
+	var envelope := _sample_envelope()
+	if _envelope_is_valid(envelope):
+		_fit_envelope(envelope, snap)
 	else:
-		# Medical hitboxes stop at the calves rather than the soles, so the main
-		# capsule keeps its stable floor contact. Highest/lowest hitbox positions
-		# still determine the required volume; a pose extending below the floor is
-		# conservatively added above it instead of pushing CharacterBody downward.
-		var height_from_floor := target_bounds.y - _floor_bottom
-		var sampled_height := target_bounds.y - target_bounds.x
-		var environment_height := maxf(height_from_floor, sampled_height) \
-			+ _config.collision_bounds_margin
-		target_bounds = Vector2(_floor_bottom, _floor_bottom + environment_height)
-	target_bounds = _clamp_bounds_height(target_bounds)
+		_fit_fallback(snap)
+	_apply_target(delta, snap)
 
-	var capsule := _collision_shape.shape as CapsuleShape3D
-	var current_bounds := Vector2(
-		_collision_shape.position.y - capsule.height * 0.5,
-		_collision_shape.position.y + capsule.height * 0.5
+
+func _sample_envelope() -> AABB:
+	if not _config.hitbox_driven_collision or not _envelope_provider.is_valid():
+		return AABB()
+	var value: Variant = _envelope_provider.call()
+	return value as AABB if value is AABB else AABB()
+
+
+func _fit_envelope(envelope: AABB, snap_axis: bool) -> void:
+	var margin := maxf(_config.collision_bounds_margin, 0.0)
+	var padded := AABB(
+		envelope.position - Vector3.ONE * margin,
+		envelope.size + Vector3.ONE * margin * 2.0
 	)
-	var next_bounds := target_bounds
+	var axis := _select_axis(padded.size, snap_axis)
+	var center := padded.get_center()
+	var radius: float
+	var height: float
+	if absf(axis.y) > 0.5:
+		radius = maxf(padded.size.x, padded.size.z) * 0.5
+		# A standing capsule must reach the highest hitbox from the fixed foot
+		# plane. This also covers authored hitboxes that stop above the soles.
+		height = maxf(padded.end.y - _floor_y, padded.size.y)
+	else:
+		# Once the body is horizontal, use the envelope's actual thickness rather
+		# than its absolute Y offset. Grounding that thickness at the stable foot
+		# plane avoids turning an authored prone pose offset into empty capsule
+		# space below the body.
+		var cross_axis_width := padded.size.z if absf(axis.x) > 0.5 else padded.size.x
+		radius = maxf(cross_axis_width, padded.size.y) * 0.5
+		height = padded.size.x if absf(axis.x) > 0.5 else padded.size.z
+
+	radius = clampf(
+		radius,
+		_config.collision_shape_radius,
+		maxf(_config.collision_bounds_max_radius, _config.collision_shape_radius)
+	)
+	var minimum_height := maxf(_config.collision_bounds_min_height, radius * 2.0)
+	height = clampf(
+		maxf(height, minimum_height),
+		minimum_height,
+		maxf(_config.collision_bounds_max_height, minimum_height)
+	)
+	center.y = _floor_y + _vertical_half_extent(height, radius, axis)
+	_fit_axis = axis
+	_fit_center = center
+	_fit_height = height
+	_fit_radius = radius
+
+
+func _fit_fallback(_snap_axis: bool) -> void:
+	# Fallback dimensions are authored as a vertical capsule. Returning to this
+	# axis is still smoothed by _apply_target during gameplay.
+	_target_axis = Vector3.UP
+	_pending_axis = Vector3.UP
+	_pending_axis_frames = 0
+	var axis := Vector3.UP
+	var radius := _config.collision_shape_radius
+	var minimum_height := maxf(_config.collision_bounds_min_height, radius * 2.0)
+	var height := clampf(
+		maxf(_fallback_height, minimum_height),
+		minimum_height,
+		maxf(_config.collision_bounds_max_height, minimum_height)
+	)
+	_fit_axis = axis
+	_fit_center = Vector3(0.0, _floor_y + height * 0.5, 0.0)
+	_fit_height = height
+	_fit_radius = radius
+
+
+func _select_axis(size: Vector3, snap: bool) -> Vector3:
+	var candidate := Vector3.UP
+	var candidate_length := size.y
+	if size.x > candidate_length:
+		candidate = Vector3.RIGHT
+		candidate_length = size.x
+	if size.z > candidate_length:
+		candidate = Vector3.BACK
+		candidate_length = size.z
+
+	if candidate == _target_axis:
+		_pending_axis = candidate
+		_pending_axis_frames = 0
+		return _target_axis
+	var current_length := _axis_extent(size, _target_axis)
+	if candidate_length < current_length * maxf(_config.collision_axis_switch_ratio, 1.0):
+		_pending_axis = _target_axis
+		_pending_axis_frames = 0
+		return _target_axis
+	if snap:
+		_target_axis = candidate
+		_pending_axis = candidate
+		_pending_axis_frames = 0
+		return _target_axis
+	if candidate != _pending_axis:
+		_pending_axis = candidate
+		_pending_axis_frames = 1
+	else:
+		_pending_axis_frames += 1
+	if _pending_axis_frames >= maxi(_config.collision_axis_switch_stability_frames, 1):
+		_target_axis = candidate
+		_pending_axis_frames = 0
+	return _target_axis
+
+
+func _apply_target(delta: float, snap: bool) -> void:
+	var capsule := _collision_shape.shape as CapsuleShape3D
+	var target_height := _fit_height
+	var target_radius := _fit_radius
+	var target_axis := _fit_axis
+	var target_center := _fit_center
+	var next_height := target_height
+	var next_radius := target_radius
+	var next_axis := target_axis
+	var next_center := target_center
+
 	if not snap:
-		var step := maxf(_config.collision_bounds_follow_speed, 0.01) * delta
-		next_bounds = Vector2(
-			move_toward(current_bounds.x, target_bounds.x, step),
-			move_toward(current_bounds.y, target_bounds.y, step)
+		var linear_step := maxf(_config.collision_bounds_follow_speed, 0.01) * delta
+		next_radius = move_toward(capsule.radius, target_radius, linear_step)
+		# Respect Godot's height >= 2 * radius invariant without allowing the
+		# resource to enlarge height by more than the configured linear step.
+		var constrained_height_target := maxf(target_height, next_radius * 2.0)
+		next_height = move_toward(capsule.height, constrained_height_target, linear_step)
+		next_radius = minf(next_radius, next_height * 0.5)
+		next_axis = _rotate_axis_toward(
+			get_capsule_axis(),
+			target_axis,
+			deg_to_rad(maxf(_config.collision_axis_follow_speed_degrees, 1.0)) * delta
 		)
-	next_bounds = _clamp_bounds_height(next_bounds)
-	capsule.height = next_bounds.y - next_bounds.x
-	_collision_shape.position.y = (next_bounds.x + next_bounds.y) * 0.5
+		next_center.x = move_toward(_collision_shape.position.x, target_center.x, linear_step)
+		next_center.z = move_toward(_collision_shape.position.z, target_center.z, linear_step)
 
-
-func _sample_hitbox_bounds() -> Vector2:
-	if not _config.hitbox_driven_collision or not _hitbox_provider.is_valid():
-		return Vector2(INF, -INF)
-	var hitboxes_value: Variant = _hitbox_provider.call()
-	if not hitboxes_value is Array:
-		return Vector2(INF, -INF)
-	var bounds := Vector2(INF, -INF)
-	for hitbox_value in hitboxes_value as Array:
-		var hitbox := hitbox_value as Node
-		if not is_instance_valid(hitbox) or not hitbox.has_method("get_vertical_bounds"):
-			continue
-		var hitbox_bounds: Vector2 = hitbox.call("get_vertical_bounds", _player)
-		if not _bounds_are_valid(hitbox_bounds):
-			continue
-		bounds.x = minf(bounds.x, hitbox_bounds.x)
-		bounds.y = maxf(bounds.y, hitbox_bounds.y)
-	return bounds
-
-
-func _fallback_stance_bounds() -> Vector2:
-	var stance_value: float = _stance.get_stance_value() if _stance else 0.0
-	var prone_blend: float = _stance.get_prone_geometry_blend() if _stance else 0.0
-	var standing_height := _config.collision_shape_height
-	var non_prone_height := lerpf(standing_height, _config.crouch_capsule_height, stance_value)
-	var configured_height := lerpf(non_prone_height, _config.prone_capsule_height, prone_blend)
-	var non_prone_center := _config.collision_shape_y_offset \
-		+ (non_prone_height - standing_height) * 0.5
-	var center := lerpf(non_prone_center, _config.prone_collision_y_offset, prone_blend)
-	var bottom := center - configured_height * 0.5
-	var minimum_height := maxf(
-		_config.collision_bounds_min_height,
-		(_collision_shape.shape as CapsuleShape3D).radius * 2.0
+	next_height = maxf(next_height, next_radius * 2.0)
+	_set_capsule_dimensions(capsule, next_height, next_radius)
+	_collision_shape.quaternion = Quaternion(Vector3.UP, next_axis).normalized()
+	next_center.y = _floor_y + _vertical_half_extent(
+		capsule.height,
+		capsule.radius,
+		next_axis
 	)
-	var height := clampf(configured_height, minimum_height, _config.collision_bounds_max_height)
-	# Preserve the authored floor contact when the legacy fallback requests a
-	# capsule shorter than 2 * radius. Godot capsules cannot represent that size.
-	return Vector2(bottom, bottom + height)
+	_collision_shape.position = next_center
+	geometry_changed.emit(
+		capsule.height,
+		capsule.radius,
+		next_axis,
+		next_center,
+		get_floor_contact_y()
+	)
 
 
-func _clamp_bounds_height(bounds: Vector2) -> Vector2:
-	var capsule := _collision_shape.shape as CapsuleShape3D
-	var minimum_height := maxf(_config.collision_bounds_min_height, capsule.radius * 2.0)
-	var maximum_height := maxf(_config.collision_bounds_max_height, minimum_height)
-	var center := (bounds.x + bounds.y) * 0.5
-	var height := clampf(bounds.y - bounds.x, minimum_height, maximum_height)
-	return Vector2(center - height * 0.5, center + height * 0.5)
+func _set_capsule_dimensions(capsule: CapsuleShape3D, height: float, radius: float) -> void:
+	# Godot enforces height >= 2 * radius. Assignment order matters while radius
+	# grows or shrinks, otherwise the resource can silently rewrite the other
+	# property and bypass our configured per-frame limit.
+	if radius > capsule.radius:
+		capsule.height = maxf(height, radius * 2.0)
+		capsule.radius = radius
+	else:
+		capsule.radius = radius
+		capsule.height = maxf(height, radius * 2.0)
 
 
-func _bounds_are_valid(bounds: Vector2) -> bool:
-	return is_finite(bounds.x) and is_finite(bounds.y) and bounds.y > bounds.x
+func _rotate_axis_toward(current: Vector3, target: Vector3, maximum_angle: float) -> Vector3:
+	var angle := current.angle_to(target)
+	if angle <= maximum_angle or is_zero_approx(angle):
+		return target
+	return current.slerp(target, clampf(maximum_angle / angle, 0.0, 1.0)).normalized()
+
+
+func _vertical_half_extent(height: float, radius: float, axis: Vector3) -> float:
+	var segment_half := maxf(height * 0.5 - radius, 0.0)
+	return radius + absf(axis.y) * segment_half
+
+
+func _axis_extent(size: Vector3, axis: Vector3) -> float:
+	if absf(axis.x) > 0.5:
+		return size.x
+	if absf(axis.z) > 0.5:
+		return size.z
+	return size.y
+
+
+func _envelope_is_valid(envelope: AABB) -> bool:
+	return envelope.size.x > 0.0 and envelope.size.y > 0.0 and envelope.size.z > 0.0

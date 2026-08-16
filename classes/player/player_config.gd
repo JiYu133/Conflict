@@ -151,6 +151,14 @@ var collision_bounds_min_height: float:
 	get: return movement_config.collision_bounds_min_height if movement_config else 0.6
 var collision_bounds_max_height: float:
 	get: return movement_config.collision_bounds_max_height if movement_config else 3.0
+var collision_bounds_max_radius: float:
+	get: return movement_config.collision_bounds_max_radius if movement_config else 0.75
+var collision_axis_switch_ratio: float:
+	get: return movement_config.collision_axis_switch_ratio if movement_config else 1.15
+var collision_axis_switch_stability_frames: int:
+	get: return movement_config.collision_axis_switch_stability_frames if movement_config else 4
+var collision_axis_follow_speed_degrees: float:
+	get: return movement_config.collision_axis_follow_speed_degrees if movement_config else 240.0
 var model_y_offset: float:
 	get: return movement_config.model_y_offset if movement_config else -0.5
 var prone_forward_speed: float:

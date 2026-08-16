@@ -244,15 +244,25 @@ func get_hitbox_rids() -> Array[RID]:
 	return rids
 
 
-## Read-only view of the current bone-following hitboxes.  Consumers should use
-## BodyHitbox's geometry API and must not mutate or free these nodes; HealthSystem
-## remains the sole owner of their death/revive/model-reload lifecycle.
-func get_active_hitboxes() -> Array[BodyHitbox]:
-	var active: Array[BodyHitbox] = []
+## Returns a value-only snapshot containing all current bone-following hitboxes
+## in player-local space. HealthSystem remains the sole owner of hitbox nodes;
+## presentation and movement components cannot retain or mutate them.
+func get_collision_envelope() -> AABB:
+	if not _player:
+		return AABB()
+	var envelope := AABB()
+	var has_bounds := false
+	var player_inverse := _player.global_transform.affine_inverse()
 	for hitbox in _hitboxes:
-		if is_instance_valid(hitbox):
-			active.append(hitbox)
-	return active
+		if not is_instance_valid(hitbox):
+			continue
+		var hitbox_bounds := hitbox.get_bounds_in_space(player_inverse)
+		if hitbox_bounds.size.x <= 0.0 or hitbox_bounds.size.y <= 0.0 \
+			or hitbox_bounds.size.z <= 0.0:
+			continue
+		envelope = envelope.merge(hitbox_bounds) if has_bounds else hitbox_bounds
+		has_bounds = true
+	return envelope if has_bounds else AABB()
 
 
 ## Resolves a presentation-safe snapshot of the most important external bleed.

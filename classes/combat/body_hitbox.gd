@@ -40,34 +40,37 @@ func get_body_part_id() -> MedicalEnums.BodyPartId:
 	return _part_id
 
 
-## Returns this hitbox's lowest/highest Y coordinate in another Node3D's local
-## space.  PlayerCollisionController consumes this geometry-only API, so it does
-## not need to know that HealthSystem owns the hitbox lifecycle.
-func get_vertical_bounds(relative_to: Node3D) -> Vector2:
+## Returns an axis-aligned envelope in another Node3D's local space. Only the
+## owning HealthSystem consumes this method; other components receive a merged
+## AABB value and never gain access to the hitbox node itself.
+func get_bounds(relative_to: Node3D) -> AABB:
 	if not relative_to:
-		return Vector2(INF, -INF)
+		return AABB()
+	return get_bounds_in_space(relative_to.global_transform.affine_inverse())
+
+
+## Optimized owner-only variant used when several hitboxes share one target
+## space. HealthSystem computes the player's inverse transform once per sample.
+func get_bounds_in_space(relative_inverse: Transform3D) -> AABB:
 	var collision := _collision_shape
 	if not collision or collision.disabled or not collision.shape:
-		return Vector2(INF, -INF)
+		return AABB()
 	var half_extents := _shape_half_extents(collision.shape)
 	if half_extents == Vector3.ZERO:
-		return Vector2(INF, -INF)
-	var relative_transform := relative_to.global_transform.affine_inverse() \
-		* collision.global_transform
-	var minimum_y := INF
-	var maximum_y := -INF
-	for x_sign in [-1.0, 1.0]:
-		for y_sign in [-1.0, 1.0]:
-			for z_sign in [-1.0, 1.0]:
-				var corner := Vector3(
-					half_extents.x * x_sign,
-					half_extents.y * y_sign,
-					half_extents.z * z_sign
-				)
-				var y := (relative_transform * corner).y
-				minimum_y = minf(minimum_y, y)
-				maximum_y = maxf(maximum_y, y)
-	return Vector2(minimum_y, maximum_y)
+		return AABB()
+	var relative_transform := relative_inverse * collision.global_transform
+	# Transform the local AABB analytically. This is equivalent to transforming
+	# all eight corners but avoids 88 point transforms per player per physics tick
+	# for the default eleven hitboxes.
+	var x_extent := relative_transform.basis.x * half_extents.x
+	var y_extent := relative_transform.basis.y * half_extents.y
+	var z_extent := relative_transform.basis.z * half_extents.z
+	var transformed_half := Vector3(
+		absf(x_extent.x) + absf(y_extent.x) + absf(z_extent.x),
+		absf(x_extent.y) + absf(y_extent.y) + absf(z_extent.y),
+		absf(x_extent.z) + absf(y_extent.z) + absf(z_extent.z)
+	)
+	return AABB(relative_transform.origin - transformed_half, transformed_half * 2.0)
 
 
 func _shape_half_extents(shape: Shape3D) -> Vector3:

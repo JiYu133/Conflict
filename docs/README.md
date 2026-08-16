@@ -121,7 +121,7 @@ BaseWeapon
 | [ModelLookupConfig](player/ModelLookupConfig.md) | `Classes/Player/model_lookup_config.gd` | 模型节点自动查找规则 |
 | [PlayerModelManager](player/PlayerModelManager.md) | `Classes/Player/player_model_manager.gd` | 模型加载与骨骼缓存 |
 | [PlayerMovementController](player/PlayerMovementController.md) | `Classes/Player/player_movement_controller.gd` | 移动物理与信号发射 |
-| [PlayerCollisionController](player/PlayerCollisionController.md) | `classes/player/player_collision_controller.gd` | 主碰撞体唯一所有者、实时 hitbox 边界追随 |
+| [PlayerCollisionController](player/PlayerCollisionController.md) | `classes/player/player_collision_controller.gd` | 主碰撞体唯一所有者、3D hitbox 包络动态拟合 |
 | [PlayerCameraController](player/PlayerCameraController.md) | `Classes/Player/player_camera_controller.gd` | 摄像机挂载与5层程序化效果 |
 | [PlayerAnimationController](player/PlayerAnimationController.md) | `Classes/Player/player_animation_controller.gd` | 信号驱动的动画状态机 |
 | [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `Classes/Player/player_ragdoll_system.gd` | 死亡布娃娃开关 |

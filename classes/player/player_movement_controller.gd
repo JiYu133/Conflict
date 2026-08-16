@@ -501,7 +501,8 @@ func _set_ai_locomotion_state() -> void:
 # 姿态同步方法（响应 StanceController 信号）
 # ──────────────────────────────────────────────────────
 
-func _on_stance_changed(value: float) -> void:
+## Public value interface; callers do not need access to movement internals.
+func apply_stance_value(value: float) -> void:
 	"""响应姿态变化，只同步移动状态；碰撞体由 PlayerCollisionController 独占。"""
 	# 进入蹲伏时强制退出 Run/Sprint，确保速度上限切换为 crouch_speed
 	if value > 0.05:

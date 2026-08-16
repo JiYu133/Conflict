@@ -278,6 +278,7 @@ channel_length = clamp(
 | `get_state()` | `HealthState` | 当前整体状态 |
 | `set_hitboxes_visible(visible)` | `void` | 同时切换部位碰撞体和内部结构可视化 |
 | `get_hitbox_rids()` | `Array[RID]` | 返回全部部位 `Area3D` RID，供射线排除 |
+| `get_collision_envelope()` | `AABB` | 合并当前全部 BodyHitbox，返回玩家局部空间的纯数据 3D 包络；不暴露 hitbox 节点 |
 | `get_movement_speed_multiplier()` | `float` | 后续阶段接口，当前 `1.0` |
 | `get_aim_stability_multiplier()` | `float` | 后续阶段接口，当前 `1.0` |
 | `can_sprint()` | `bool` | 后续阶段接口，当前 `true` |
@@ -396,7 +397,7 @@ channel_length = clamp(
 
 **继承自：** `Area3D`
 
-`BodyHitbox` 保存所属 `BodyPartId`，并持有一个部位碰撞体调试网格和若干内部结构调试网格。`add_anatomy_debug_mesh(start, end, radius, color)` 创建沿结构线段排列的半透明 `CapsuleMesh`；退化线段显示为最小高度胶囊。
+`BodyHitbox` 保存所属 `BodyPartId`，并持有一个部位碰撞体调试网格和若干内部结构调试网格。`get_bounds(relative_to)` 仅供拥有它的 `HealthSystem` 计算 3D `AABB`；其他组件只能取得合并后的值，不能持有或修改 hitbox 节点。`add_anatomy_debug_mesh(start, end, radius, color)` 创建沿结构线段排列的半透明 `CapsuleMesh`；退化线段显示为最小高度胶囊。
 
 `set_debug_visible()` 同时切换两类网格。`HealthSystem` 使用以下颜色：
 

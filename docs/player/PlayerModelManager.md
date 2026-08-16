@@ -39,6 +39,10 @@
 
 释放当前模型实例（`queue_free()`），清空 `_model_node`、`_skeleton`、`_animator` 缓存，并发射 `model_unloaded` 信号。
 
+### `set_model_vertical_offset(value: float) -> void`
+
+公开的纯数值表现接口。`BasePlayer` 组合根负责把姿态混合结果传入；模型管理器不保存或查询 stance 组件。
+
 ### `find_node_by_names(names: Array, type: String = "") -> Node`
 
 在已加载的模型场景内按候选名称数组进行模糊查找（`find_child`），按数组顺序返回第一个匹配项。可通过 `type` 参数过滤节点类型（如 `"Skeleton3D"`）。
