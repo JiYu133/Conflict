@@ -25,6 +25,7 @@ var _prone_transition: bool = false
 var _prone_entering: bool = false
 var _prone_exit_to_stand: bool = false
 var _prone_timer: float = 0.0
+var _stance_before_prone: float = 0.0
 
 var _stance_value: float = 0.0  # 当前姿态（平滑插值后的值）
 var _target_stance: float = 0.0  # 目标姿态（滚轮设定的目标）
@@ -118,6 +119,35 @@ func is_prone_transitioning() -> bool:
 func get_prone_geometry_blend() -> float:
 	return _prone_geometry_blend
 
+
+## Cancels the active prone geometry transition when the composition root says
+## the candidate environment capsule has no clearance. This controller never
+## queries physics or reaches into PlayerCollisionController directly.
+func reject_collision_transition() -> void:
+	if not _prone_transition:
+		return
+	var rejected_entry := _prone_entering
+	_prone_transition = false
+	_prone_entering = false
+	_prone_exit_to_stand = false
+	_prone_timer = 0.0
+	if rejected_entry:
+		_is_prone = false
+		_target_stance = _stance_before_prone
+		_prone_geometry_target = 0.0
+		prone_changed.emit(false)
+	else:
+		_is_prone = true
+		_target_stance = 1.0
+		_prone_geometry_target = 1.0
+		prone_changed.emit(true)
+	prone_transition_changed.emit(false)
+	if _player and _player.get("animation_controller"):
+		if _is_prone:
+			_player.animation_controller.play_prone_idle()
+		else:
+			_player.animation_controller.clear_prone_override()
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Prone is handled in _input so it is not affected by UI/event consumption.
 	return
@@ -125,6 +155,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _enter_prone() -> void:
 	if _prone_transition or _is_prone:
 		return
+	_stance_before_prone = _target_stance
 	_target_stance = 1.0
 	_prone_geometry_target = 1.0
 	_is_prone = true

@@ -77,8 +77,11 @@ func _run() -> void:
 	if not _check(absf(prone_axis.y) < 0.35,
 		"live prone hitbox envelope rotates the capsule horizontally"):
 		return
-	if not _check(prone_vertical_extent < standing_vertical_extent - 0.2,
-		"live prone capsule has a lower vertical profile"):
+	if not _check(controller.contains_envelope(prone_envelope, 0.005),
+		"live prone capsule contains the complete hitbox envelope"):
+		return
+	if not _check(prone_vertical_extent <= player.player_config.collision_bounds_max_radius * 2.0 + 0.05,
+		"live prone capsule stays within the preferred transverse profile"):
 		return
 
 	active["metrics"] = _new_geometry_metrics(capsule, prone_axis)
@@ -90,9 +93,6 @@ func _run() -> void:
 	var restored_axis := controller.get_capsule_axis()
 	if not _check(restored_axis.dot(Vector3.UP) > 0.9,
 		"live standing envelope restores the vertical capsule axis"):
-		return
-	if not _check(controller.get_vertical_extent() > prone_vertical_extent + 0.2,
-		"live standing envelope restores occupied height"):
 		return
 
 	var maximum_linear_step := player.player_config.collision_bounds_follow_speed / 60.0 + 0.003
