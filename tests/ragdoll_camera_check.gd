@@ -31,14 +31,22 @@ func _ready() -> void:
 	player.movement_controller._prone_roll_direction = 1.0
 	player.movement_controller._prone_roll_duration = roll_clip_length
 	player.movement_controller._prone_roll_timer = roll_clip_length
+	player.movement_controller._prone_roll_motion_timer = player.player_config.prone_roll_duration
 	await get_tree().create_timer(player.player_config.prone_roll_duration + 0.1).timeout
 	if not _check(player.movement_controller.is_prone_rolling(), "camera remains in roll mode after the legacy timer expires"):
 		return
 	player.movement_controller._prone_roll_timer = roll_clip_length * 0.25
 	controller._update_prone_roll_camera(0.016)
-	var expected_bank := sin(PI * 0.75) * PlayerCameraController.PRONE_ROLL_MAX_CAMERA_BANK
-	if not _check(is_equal_approx(controller._prone_roll_camera_angle, expected_bank), "right prone roll camera uses a bounded bank"):
+	var bank_magnitude := sin(PI * 0.75) * PlayerCameraController.PRONE_ROLL_MAX_CAMERA_BANK
+	var expected_bank := -bank_magnitude
+	if not _check(is_equal_approx(controller._prone_roll_camera_angle, expected_bank), "right prone roll camera banks toward the right"):
 		return
+	player.movement_controller._prone_roll_direction = -1.0
+	controller._update_prone_roll_camera(0.016)
+	if not _check(is_equal_approx(controller._prone_roll_camera_angle, bank_magnitude), "left prone roll camera banks toward the left"):
+		return
+	player.movement_controller._prone_roll_direction = 1.0
+	controller._update_prone_roll_camera(0.016)
 	controller._process(0.016)
 	var expected_roll_basis := Basis.from_euler(Vector3(
 		controller.get_vertical_angle() + controller._pain_pitch,
