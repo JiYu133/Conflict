@@ -10,8 +10,8 @@
 
 ```text
 BodyHitbox（HealthSystem 私有节点）
-        ↓ HealthSystem 内部合并
-player-local AABB 值
+        ↓ HealthSystem 合并骨骼跟随中心点
+player-local 核心姿态 AABB 值
         ↓ 注入 Callable
 PlayerCollisionController
         ↓ geometry_changed(纯数值信号)
@@ -22,26 +22,28 @@ PlayerCollisionController
 
 ## 3D 动态拟合
 
-旧实现只取 hitbox 的最低/最高 Y，无法知道趴下的人体沿地面占据多长范围。当前流程使用所有 H 键可见 `BodyHitbox` 的完整 3D 包络：
+旧实现只取 hitbox 的最低/最高 Y，无法知道趴下的人体沿地面占据多长范围。当前流程使用所有 H 键可见 `BodyHitbox` 的骨骼跟随中心形成 3D 核心包络：
 
-1. `BodyHitbox.get_bounds()` 计算单个形状在玩家局部空间中的 `AABB`。
-2. `HealthSystem.get_collision_envelope()` 合并全部 hitbox，只返回 `AABB` 值，不暴露节点。
+1. `BodyHitbox.get_center_in_space()` 读取单个形状在玩家局部空间中的中心点。
+2. `HealthSystem.get_collision_envelope()` 合并全部中心点，只返回 `AABB` 值，不暴露节点。
 3. 碰撞控制器比较包络 X/Y/Z 三轴长度。
 4. 连续稳定数帧后，最长轴成为胶囊主轴。
 5. 站立/下蹲通常选择 Y 轴；趴下包络沿 X 或 Z 更长时，同一胶囊自动平放。
-6. 对 AABB 的八个角点计算到胶囊中轴线段的距离，搜索满足全部角点的最小半径/高度组合。
+6. 对核心 AABB 的八个角点计算到胶囊中轴线段的距离，搜索满足全部角点的半径/高度组合。
+
+环境碰撞不会合并每个医疗 hitbox 的完整形状 AABB。手脚和旋转胶囊的矩形外包角点并不是角色真正占据的实体空间；把这些角点再次强制装进一个总胶囊会把站立碰撞体放大到约 2.75m，并使趴下碰撞体仍超过 1.3m。医疗命中检测继续使用完整形状，环境胶囊只消费中心点形成的骨架核心轮廓，再加统一安全余量。
 
 这里没有 `if prone` 或逐动画碰撞高度表；翻滚、倒地或未来动作只要改变骨骼 hitbox 分布，就会经过同一拟合流程。
 
 医疗 hitbox 不覆盖脚底，因此胶囊的地面接触面固定在站立配置的底边。竖直胶囊使用“固定底边到最高 hitbox”的高度；水平胶囊也以同一底边为锚点，并同时包住 AABB 的上下、左右和前后角点。胶囊旋转时使用“球半径 + 中段在世界 Y 上的投影”计算真实垂直半高，再调整中心 Y；两种方向都不会把 `CharacterBody3D` 瞬间顶起或落下。
 
-`collision_bounds_max_height` 和 `collision_bounds_max_radius` 是正常动画数据的首选保护范围。如果首选范围无法包含输入包络，控制器会扩大搜索范围；完整包围人体优先于静默截断碰撞体。如果异常包络已经低于配置地面、导致地面锚定在数学上无解，则降级为以包络中心定位的精确胶囊，而不是漏掉身体。`contains_envelope(AABB)` 提供只读断言接口，测试会逐角验证实际胶囊。
+`collision_bounds_max_height` 和 `collision_bounds_max_radius` 是正常动画数据的首选保护范围。如果首选范围无法包含输入包络，控制器会扩大搜索范围；完整包围输入的核心姿态优先于静默截断。如果异常包络已经低于配置地面、导致地面锚定在数学上无解，则降级为以包络中心定位的精确胶囊。`contains_envelope(AABB)` 提供只读断言接口，测试会逐角验证实际胶囊。
 
 ## 防抖与限速
 
 | 字段 | 作用 |
 |---|---|
-| `hitbox_driven_collision` | 启用 3D hitbox 包络；关闭或无包络时使用 fallback |
+| `hitbox_driven_collision` | 启用 3D hitbox 中心核心包络；关闭或无包络时使用 fallback |
 | `collision_bounds_margin` | 包络三个轴外的通用安全余量 |
 | `collision_bounds_follow_speed` | 胶囊高度、半径和水平中心每秒最大变化 |
 | `collision_bounds_min_height` / `max_height` | Godot 胶囊下限与正常数据的首选高度上限 |
@@ -64,4 +66,4 @@ PlayerCollisionController
 
 - `tests/hitbox_driven_collision_check.tscn`：验证医疗系统只发布 AABB、唯一碰撞所有权、八角点包围、未知 3D 包络限速、自动拟合水平胶囊，以及 steady-state 不重复写 physics shape。
 - `tests/prone_exit_collision_check.tscn`：验证无 hitbox fallback 在趴下起身时平滑、脚底不漂移，并验证低天花板会拒绝扩张且姿态回滚。
-- `tests/live_prone_collision_check.tscn`：运行真实趴下/起身动画，检查竖直→水平→竖直主轴、半径/高度/旋转限速、相机、角色根节点和地面接触。
+- `tests/live_prone_collision_check.tscn`：运行真实趴下/起身动画，检查竖直→水平→竖直主轴、合理的站/趴垂直尺寸、半径/高度/旋转限速、相机三维单帧位移、角色根节点、空地 clearance 判定和地面接触。

@@ -73,6 +73,17 @@ func get_bounds_in_space(relative_inverse: Transform3D) -> AABB:
 	return AABB(relative_transform.origin - transformed_half, transformed_half * 2.0)
 
 
+## Returns the hitbox anchor in another local space without exposing the node.
+## HealthSystem uses these bone-following anchors to describe the body's core
+## pose for environment collision. The full medical volume remains available
+## through get_bounds_in_space() for hit detection and debug rendering.
+func get_center_in_space(relative_inverse: Transform3D) -> Vector3:
+	var collision := _collision_shape
+	if not collision or collision.disabled or not collision.shape:
+		return Vector3.INF
+	return (relative_inverse * collision.global_transform).origin
+
+
 func _shape_half_extents(shape: Shape3D) -> Vector3:
 	if shape is SphereShape3D:
 		var radius := (shape as SphereShape3D).radius

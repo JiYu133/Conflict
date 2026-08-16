@@ -127,9 +127,9 @@ extends Resource
 @export var collision_shape_radius: float = 0.4
 ## 碰撞体 Y 轴偏移（m）
 @export var collision_shape_y_offset: float = 0.0
-## 根据当前 BodyHitbox 的完整 3D 包络自动拟合主碰撞胶囊。
+## 根据当前 BodyHitbox 骨架中心形成的 3D 核心包络自动拟合主碰撞胶囊。
 @export var hitbox_driven_collision: bool = true
-## 命中箱 3D 包络之外保留的统一安全余量（m）。
+## 核心包络之外保留的统一安全余量（m）。
 @export_range(0.0, 0.2, 0.005) var collision_bounds_margin: float = 0.025
 ## 主碰撞胶囊尺寸和中心追随包络的最大速度（m/s）。
 @export_range(0.1, 10.0, 0.1) var collision_bounds_follow_speed: float = 2.0

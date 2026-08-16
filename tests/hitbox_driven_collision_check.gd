@@ -23,7 +23,7 @@ func _run() -> void:
 	var capsule := collision.shape as CapsuleShape3D
 	var medical_envelope := player.health_system.get_collision_envelope()
 	if not _check(_valid_envelope(medical_envelope),
-		"medical system publishes a value-only 3D hitbox envelope"):
+		"medical system publishes a value-only 3D core-pose envelope"):
 		return
 	var environment_shape_count := 0
 	for child in player.get_children():
@@ -72,8 +72,9 @@ func _run() -> void:
 		metrics["previous_radius"] = radius
 	controller.geometry_changed.connect(geometry_observer)
 
-	# Simulate an unseen animation increasing the full body envelope. Each actual
-	# physics write is observed through the public signal and must remain bounded.
+	# Simulate an unseen animation increasing the supplied core-pose envelope.
+	# Each actual physics write is observed through the public signal and must
+	# remain bounded.
 	source["envelope"] = AABB(Vector3(-0.4, -0.85, -0.35), Vector3(0.8, 2.0, 0.7))
 	controller.set_physics_process(true)
 	for _frame in 3:
