@@ -10,6 +10,7 @@ extends Area3D
 # ============================================================
 
 var _part_id: MedicalEnums.BodyPartId = MedicalEnums.BodyPartId.TORSO
+var _collision_shape: CollisionShape3D = null
 var _debug_mesh: MeshInstance3D = null
 var _anatomy_debug_meshes: Array[MeshInstance3D] = []  # P2 内部结构可视化
 
@@ -25,8 +26,10 @@ func setup(part_id: MedicalEnums.BodyPartId, shape: Shape3D = null, debug_color:
 
 	if shape:
 		var col := CollisionShape3D.new()
+		col.name = "CollisionShape3D"
 		col.shape = shape
 		add_child(col)
+		_collision_shape = col
 
 		# 创建调试可视化网格（默认隐藏）
 		_create_debug_mesh(shape, debug_color)
@@ -35,6 +38,54 @@ func setup(part_id: MedicalEnums.BodyPartId, shape: Shape3D = null, debug_color:
 ## 供 HitResolver 查询部位 ID
 func get_body_part_id() -> MedicalEnums.BodyPartId:
 	return _part_id
+
+
+## Returns an axis-aligned envelope in another Node3D's local space. Only the
+## owning HealthSystem consumes this method; other components receive a merged
+## AABB value and never gain access to the hitbox node itself.
+func get_bounds(relative_to: Node3D) -> AABB:
+	if not relative_to:
+		return AABB()
+	return get_bounds_in_space(relative_to.global_transform.affine_inverse())
+
+
+## Optimized owner-only variant used when several hitboxes share one target
+## space. HealthSystem computes the player's inverse transform once per sample.
+func get_bounds_in_space(relative_inverse: Transform3D) -> AABB:
+	var collision := _collision_shape
+	if not collision or collision.disabled or not collision.shape:
+		return AABB()
+	var half_extents := _shape_half_extents(collision.shape)
+	if half_extents == Vector3.ZERO:
+		return AABB()
+	var relative_transform := relative_inverse * collision.global_transform
+	# Transform the local AABB analytically. This is equivalent to transforming
+	# all eight corners but avoids 88 point transforms per player per physics tick
+	# for the default eleven hitboxes.
+	var x_extent := relative_transform.basis.x * half_extents.x
+	var y_extent := relative_transform.basis.y * half_extents.y
+	var z_extent := relative_transform.basis.z * half_extents.z
+	var transformed_half := Vector3(
+		absf(x_extent.x) + absf(y_extent.x) + absf(z_extent.x),
+		absf(x_extent.y) + absf(y_extent.y) + absf(z_extent.y),
+		absf(x_extent.z) + absf(y_extent.z) + absf(z_extent.z)
+	)
+	return AABB(relative_transform.origin - transformed_half, transformed_half * 2.0)
+
+
+func _shape_half_extents(shape: Shape3D) -> Vector3:
+	if shape is SphereShape3D:
+		var radius := (shape as SphereShape3D).radius
+		return Vector3(radius, radius, radius)
+	if shape is CapsuleShape3D:
+		var capsule := shape as CapsuleShape3D
+		return Vector3(capsule.radius, capsule.height * 0.5, capsule.radius)
+	if shape is BoxShape3D:
+		return (shape as BoxShape3D).size * 0.5
+	if shape is CylinderShape3D:
+		var cylinder := shape as CylinderShape3D
+		return Vector3(cylinder.radius, cylinder.height * 0.5, cylinder.radius)
+	return Vector3.ZERO
 
 
 ## 切换碰撞体可视化（含 P2 内部结构网格）

@@ -567,7 +567,8 @@ func _get_head_local_position() -> Vector3:
 
 
 ## 响应姿态变化，更新摄像机眼部目标高度
-func _on_stance_changed(value: float) -> void:
+## Public value interface; the camera does not retain a stance component.
+func apply_stance_value(value: float) -> void:
 	if not _player or not _player.player_config:
 		return
 	var config = _player.player_config

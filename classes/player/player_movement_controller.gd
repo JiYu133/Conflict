@@ -501,8 +501,9 @@ func _set_ai_locomotion_state() -> void:
 # 姿态同步方法（响应 StanceController 信号）
 # ──────────────────────────────────────────────────────
 
-func _on_stance_changed(value: float) -> void:
-	"""响应姿态变化，同步物理参数"""
+## Public value interface; callers do not need access to movement internals.
+func apply_stance_value(value: float) -> void:
+	"""响应姿态变化，只同步移动状态；碰撞体由 PlayerCollisionController 独占。"""
 	# 进入蹲伏时强制退出 Run/Sprint，确保速度上限切换为 crouch_speed
 	if value > 0.05:
 		if _is_sprinting:
@@ -510,8 +511,6 @@ func _on_stance_changed(value: float) -> void:
 		if _is_running:
 			_is_running = false
 			stopped_running.emit()
-	_update_collision_shape(value)
-	_update_model_offset(value)
 
 func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, ai_driving: bool) -> void:
 	_is_running = false
@@ -581,34 +580,3 @@ func _is_prone_roll_combo_pressed(side: bool, ai_driving: bool) -> bool:
 	return Input.is_action_just_pressed("jump") \
 		or Input.is_action_just_pressed("move_left") \
 		or Input.is_action_just_pressed("move_right")
-
-
-func _update_collision_shape(stance: float) -> void:
-	"""根据姿态值更新碰撞体高度"""
-	# 懒加载碰撞体
-	var collision_shape: CollisionShape3D = null
-	for child in _player.get_children():
-		if child is CollisionShape3D:
-			collision_shape = child
-			break
-
-	if not collision_shape or not (collision_shape.shape is CapsuleShape3D):
-		return
-
-	var shape := collision_shape.shape as CapsuleShape3D
-	var standing_height: float = _config.collision_shape_height
-	var prone: bool = _player.stance_controller != null and _player.stance_controller.is_prone()
-	var target_height: float = _config.prone_capsule_height if prone else lerp(standing_height, _config.crouch_capsule_height, stance)
-	shape.height = target_height
-	# 胶囊体底部保持在站立时的高度，避免蹲下时碰撞体整体抬高。
-	collision_shape.position.y = (_config.prone_collision_y_offset if prone else _config.collision_shape_y_offset) \
-		+ (standing_height - target_height) * 0.5
-
-
-func _update_model_offset(stance: float) -> void:
-	"""根据姿态值更新模型Y偏移（让脚部贴地）"""
-	var model_node: Node3D = _player.model_manager.model_node if _player.model_manager else null
-	if not model_node:
-		return
-	var target_y : float = _config.prone_model_y_offset if (_player.stance_controller and _player.stance_controller.is_prone()) else lerp(_config.model_y_offset, _config.crouch_y_offset, stance)
-	model_node.position.y = target_y

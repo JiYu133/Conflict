@@ -11,7 +11,7 @@
 
 `_ready()` 调用 `_initialize_subsystems()`，按以下顺序完成初始化：
 
-1. 创建并添加全部子系统节点（ModelManager、CameraController、RagdollSystem、MovementController、FootIKController、WeaponManager、AnimationController）
+1. 创建并添加全部子系统节点（ModelManager、CameraController、RagdollSystem、MovementController、CollisionController、FootIKController、WeaponManager、AnimationController）
 2. 依次调用各子系统的 `initialize()` 方法，传入所需依赖
 3. 将 `movement_controller` 的落地/起跳信号连接到 `camera_controller`
 4. 连接 `model_manager.model_loaded` 与 `weapon_manager.weapon_changed` 信号
@@ -39,9 +39,12 @@
 | `camera_controller` | `PlayerCameraController` | 摄像机控制子系统引用 |
 | `ragdoll_system` | `PlayerRagdollSystem` | 布娃娃系统引用 |
 | `movement_controller` | `PlayerMovementController` | 移动控制器引用 |
+| `collision_controller` | `PlayerCollisionController` | 主环境碰撞体唯一所有者 |
 | `foot_ik_controller` | `FootIKController` | 脚部 IK 控制器引用 |
 | `weapon_manager` | `WeaponManager` | 武器管理器引用 |
 | `animation_controller` | `PlayerAnimationController` | 动画控制器引用 |
+
+`BasePlayer` 同时是玩家子系统的组合根：它负责连接 stance 信号，并通过公开的纯数值接口更新 movement、camera、model 与 collision。在这条姿态/碰撞数据流中，业务组件不互相保存引用；医疗 hitbox 包络以 `Callable -> AABB` 注入碰撞控制器。
 
 ## 公开方法（Methods）
 

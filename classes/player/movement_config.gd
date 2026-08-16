@@ -115,8 +115,8 @@ extends Resource
 @export var prone_roll_chain_reset_time: float = 1.0
 @export var prone_roll_duration: float = 0.45
 @export var prone_roll_acceleration: float = 18.0
-@export var prone_capsule_height: float = 0.42
-@export var prone_collision_y_offset: float = -0.52
+@export var prone_capsule_height: float = 0.6
+@export var prone_collision_y_offset: float = -0.6
 @export var prone_model_y_offset: float = -1.18
 
 # 碰撞体 ──────────────────────────────────────────────────────
@@ -127,5 +127,22 @@ extends Resource
 @export var collision_shape_radius: float = 0.4
 ## 碰撞体 Y 轴偏移（m）
 @export var collision_shape_y_offset: float = 0.0
+## 根据当前 BodyHitbox 的完整 3D 包络自动拟合主碰撞胶囊。
+@export var hitbox_driven_collision: bool = true
+## 命中箱 3D 包络之外保留的统一安全余量（m）。
+@export_range(0.0, 0.2, 0.005) var collision_bounds_margin: float = 0.025
+## 主碰撞胶囊尺寸和中心追随包络的最大速度（m/s）。
+@export_range(0.1, 10.0, 0.1) var collision_bounds_follow_speed: float = 2.0
+## 自动尺寸的通用安全范围；不是动画专用参数。
+@export_range(0.2, 2.5, 0.05) var collision_bounds_min_height: float = 0.6
+@export_range(0.5, 4.0, 0.05) var collision_bounds_max_height: float = 3.0
+## 自动胶囊最大半径，限制异常动画帧造成的过宽环境碰撞体。
+@export_range(0.2, 1.5, 0.05) var collision_bounds_max_radius: float = 0.75
+## 新主轴必须比当前轴长到该比例才允许切换，避免站立/趴下临界点抖动。
+@export_range(1.0, 2.0, 0.05) var collision_axis_switch_ratio: float = 1.15
+## 主轴候选需连续稳定的物理帧数；过滤模型刚加载时的单帧 T-pose。
+@export_range(1, 30, 1) var collision_axis_switch_stability_frames: int = 4
+## 胶囊从竖直轴转向水平轴（或反向）的最大角速度。
+@export_range(30.0, 720.0, 10.0) var collision_axis_follow_speed_degrees: float = 240.0
 ## 模型垂直偏移（m）
 @export var model_y_offset: float = -0.5

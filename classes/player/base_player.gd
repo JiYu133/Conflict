@@ -81,6 +81,7 @@ var look_controller: PlayerLookController
 var camera_controller: PlayerCameraController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
+var collision_controller: PlayerCollisionController
 var foot_ik_controller: FootIKController
 var hand_ik_controller: HandIKController
 var spine_aim_controller: SpineAimController
@@ -172,6 +173,7 @@ func _initialize_subsystems() -> void:
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
 	stance_controller = _create_subsystem(StanceController.new(), "StanceController")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
+	collision_controller = _create_subsystem(PlayerCollisionController.new(), "CollisionController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
 	spine_aim_controller = _create_subsystem(SpineAimController.new(), "SpineAimController")
@@ -227,11 +229,18 @@ func _initialize_subsystems() -> void:
 		self,
 		player_config.health_config if player_config else null
 		)
+	collision_controller.initialize(
+		self,
+		player_config.movement_config if player_config and player_config.movement_config else MovementConfig.new(),
+		Callable(health_system, "get_collision_envelope")
+		)
+	_sync_pose_geometry()
 	death_blood_effect = _create_subsystem(DEATH_BLOOD_EFFECT_SCRIPT.new(), "DeathBloodEffect") as DeathBloodEffect
 	death_blood_effect.initialize(
 		self,
 		player_config.blood_effect_config if player_config else null,
-		settings_service
+		settings_service,
+		Callable(health_system, "get_major_external_bleed_world_position")
 		)
 
 	# 命中反馈只消费医疗系统结果：伤口、喷溅、滴落与血泊不反向影响伤害判定。
@@ -305,7 +314,7 @@ func _connect_signals() -> void:
 	weapon_manager.weapon_stats_changed.connect(_sync_weapon_weight_to_stamina)
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
-	stance_controller.prone_changed.connect(func(_active): movement_controller._on_stance_changed(stance_controller.get_stance_value()))
+	stance_controller.prone_geometry_changed.connect(_on_prone_geometry_changed)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
 	# 运动状态 → 左手 IK 权重过渡
@@ -352,6 +361,7 @@ func _on_model_loaded(_model: Node3D) -> void:
 	add_child(_model)
 	# 模型面朝+Z时需旋转180°对齐角色朝向(-Z = forward)
 	_model.rotation.y = PI
+	_sync_pose_geometry()
 
 	# 模型就位后再启用动画组件并初始化控制器。Bot 没有本地相机来间接驱动
 	# 模型动画，因此必须在读取 playback 和进入 Idle 前显式启用它们。
@@ -653,9 +663,36 @@ func _on_started_sprinting() -> void:
 func _on_stance_changed(value: float) -> void:
 	"""协调所有受姿态影响的子系统"""
 	if movement_controller:
-		movement_controller._on_stance_changed(value)
+		movement_controller.apply_stance_value(value)
 	if camera_controller:
-		camera_controller._on_stance_changed(value)
+		camera_controller.apply_stance_value(value)
+	_sync_pose_geometry()
+
+
+func _on_prone_geometry_changed(_blend: float) -> void:
+	_sync_pose_geometry()
+
+
+## BasePlayer is the composition root for pose presentation. Components receive
+## primitive values through public interfaces and never retain one another.
+func _sync_pose_geometry() -> void:
+	if not player_config or not player_config.movement_config:
+		return
+	var config := player_config.movement_config
+	var stance_value := stance_controller.get_stance_value() if stance_controller else 0.0
+	var prone_blend := stance_controller.get_prone_geometry_blend() if stance_controller else 0.0
+	var non_prone_height := lerpf(
+		config.collision_shape_height,
+		config.crouch_capsule_height,
+		stance_value
+	)
+	var fallback_height := lerpf(non_prone_height, config.prone_capsule_height, prone_blend)
+	if collision_controller:
+		collision_controller.set_fallback_height(fallback_height)
+	var non_prone_model_y := lerpf(config.model_y_offset, config.crouch_y_offset, stance_value)
+	var model_y := lerpf(non_prone_model_y, config.prone_model_y_offset, prone_blend)
+	if model_manager:
+		model_manager.set_model_vertical_offset(model_y)
 
 
 func go_unconscious(
