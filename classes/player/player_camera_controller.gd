@@ -714,7 +714,9 @@ func _update_prone_roll_camera(delta: float) -> void:
 		var direction := _player.movement_controller.get_prone_roll_direction()
 		# A half-sine gives one readable bank and returns to a level horizon at
 		# the end without ever flipping the player's view upside down.
-		_prone_roll_camera_angle = direction * sin(progress * PI) * PRONE_ROLL_MAX_CAMERA_BANK
+		# Camera3D looks along -Z, so its screen-space bank uses the opposite
+		# sign from the player's lateral input (right roll = negative Z bank).
+		_prone_roll_camera_angle = -direction * sin(progress * PI) * PRONE_ROLL_MAX_CAMERA_BANK
 		return
 	_prone_roll_camera_angle = wrapf(
 		lerp_angle(

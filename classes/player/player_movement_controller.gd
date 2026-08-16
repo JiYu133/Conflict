@@ -58,6 +58,10 @@ var _ai_input_sprinting: bool = false
 var _prone_roll_cooldown: float = 0.0
 var _prone_roll_timer: float = 0.0
 var _prone_roll_duration: float = 0.0
+## The authored clips are 2.5-3.27s long, but only the configured opening
+## window should propel the CharacterBody. Camera/animation timing stays on
+## _prone_roll_timer so visual playback cannot turn into a multi-metre slide.
+var _prone_roll_motion_timer: float = 0.0
 var _prone_rolling: bool = false
 var _prone_roll_direction: float = 0.0
 var _prone_roll_world_direction: Vector3 = Vector3.ZERO
@@ -204,6 +208,7 @@ func _physics_process(delta: float) -> void:
 		_prone_roll_cooldown -= delta
 	if _prone_rolling:
 		_prone_roll_timer -= delta
+		_prone_roll_motion_timer = maxf(_prone_roll_motion_timer - delta, 0.0)
 		var has_roll_animation := _player.animation_controller != null
 		var animation_finished := has_roll_animation and not _player.animation_controller.is_prone_roll_playing()
 		var fallback_finished := not has_roll_animation and _prone_roll_timer <= 0.0
@@ -212,6 +217,7 @@ func _physics_process(delta: float) -> void:
 			_prone_roll_world_direction = Vector3.ZERO
 			_prone_roll_cooldown = _config.prone_roll_cooldown
 			_prone_roll_timer = 0.0
+			_prone_roll_motion_timer = 0.0
 			if _camera_controller:
 				_camera_controller.set_prone_roll_camera_angle(0.0)
 			if _player.animation_controller and _player.stance_controller and _player.stance_controller.is_prone():
@@ -541,15 +547,20 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 				if clip_length > 0.0:
 					_prone_roll_duration = clip_length
 			_prone_roll_timer = _prone_roll_duration
+			_prone_roll_motion_timer = minf(_config.prone_roll_duration, _prone_roll_duration)
 			if _camera_controller:
 				_camera_controller.set_prone_roll_camera_angle(0.0)
 	var speed: float = 0.0
 	var movement_direction := direction
 	var should_move := has_input
 	if _prone_rolling:
-		speed = _config.prone_roll_speed
-		movement_direction = _prone_roll_world_direction
-		should_move = not movement_direction.is_zero_approx()
+		if _prone_roll_motion_timer > 0.0:
+			speed = _config.prone_roll_speed
+			movement_direction = _prone_roll_world_direction
+			should_move = not movement_direction.is_zero_approx()
+		else:
+			movement_direction = Vector3.ZERO
+			should_move = false
 	elif has_input:
 		if side:
 			speed = _config.prone_lateral_speed
@@ -561,8 +572,9 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 		_velocity.x = move_toward(_velocity.x, movement_direction.x * speed, _config.prone_roll_acceleration * delta)
 		_velocity.z = move_toward(_velocity.z, movement_direction.z * speed, _config.prone_roll_acceleration * delta)
 	else:
-		_velocity.x = move_toward(_velocity.x, 0.0, _config.stop_brake_strength * delta)
-		_velocity.z = move_toward(_velocity.z, 0.0, _config.stop_brake_strength * delta)
+		var brake_strength := _config.prone_roll_acceleration if _prone_rolling else _config.stop_brake_strength
+		_velocity.x = move_toward(_velocity.x, 0.0, brake_strength * delta)
+		_velocity.z = move_toward(_velocity.z, 0.0, brake_strength * delta)
 	_player.velocity = _velocity
 	_player.move_and_slide()
 	_velocity = _player.velocity
