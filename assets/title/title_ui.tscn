@@ -5,20 +5,64 @@
 [ext_resource type="AudioStream" uid="uid://cvjppo3omawtu" path="res://assets/audio/menu.wav" id="3_menu_music"]
 
 [sub_resource type="StyleBoxFlat" id="ButtonNormal"]
-content_margin_left = 18.0
-content_margin_top = 10.0
+content_margin_left = 20.0
+content_margin_top = 11.0
 content_margin_right = 18.0
-content_margin_bottom = 10.0
-bg_color = Color(0, 0, 0, 0)
-border_color = Color(0, 0, 0, 0)
+content_margin_bottom = 11.0
+bg_color = Color(0.008, 0.012, 0.018, 0.42)
+border_width_left = 2
+border_color = Color(0.85, 0.72, 0.2, 0.28)
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
 
 [sub_resource type="StyleBoxFlat" id="ButtonHover"]
-content_margin_left = 18.0
-content_margin_top = 10.0
+content_margin_left = 24.0
+content_margin_top = 11.0
 content_margin_right = 18.0
+content_margin_bottom = 11.0
+bg_color = Color(0.85, 0.72, 0.2, 0.13)
+border_width_left = 4
+border_color = Color(0.95, 0.78, 0.2, 1)
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+
+[sub_resource type="StyleBoxFlat" id="ButtonPressed"]
+content_margin_left = 24.0
+content_margin_top = 11.0
+content_margin_right = 18.0
+content_margin_bottom = 11.0
+bg_color = Color(0.85, 0.72, 0.2, 0.22)
+border_width_left = 4
+border_color = Color(0.95, 0.78, 0.2, 1)
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+
+[sub_resource type="StyleBoxFlat" id="ButtonDisabled"]
+content_margin_left = 20.0
+content_margin_top = 11.0
+content_margin_right = 18.0
+content_margin_bottom = 11.0
+bg_color = Color(0.008, 0.012, 0.018, 0.24)
+border_width_left = 2
+border_color = Color(0.35, 0.37, 0.4, 0.25)
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+
+[sub_resource type="StyleBoxFlat" id="MenuPanel"]
+bg_color = Color(0.008, 0.012, 0.02, 0.88)
+border_width_right = 1
+border_color = Color(0.85, 0.72, 0.2, 0.25)
+
+[sub_resource type="StyleBoxFlat" id="StatusPanel"]
+content_margin_left = 14.0
+content_margin_top = 10.0
+content_margin_right = 14.0
 content_margin_bottom = 10.0
-bg_color = Color(0, 0, 0, 0)
-border_color = Color(0, 0, 0, 0)
+bg_color = Color(0.12, 0.025, 0.015, 0.55)
+border_width_left = 2
+border_color = Color(0.72, 0.2, 0.1, 0.8)
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
 
 [sub_resource type="Animation" id="AnimationReset"]
 resource_name = "RESET"
@@ -85,117 +129,205 @@ layer = 10
 
 [node name="MenuRoot" type="Control" parent="." unique_id=1162510687]
 layout_mode = 3
-anchors_preset = 0
-offset_left = 106.0
-offset_top = 106.0
-offset_right = 364.0
-offset_bottom = 544.0
-
-[node name="Content" type="VBoxContainer" parent="MenuRoot" unique_id=1162510688]
-layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -11.0
-offset_top = 108.0
-offset_right = 177.0
-offset_bottom = 181.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 12
+
+[node name="MenuPanel" type="Panel" parent="MenuRoot"]
+layout_mode = 1
+anchors_preset = 12
+anchor_right = 0.42
+anchor_bottom = 1.0
+offset_right = 24.0
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("MenuPanel")
+
+[node name="TopRule" type="ColorRect" parent="MenuRoot"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 0.42
+offset_right = 24.0
+offset_bottom = 3.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.85, 0.72, 0.2, 0.82)
+
+[node name="Content" type="VBoxContainer" parent="MenuRoot" unique_id=1162510688]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 72.0
+offset_top = -356.0
+offset_right = 620.0
+offset_bottom = 356.0
+grow_vertical = 2
+theme_override_constants/separation = 8
+
+[node name="Kicker" type="Label" parent="MenuRoot/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.72, 0.2, 0.92)
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 14
+text = "NORTHLINE COMMAND  /  FIELD OPERATIONS"
 
 [node name="Title" type="Label" parent="MenuRoot/Content" unique_id=1093600405]
 layout_mode = 2
 theme_override_fonts/font = ExtResource("1_ubark")
-theme_override_font_sizes/font_size = 100
+theme_override_font_sizes/font_size = 92
 text = "CONFLICT"
 
 [node name="Subtitle" type="Label" parent="MenuRoot/Content" unique_id=276462994]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.72, 0.2, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 14
 text = "THE LINE BETWEEN ORDER AND CHAOS"
 
-[node name="ContinueButton" type="Button" parent="MenuRoot/Content" unique_id=508061250]
-custom_minimum_size = Vector2(0, 42)
+[node name="TitleRule" type="ColorRect" parent="MenuRoot/Content"]
+custom_minimum_size = Vector2(132, 2)
 layout_mode = 2
-theme_override_font_sizes/font_size = 30
+mouse_filter = 2
+color = Color(0.85, 0.72, 0.2, 0.9)
+
+[node name="MenuSpacer" type="Control" parent="MenuRoot/Content"]
+custom_minimum_size = Vector2(0, 12)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ContinueButton" type="Button" parent="MenuRoot/Content" unique_id=508061250]
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_colors/font_disabled_color = Color(0.45, 0.47, 0.5, 0.68)
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 23
 theme_override_styles/normal = SubResource("ButtonNormal")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
+theme_override_styles/disabled = SubResource("ButtonDisabled")
 disabled = true
-text = "继续游戏  ·  无存档"
+text = "继续游戏    /    暂无存档"
 flat = true
+alignment = 0
 
 [node name="StartButton" type="Button" parent="MenuRoot/Content" unique_id=535178525]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 theme_override_colors/font_focus_color = Color(0.95, 0.78, 0.2, 1)
 theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("ButtonNormal")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
+theme_override_styles/pressed = SubResource("ButtonPressed")
 text = "开始游戏"
 flat = true
+alignment = 0
 
 [node name="SettingsButton" type="Button" parent="MenuRoot/Content" unique_id=933548167]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 theme_override_colors/font_focus_color = Color(0.95, 0.78, 0.2, 1)
 theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("ButtonNormal")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
+theme_override_styles/pressed = SubResource("ButtonPressed")
 text = "设置"
 flat = true
+alignment = 0
 
 [node name="CreditsButton" type="Button" parent="MenuRoot/Content" unique_id=710310197]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 theme_override_colors/font_focus_color = Color(0.95, 0.78, 0.2, 1)
 theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("ButtonNormal")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
+theme_override_styles/pressed = SubResource("ButtonPressed")
 text = "制作人员"
 flat = true
+alignment = 0
 
 [node name="QuitButton" type="Button" parent="MenuRoot/Content" unique_id=994652732]
-custom_minimum_size = Vector2(0, 42)
+custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 theme_override_colors/font_focus_color = Color(0.95, 0.78, 0.2, 1)
 theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
-theme_override_font_sizes/font_size = 30
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("ButtonNormal")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
+theme_override_styles/pressed = SubResource("ButtonPressed")
 text = "退出"
 flat = true
+alignment = 0
+
+[node name="StatusSpacer" type="Control" parent="MenuRoot/Content"]
+custom_minimum_size = Vector2(0, 6)
+layout_mode = 2
+mouse_filter = 2
 
 [node name="Status" type="Label" parent="MenuRoot/Content" unique_id=582764000]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.9403621, 3.4172833e-06, 3.85046e-07, 1)
-theme_override_font_sizes/font_size = 20
-text = "⚠️注意！
-这是 Conflict 的测试版本
-测试版本不代表最终品质
-"
+theme_override_colors/font_color = Color(0.94, 0.55, 0.42, 1)
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StatusPanel")
+text = "PRE-ALPHA 测试版本
+当前内容与表现不代表最终品质"
 
 [node name="Version" type="Label" parent="." unique_id=850998614]
-offset_left = 72.0
-offset_top = 1318.0
-offset_right = 350.0
-offset_bottom = 1342.0
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -298.0
+offset_top = -48.0
+offset_right = -48.0
+offset_bottom = -24.0
+grow_horizontal = 0
+grow_vertical = 0
 theme_override_colors/font_color = Color(0.55, 0.58, 0.63, 0.8)
-theme_override_font_sizes/font_size = 11
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 13
 text = "PRE-ALPHA  ·  BUILD 01"
+horizontal_alignment = 2
+
+[node name="InputHint" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 72.0
+offset_top = -48.0
+offset_right = 402.0
+offset_bottom = -24.0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.55, 0.58, 0.63, 0.8)
+theme_override_fonts/font = ExtResource("1_ubark")
+theme_override_font_sizes/font_size = 13
+text = "ENTER  选择    ·    鼠标  导航"
 
 [node name="Fade" type="ColorRect" parent="." unique_id=944075701]
-offset_right = 1152.0
-offset_bottom = 648.0
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 color = Color(0, 0, 0, 0)
 

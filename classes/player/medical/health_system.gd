@@ -244,25 +244,29 @@ func get_hitbox_rids() -> Array[RID]:
 	return rids
 
 
-## Returns a value-only snapshot containing all current bone-following hitboxes
-## in player-local space. HealthSystem remains the sole owner of hitbox nodes;
-## presentation and movement components cannot retain or mutate them.
+## Returns a value-only snapshot of the current bone-following hitbox anchors
+## in player-local space. This is deliberately the body's core pose envelope,
+## not the union of every medical shape AABB: fitting the rectangular corners
+## of hands, feet, and rotated hit volumes into one capsule greatly overstates
+## the space occupied by the character. HealthSystem remains the sole owner of
+## hitbox nodes; movement receives only this immutable AABB value.
 func get_collision_envelope() -> AABB:
 	if not _player:
 		return AABB()
-	var envelope := AABB()
-	var has_bounds := false
+	var minimum := Vector3.INF
+	var maximum := -Vector3.INF
+	var has_center := false
 	var player_inverse := _player.global_transform.affine_inverse()
 	for hitbox in _hitboxes:
 		if not is_instance_valid(hitbox):
 			continue
-		var hitbox_bounds := hitbox.get_bounds_in_space(player_inverse)
-		if hitbox_bounds.size.x <= 0.0 or hitbox_bounds.size.y <= 0.0 \
-			or hitbox_bounds.size.z <= 0.0:
+		var center := hitbox.get_center_in_space(player_inverse)
+		if not center.is_finite():
 			continue
-		envelope = envelope.merge(hitbox_bounds) if has_bounds else hitbox_bounds
-		has_bounds = true
-	return envelope if has_bounds else AABB()
+		minimum = minimum.min(center)
+		maximum = maximum.max(center)
+		has_center = true
+	return AABB(minimum, maximum - minimum) if has_center else AABB()
 
 
 ## Resolves a presentation-safe snapshot of the most important external bleed.

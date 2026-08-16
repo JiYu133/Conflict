@@ -93,8 +93,57 @@ func _run() -> void:
 	if not _check(max_bottom_drift < 0.002, "capsule bottom remains anchored while standing up"):
 		return
 
-	print("prone_exit_collision_check=ok height_step=%.4f center_step=%.4f model_step=%.4f bottom_drift=%.4f" % [
-		max_height_step, max_center_step, max_model_step, max_bottom_drift
+	# Reset to prone, then put a low ceiling above the current capsule. The exit
+	# may approach the obstacle but must never commit an overlapping expansion;
+	# BasePlayer should translate the rejection into a public stance rollback.
+	stance._is_prone = true
+	stance._prone_transition = false
+	stance._stance_value = 1.0
+	stance._target_stance = 1.0
+	stance._prone_geometry_blend = 1.0
+	stance._prone_geometry_target = 1.0
+	stance.prone_geometry_changed.emit(1.0)
+	collision_controller.refresh_immediately()
+	var ceiling := StaticBody3D.new()
+	ceiling.name = "ProneExitClearanceCeiling"
+	var ceiling_collision := CollisionShape3D.new()
+	var ceiling_box := BoxShape3D.new()
+	ceiling_box.size = Vector3(2.0, 0.2, 2.0)
+	ceiling_collision.shape = ceiling_box
+	ceiling.add_child(ceiling_collision)
+	map.add_child(ceiling)
+	var floor_world_y := player.global_position.y + collision_controller.get_floor_contact_y()
+	var ceiling_bottom_y := floor_world_y + 0.8
+	ceiling.global_position = Vector3(
+		player.global_position.x,
+		ceiling_bottom_y + ceiling_box.size.y * 0.5,
+		player.global_position.z
+	)
+	await get_tree().physics_frame
+	var blocked := {"count": 0}
+	var count_block := func() -> void:
+		blocked["count"] = int(blocked["count"]) + 1
+	collision_controller.transition_blocked.connect(count_block)
+	stance._exit_prone(true)
+	for _frame in 60:
+		stance._process(1.0 / 60.0)
+		collision_controller._update_geometry(1.0 / 60.0, false)
+		await get_tree().physics_frame
+		if int(blocked["count"]) > 0:
+			break
+	var capsule_top_world_y := player.global_position.y + collision.position.y \
+		+ collision_controller.get_vertical_extent() * 0.5
+	if not _check(int(blocked["count"]) == 1, "blocked prone exit emits one rejection"):
+		return
+	if not _check(stance.is_prone() and not stance.is_prone_transitioning(),
+		"blocked prone exit rolls stance back to settled prone"):
+		return
+	if not _check(capsule_top_world_y <= ceiling_bottom_y + 0.005,
+		"blocked prone exit never commits an overlapping capsule"):
+		return
+
+	print("prone_exit_collision_check=ok height_step=%.4f center_step=%.4f model_step=%.4f bottom_drift=%.4f blocked=%d" % [
+		max_height_step, max_center_step, max_model_step, max_bottom_drift, int(blocked["count"])
 	])
 	get_tree().quit(0)
 

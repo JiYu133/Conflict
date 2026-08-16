@@ -20,6 +20,15 @@ signal geometry_changed(
 	center: Vector3,
 	floor_y: float
 )
+## Emitted once when an expanding/rotating candidate cannot occupy the world.
+## BasePlayer may translate this value-only event into a stance rollback.
+signal transition_blocked
+
+const ENVELOPE_SAMPLE_INTERVAL := 1.0 / 30.0
+const ENVELOPE_EPSILON := 0.002
+const GEOMETRY_EPSILON := 0.0005
+const CLEARANCE_SKIN := 0.003
+const FIT_SEARCH_STEPS := 96
 
 var _body: CharacterBody3D
 var _config: MovementConfig
@@ -34,6 +43,13 @@ var _fit_axis := Vector3.UP
 var _fit_center := Vector3.ZERO
 var _fit_height: float = 1.8
 var _fit_radius: float = 0.4
+var _sample_elapsed: float = INF
+var _last_sampled_envelope := AABB()
+var _has_sampled_envelope: bool = false
+var _fallback_dirty: bool = true
+var _transition_blocked_emitted: bool = false
+var _geometry_write_count: int = 0
+var _envelope_sample_count: int = 0
 
 
 func initialize(
@@ -53,12 +69,18 @@ func initialize(
 ## return AABB and should not expose nodes or mutable component state.
 func set_envelope_provider(provider: Callable) -> void:
 	_envelope_provider = provider
+	_has_sampled_envelope = false
+	_sample_elapsed = INF
 
 
 ## Supplies a value-only fallback for startup/model reload. Live hitbox data
 ## takes priority whenever the injected provider returns a valid envelope.
 func set_fallback_height(height: float) -> void:
-	_fallback_height = maxf(height, 0.01)
+	var next_height := maxf(height, 0.01)
+	if is_equal_approx(_fallback_height, next_height):
+		return
+	_fallback_height = next_height
+	_fallback_dirty = true
 
 
 ## Returns the only environment collision shape owned by this component.
@@ -91,16 +113,49 @@ func get_vertical_extent() -> float:
 	return _vertical_half_extent(capsule.height, capsule.radius, get_capsule_axis()) * 2.0
 
 
+func get_geometry_write_count() -> int:
+	return _geometry_write_count
+
+
+func get_envelope_sample_count() -> int:
+	return _envelope_sample_count
+
+
+## Test/debug inspection API. Normal gameplay consumes geometry_changed instead.
+func contains_envelope(envelope: AABB, tolerance: float = 0.002) -> bool:
+	if not _collision_shape or not (_collision_shape.shape is CapsuleShape3D):
+		return false
+	var capsule := _collision_shape.shape as CapsuleShape3D
+	var axis := get_capsule_axis()
+	for corner in _aabb_corners(envelope):
+		if not _capsule_contains_point(
+			corner,
+			_collision_shape.position,
+			axis,
+			capsule.height,
+			capsule.radius,
+			tolerance
+		):
+			return false
+	return true
+
+
 ## Deterministic setup/test hook. Normal gameplay follows the same target from
 ## _physics_process with speed limits and axis-switch stability.
 func refresh_immediately() -> void:
 	_update_geometry(0.0, true)
+	_sample_elapsed = 0.0
 
 
 func _physics_process(delta: float) -> void:
-	if not _body:
+	if not _body or not _collision_shape or _collision_shape.disabled:
 		return
-	_update_geometry(delta, false)
+	_sample_elapsed += delta
+	var should_sample := _sample_elapsed >= ENVELOPE_SAMPLE_INTERVAL \
+		or not _has_sampled_envelope or _fallback_dirty
+	_update_geometry(delta, false, should_sample)
+	if should_sample:
+		_sample_elapsed = 0.0
 
 
 func _ensure_collision_shape() -> void:
@@ -120,14 +175,26 @@ func _ensure_collision_shape() -> void:
 	_collision_shape.quaternion = Quaternion.IDENTITY
 
 
-func _update_geometry(delta: float, snap: bool) -> void:
+func _update_geometry(delta: float, snap: bool, sample: bool = true) -> void:
 	if not _collision_shape or not (_collision_shape.shape is CapsuleShape3D):
 		return
-	var envelope := _sample_envelope()
-	if _envelope_is_valid(envelope):
-		_fit_envelope(envelope, snap)
-	else:
-		_fit_fallback(snap)
+	if sample:
+		var envelope := _sample_envelope()
+		_envelope_sample_count += 1
+		var envelope_changed := not _has_sampled_envelope \
+			or not _aabb_is_equal_approx(envelope, _last_sampled_envelope)
+		# Axis hysteresis needs repeated samples even when the numeric envelope is
+		# stable, but an already-selected pose does not need to be refitted.
+		var axis_pending := _pending_axis_frames > 0
+		if _envelope_is_valid(envelope):
+			if envelope_changed or axis_pending or _fallback_dirty:
+				_fit_envelope(envelope, snap)
+		else:
+			if envelope_changed or _fallback_dirty:
+				_fit_fallback(snap)
+		_last_sampled_envelope = envelope
+		_has_sampled_envelope = true
+		_fallback_dirty = false
 	_apply_target(delta, snap)
 
 
@@ -145,39 +212,149 @@ func _fit_envelope(envelope: AABB, snap_axis: bool) -> void:
 		envelope.size + Vector3.ONE * margin * 2.0
 	)
 	var axis := _select_axis(padded.size, snap_axis)
-	var center := padded.get_center()
-	var radius: float
-	var height: float
-	if absf(axis.y) > 0.5:
-		radius = maxf(padded.size.x, padded.size.z) * 0.5
-		# A standing capsule must reach the highest hitbox from the fixed foot
-		# plane. This also covers authored hitboxes that stop above the soles.
-		height = maxf(padded.end.y - _floor_y, padded.size.y)
-	else:
-		# Once the body is horizontal, use the envelope's actual thickness rather
-		# than its absolute Y offset. Grounding that thickness at the stable foot
-		# plane avoids turning an authored prone pose offset into empty capsule
-		# space below the body.
-		var cross_axis_width := padded.size.z if absf(axis.x) > 0.5 else padded.size.x
-		radius = maxf(cross_axis_width, padded.size.y) * 0.5
-		height = padded.size.x if absf(axis.x) > 0.5 else padded.size.z
-
-	radius = clampf(
-		radius,
-		_config.collision_shape_radius,
-		maxf(_config.collision_bounds_max_radius, _config.collision_shape_radius)
-	)
-	var minimum_height := maxf(_config.collision_bounds_min_height, radius * 2.0)
-	height = clampf(
-		maxf(height, minimum_height),
-		minimum_height,
-		maxf(_config.collision_bounds_max_height, minimum_height)
-	)
-	center.y = _floor_y + _vertical_half_extent(height, radius, axis)
+	var fit := _fit_containing_capsule(padded, axis)
+	var radius := float(fit["radius"])
+	var height := float(fit["height"])
+	var center := fit["center"] as Vector3
 	_fit_axis = axis
 	_fit_center = center
 	_fit_height = height
 	_fit_radius = radius
+
+
+## Fits all eight AABB corners while keeping the capsule's world-facing bottom
+## on the configured floor plane. The preferred max dimensions protect against
+## ordinary animation outliers; if those limits cannot contain the supplied
+## envelope, containment wins instead of silently exposing part of the body.
+func _fit_containing_capsule(envelope: AABB, axis: Vector3) -> Dictionary:
+	var minimum_radius := maxf(_config.collision_shape_radius, 0.01)
+	var preferred_max_radius := maxf(_config.collision_bounds_max_radius, minimum_radius)
+	var preferred_max_height := maxf(
+		_config.collision_bounds_max_height,
+		_config.collision_bounds_min_height
+	)
+	var expanded_radius_limit := maxf(
+		preferred_max_radius,
+		envelope.size.length() + absf(envelope.end.y - _floor_y) + minimum_radius
+	)
+	var fit := _search_containing_fit(
+		envelope, axis, minimum_radius, preferred_max_radius, preferred_max_height
+	)
+	if fit.is_empty():
+		fit = _search_containing_fit(
+			envelope, axis, minimum_radius, expanded_radius_limit, preferred_max_height
+		)
+	if fit.is_empty():
+		# A longitudinal range larger than max_height cannot be reduced by radius.
+		# Pick the smallest exact candidate and allow height to exceed the preferred
+		# cap rather than returning a collider that misses the supplied body bounds.
+		fit = _search_containing_fit(
+			envelope, axis, minimum_radius, expanded_radius_limit, INF
+		)
+	if fit.is_empty():
+		# AABB data below the authored floor cannot be enclosed by a floor-anchored
+		# capsule. Preserve containment with an envelope-centered exact fallback;
+		# this is safer than silently returning a collider that misses body parts.
+		fit = _fit_unanchored_containing_capsule(envelope, axis, minimum_radius)
+	return fit
+
+
+func _search_containing_fit(
+	envelope: AABB,
+	axis: Vector3,
+	minimum_radius: float,
+	maximum_radius: float,
+	maximum_height: float
+) -> Dictionary:
+	var span := maxf(maximum_radius - minimum_radius, 0.0)
+	for step_index in range(FIT_SEARCH_STEPS + 1):
+		var ratio := float(step_index) / float(FIT_SEARCH_STEPS)
+		var radius := minimum_radius + span * ratio
+		var required_height := _required_height_for_radius(envelope, axis, radius)
+		if not is_finite(required_height):
+			continue
+		var height := maxf(
+			required_height,
+			maxf(_config.collision_bounds_min_height, radius * 2.0)
+		)
+		if height > maximum_height + GEOMETRY_EPSILON:
+			continue
+		var center := _floor_anchored_center(envelope, axis, height, radius)
+		if _capsule_contains_aabb(envelope, center, axis, height, radius):
+			return {"radius": radius, "height": height, "center": center}
+	return {}
+
+
+func _required_height_for_radius(envelope: AABB, axis: Vector3, radius: float) -> float:
+	var half := envelope.size * 0.5
+	if absf(axis.y) > 0.5:
+		var transverse := Vector2(half.x, half.z).length()
+		if transverse > radius + GEOMETRY_EPSILON:
+			return INF
+		var lower_height := envelope.position.y - _floor_y
+		if lower_height < -GEOMETRY_EPSILON:
+			return INF
+		var cap_reach := sqrt(maxf(radius * radius - transverse * transverse, 0.0))
+		if envelope.position.y < _floor_y + radius - cap_reach - GEOMETRY_EPSILON:
+			return INF
+		return maxf(
+			radius * 2.0,
+			envelope.end.y - _floor_y + radius - cap_reach
+		)
+
+	var cross_half := half.z if absf(axis.x) > 0.5 else half.x
+	var lower_y := envelope.position.y - _floor_y
+	var upper_y := envelope.end.y - _floor_y
+	if lower_y < -GEOMETRY_EPSILON:
+		return INF
+	var lower_perpendicular := Vector2(cross_half, lower_y - radius).length()
+	var upper_perpendicular := Vector2(cross_half, upper_y - radius).length()
+	var farthest_perpendicular := maxf(lower_perpendicular, upper_perpendicular)
+	if farthest_perpendicular > radius + GEOMETRY_EPSILON:
+		return INF
+	var cap_reach := sqrt(maxf(radius * radius - farthest_perpendicular * farthest_perpendicular, 0.0))
+	var longitudinal_half := half.x if absf(axis.x) > 0.5 else half.z
+	var segment_half := maxf(longitudinal_half - cap_reach, 0.0)
+	return (radius + segment_half) * 2.0
+
+
+func _floor_anchored_center(
+	envelope: AABB,
+	axis: Vector3,
+	height: float,
+	radius: float
+) -> Vector3:
+	var center := envelope.get_center()
+	center.y = _floor_y + _vertical_half_extent(height, radius, axis)
+	return center
+
+
+func _fit_unanchored_containing_capsule(
+	envelope: AABB,
+	axis: Vector3,
+	minimum_radius: float
+) -> Dictionary:
+	var half := envelope.size * 0.5
+	var transverse := Vector2(half.x, half.z).length()
+	var longitudinal_half := half.y
+	if absf(axis.x) > 0.5:
+		transverse = Vector2(half.y, half.z).length()
+		longitudinal_half = half.x
+	elif absf(axis.z) > 0.5:
+		transverse = Vector2(half.x, half.y).length()
+		longitudinal_half = half.z
+	var radius := maxf(minimum_radius, transverse)
+	var cap_reach := sqrt(maxf(radius * radius - transverse * transverse, 0.0))
+	var segment_half := maxf(longitudinal_half - cap_reach, 0.0)
+	var height := maxf(
+		(radius + segment_half) * 2.0,
+		maxf(_config.collision_bounds_min_height, radius * 2.0)
+	)
+	return {
+		"radius": radius,
+		"height": height,
+		"center": envelope.get_center(),
+	}
 
 
 func _fit_fallback(_snap_axis: bool) -> void:
@@ -263,14 +440,27 @@ func _apply_target(delta: float, snap: bool) -> void:
 		next_center.z = move_toward(_collision_shape.position.z, target_center.z, linear_step)
 
 	next_height = maxf(next_height, next_radius * 2.0)
-	_set_capsule_dimensions(capsule, next_height, next_radius)
-	_collision_shape.quaternion = Quaternion(Vector3.UP, next_axis).normalized()
 	next_center.y = _floor_y + _vertical_half_extent(
-		capsule.height,
-		capsule.radius,
+		next_height,
+		next_radius,
 		next_axis
 	)
+	if not _geometry_differs(capsule, next_height, next_radius, next_axis, next_center):
+		_transition_blocked_emitted = false
+		return
+	if not snap and _requires_clearance(
+		capsule, next_height, next_radius, next_axis, next_center
+	) and not _candidate_has_clearance(next_height, next_radius, next_axis, next_center):
+		if not _transition_blocked_emitted:
+			_transition_blocked_emitted = true
+			transition_blocked.emit()
+		return
+
+	_transition_blocked_emitted = false
+	_set_capsule_dimensions(capsule, next_height, next_radius)
+	_collision_shape.quaternion = Quaternion(Vector3.UP, next_axis).normalized()
 	_collision_shape.position = next_center
+	_geometry_write_count += 1
 	geometry_changed.emit(
 		capsule.height,
 		capsule.radius,
@@ -280,16 +470,80 @@ func _apply_target(delta: float, snap: bool) -> void:
 	)
 
 
+func _geometry_differs(
+	capsule: CapsuleShape3D,
+	height: float,
+	radius: float,
+	axis: Vector3,
+	center: Vector3
+) -> bool:
+	return absf(capsule.height - height) > GEOMETRY_EPSILON \
+		or absf(capsule.radius - radius) > GEOMETRY_EPSILON \
+		or get_capsule_axis().angle_to(axis) > GEOMETRY_EPSILON \
+		or _collision_shape.position.distance_to(center) > GEOMETRY_EPSILON
+
+
+func _requires_clearance(
+	capsule: CapsuleShape3D,
+	height: float,
+	radius: float,
+	axis: Vector3,
+	center: Vector3
+) -> bool:
+	var current_axis := get_capsule_axis()
+	var same_axis := current_axis.angle_to(axis) <= GEOMETRY_EPSILON
+	var same_horizontal_center := Vector2(
+		_collision_shape.position.x,
+		_collision_shape.position.z
+	).distance_to(Vector2(center.x, center.z)) <= GEOMETRY_EPSILON
+	var only_floor_anchored_shrink := same_axis \
+		and same_horizontal_center \
+		and height <= capsule.height + GEOMETRY_EPSILON \
+		and radius <= capsule.radius + GEOMETRY_EPSILON
+	return not only_floor_anchored_shrink
+
+
+func _candidate_has_clearance(
+	height: float,
+	radius: float,
+	axis: Vector3,
+	center: Vector3
+) -> bool:
+	if not _body or not _body.is_inside_tree() or not _body.get_world_3d():
+		return true
+	var query_shape := CapsuleShape3D.new()
+	var query_radius := maxf(radius - CLEARANCE_SKIN, 0.001)
+	var query_height := maxf(height - CLEARANCE_SKIN * 2.0, query_radius * 2.0)
+	query_shape.radius = query_radius
+	query_shape.height = query_height
+	var parameters := PhysicsShapeQueryParameters3D.new()
+	parameters.shape = query_shape
+	parameters.transform = _body.global_transform * Transform3D(
+		Basis(Quaternion(Vector3.UP, axis).normalized()),
+		center
+	)
+	parameters.exclude = [_body.get_rid()]
+	parameters.collision_mask = _body.collision_mask
+	parameters.collide_with_bodies = true
+	parameters.collide_with_areas = false
+	parameters.margin = 0.0
+	return _body.get_world_3d().direct_space_state.intersect_shape(parameters, 1).is_empty()
+
+
 func _set_capsule_dimensions(capsule: CapsuleShape3D, height: float, radius: float) -> void:
 	# Godot enforces height >= 2 * radius. Assignment order matters while radius
 	# grows or shrinks, otherwise the resource can silently rewrite the other
 	# property and bypass our configured per-frame limit.
 	if radius > capsule.radius:
-		capsule.height = maxf(height, radius * 2.0)
-		capsule.radius = radius
+		if absf(capsule.height - height) > GEOMETRY_EPSILON:
+			capsule.height = maxf(height, radius * 2.0)
+		if absf(capsule.radius - radius) > GEOMETRY_EPSILON:
+			capsule.radius = radius
 	else:
-		capsule.radius = radius
-		capsule.height = maxf(height, radius * 2.0)
+		if absf(capsule.radius - radius) > GEOMETRY_EPSILON:
+			capsule.radius = radius
+		if absf(capsule.height - height) > GEOMETRY_EPSILON:
+			capsule.height = maxf(height, radius * 2.0)
 
 
 func _rotate_axis_toward(current: Vector3, target: Vector3, maximum_angle: float) -> Vector3:
@@ -310,6 +564,58 @@ func _axis_extent(size: Vector3, axis: Vector3) -> float:
 	if absf(axis.z) > 0.5:
 		return size.z
 	return size.y
+
+
+func _aabb_is_equal_approx(first: AABB, second: AABB) -> bool:
+	return first.position.distance_to(second.position) <= ENVELOPE_EPSILON \
+		and first.size.distance_to(second.size) <= ENVELOPE_EPSILON
+
+
+func _aabb_corners(envelope: AABB) -> Array[Vector3]:
+	var minimum := envelope.position
+	var maximum := envelope.end
+	return [
+		Vector3(minimum.x, minimum.y, minimum.z),
+		Vector3(minimum.x, minimum.y, maximum.z),
+		Vector3(minimum.x, maximum.y, minimum.z),
+		Vector3(minimum.x, maximum.y, maximum.z),
+		Vector3(maximum.x, minimum.y, minimum.z),
+		Vector3(maximum.x, minimum.y, maximum.z),
+		Vector3(maximum.x, maximum.y, minimum.z),
+		Vector3(maximum.x, maximum.y, maximum.z),
+	]
+
+
+func _capsule_contains_aabb(
+	envelope: AABB,
+	center: Vector3,
+	axis: Vector3,
+	height: float,
+	radius: float
+) -> bool:
+	for corner in _aabb_corners(envelope):
+		if not _capsule_contains_point(
+			corner, center, axis, height, radius, GEOMETRY_EPSILON
+		):
+			return false
+	return true
+
+
+func _capsule_contains_point(
+	point: Vector3,
+	center: Vector3,
+	axis: Vector3,
+	height: float,
+	radius: float,
+	tolerance: float = 0.0
+) -> bool:
+	var normalized_axis := axis.normalized()
+	var segment_half := maxf(height * 0.5 - radius, 0.0)
+	var relative := point - center
+	var projected := clampf(relative.dot(normalized_axis), -segment_half, segment_half)
+	var nearest := center + normalized_axis * projected
+	var allowed_radius := radius + maxf(tolerance, 0.0)
+	return point.distance_squared_to(nearest) <= allowed_radius * allowed_radius
 
 
 func _envelope_is_valid(envelope: AABB) -> bool:

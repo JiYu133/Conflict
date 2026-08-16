@@ -26,15 +26,21 @@ func _run() -> void:
 	if not _check(stance != null and capsule != null and camera != null, "live prone dependencies initialize"):
 		return
 
-	for _frame in 20:
+	for _frame in 120:
 		await get_tree().physics_frame
 	var standing_vertical_extent := controller.get_vertical_extent()
 	var standing_axis := controller.get_capsule_axis()
 	var standing_radius := capsule.radius
 	var root_y := player.global_position.y
+	var standing_camera_local := player.global_transform.affine_inverse() * camera.global_position
 	var expected_floor_y := controller.get_floor_contact_y()
 	if not _check(standing_axis.dot(Vector3.UP) > 0.9,
 		"live standing hitbox envelope selects a vertical capsule"):
+		return
+	if not _check(
+		standing_vertical_extent <= player.player_config.collision_shape_height + 0.15,
+		"standing core envelope does not inflate the environment capsule"
+	):
 		return
 
 	# Observe the controller's public signal. This records every actual physics
@@ -42,6 +48,9 @@ func _run() -> void:
 	var active := {
 		"metrics": _new_geometry_metrics(capsule, standing_axis),
 	}
+	var blocked := {"count": 0}
+	var blocked_observer := func() -> void:
+		blocked["count"] = int(blocked["count"]) + 1
 	var geometry_observer := func(height: float, radius: float, axis: Vector3, _center: Vector3, floor_y: float) -> void:
 		var metrics := active["metrics"] as Dictionary
 		metrics["height_step"] = maxf(
@@ -64,6 +73,7 @@ func _run() -> void:
 		metrics["previous_radius"] = radius
 		metrics["previous_axis"] = axis
 	controller.geometry_changed.connect(geometry_observer)
+	controller.transition_blocked.connect(blocked_observer)
 
 	stance._enter_prone()
 	var enter_camera_metrics := await _sample_transition(player, camera, 180)
@@ -74,11 +84,18 @@ func _run() -> void:
 	var prone_axis := controller.get_capsule_axis()
 	var prone_radius := capsule.radius
 	var prone_envelope := player.health_system.get_collision_envelope()
+	var prone_camera_local := player.global_transform.affine_inverse() * camera.global_position
 	if not _check(absf(prone_axis.y) < 0.35,
 		"live prone hitbox envelope rotates the capsule horizontally"):
 		return
-	if not _check(prone_vertical_extent < standing_vertical_extent - 0.2,
-		"live prone capsule has a lower vertical profile"):
+	if not _check(controller.contains_envelope(prone_envelope, 0.005),
+		"live prone capsule contains the complete core-pose envelope"):
+		return
+	if not _check(prone_vertical_extent <= standing_vertical_extent * 0.7,
+		"live prone capsule is materially lower than the standing capsule"):
+		return
+	if not _check(prone_camera_local.y <= standing_camera_local.y - 0.35,
+		"camera follows the head down into the prone pose"):
 		return
 
 	active["metrics"] = _new_geometry_metrics(capsule, prone_axis)
@@ -88,11 +105,15 @@ func _run() -> void:
 	if not _check(not stance.is_prone_transitioning() and not stance.is_prone(), "live prone exit completes"):
 		return
 	var restored_axis := controller.get_capsule_axis()
+	var restored_camera_local := player.global_transform.affine_inverse() * camera.global_position
 	if not _check(restored_axis.dot(Vector3.UP) > 0.9,
 		"live standing envelope restores the vertical capsule axis"):
 		return
-	if not _check(controller.get_vertical_extent() > prone_vertical_extent + 0.2,
-		"live standing envelope restores occupied height"):
+	if not _check(absf(restored_camera_local.y - standing_camera_local.y) < 0.2,
+		"camera returns to the standing eye-height range after prone exit"):
+		return
+	if not _check(int(blocked["count"]) == 0,
+		"ordinary open-space prone transitions are not rejected by clearance checks"):
 		return
 
 	var maximum_linear_step := player.player_config.collision_bounds_follow_speed / 60.0 + 0.003
@@ -118,24 +139,44 @@ func _run() -> void:
 	if not _check(absf(player.global_position.y - root_y) < 0.02,
 		"CharacterBody root does not fall or get pushed up by capsule fitting"):
 		return
-	if not _check(float(exit_camera_metrics["camera_step"]) < 0.08,
-		"camera-bearing head pose has no single-frame exit jump"):
+	if not _check(
+		maxf(
+			float(enter_camera_metrics["camera_step"]),
+			float(exit_camera_metrics["camera_step"])
+		) < 0.08,
+		"camera-bearing head pose has no single-frame transition jump"
+	):
+		return
+	if not _check(
+		maxf(
+			float(enter_camera_metrics["camera_position_step"]),
+			float(exit_camera_metrics["camera_position_step"])
+		) < 0.1,
+		"camera has no single-frame 3D position jump during prone transitions"
+	):
 		return
 
-	print("live_prone_collision_check=ok prone_axis=%s prone_envelope=%s@%s standing_radius=%.3f prone_radius=%.3f height_step=%.4f radius_step=%.4f axis_step_deg=%.2f camera_step=%.4f floor_drift=%.4f root_drift=%.4f" % [
+	print("live_prone_collision_check=ok prone_axis=%s prone_envelope=%s@%s standing_extent=%.3f prone_extent=%.3f standing_radius=%.3f prone_radius=%.3f height_step=%.4f radius_step=%.4f axis_step_deg=%.2f camera_step=%.4f camera_3d_step=%.4f floor_drift=%.4f root_drift=%.4f" % [
 		prone_axis,
 		prone_envelope.size,
 		prone_envelope.position,
+		standing_vertical_extent,
+		prone_vertical_extent,
 		standing_radius,
 		prone_radius,
 		_max_metric(enter_geometry_metrics, exit_geometry_metrics, "height_step"),
 		_max_metric(enter_geometry_metrics, exit_geometry_metrics, "radius_step"),
 		rad_to_deg(_max_metric(enter_geometry_metrics, exit_geometry_metrics, "axis_step")),
-		float(exit_camera_metrics["camera_step"]),
+		maxf(float(enter_camera_metrics["camera_step"]), float(exit_camera_metrics["camera_step"])),
+		maxf(
+			float(enter_camera_metrics["camera_position_step"]),
+			float(exit_camera_metrics["camera_position_step"])
+		),
 		_max_metric(enter_geometry_metrics, exit_geometry_metrics, "floor_drift"),
 		absf(player.global_position.y - root_y),
 	])
 	controller.geometry_changed.disconnect(geometry_observer)
+	controller.transition_blocked.disconnect(blocked_observer)
 	map.queue_free()
 	await get_tree().process_frame
 	await get_tree().physics_frame
@@ -155,16 +196,20 @@ func _new_geometry_metrics(capsule: CapsuleShape3D, axis: Vector3) -> Dictionary
 
 
 func _sample_transition(player: BasePlayer, camera: Camera3D, maximum_frames: int) -> Dictionary:
-	var previous_camera_y := camera.global_position.y
-	var metrics := {"camera_step": 0.0}
+	var previous_camera_position := camera.global_position
+	var metrics := {"camera_step": 0.0, "camera_position_step": 0.0}
 	for _frame in maximum_frames:
 		await get_tree().physics_frame
 		await get_tree().process_frame
 		metrics["camera_step"] = maxf(
 			float(metrics["camera_step"]),
-			absf(camera.global_position.y - previous_camera_y)
+			absf(camera.global_position.y - previous_camera_position.y)
 		)
-		previous_camera_y = camera.global_position.y
+		metrics["camera_position_step"] = maxf(
+			float(metrics["camera_position_step"]),
+			camera.global_position.distance_to(previous_camera_position)
+		)
+		previous_camera_position = camera.global_position
 		if not player.stance_controller.is_prone_transitioning() \
 			and is_equal_approx(
 				player.stance_controller._prone_geometry_blend,

@@ -315,6 +315,7 @@ func _connect_signals() -> void:
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
 	stance_controller.prone_geometry_changed.connect(_on_prone_geometry_changed)
+	collision_controller.transition_blocked.connect(_on_collision_transition_blocked)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
 	# 运动状态 → 左手 IK 权重过渡
@@ -671,6 +672,13 @@ func _on_stance_changed(value: float) -> void:
 
 func _on_prone_geometry_changed(_blend: float) -> void:
 	_sync_pose_geometry()
+
+
+## Collision owns world-clearance policy; stance owns pose state. BasePlayer is
+## the only place that translates the value-only rejection signal between them.
+func _on_collision_transition_blocked() -> void:
+	if stance_controller:
+		stance_controller.reject_collision_transition()
 
 
 ## BasePlayer is the composition root for pose presentation. Components receive
