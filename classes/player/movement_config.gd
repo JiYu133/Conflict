@@ -116,7 +116,7 @@ extends Resource
 @export var prone_roll_duration: float = 0.45
 @export var prone_roll_acceleration: float = 18.0
 @export var prone_capsule_height: float = 0.42
-@export var prone_collision_y_offset: float = -0.52
+@export var prone_collision_y_offset: float = -0.69
 @export var prone_model_y_offset: float = -1.18
 
 # 碰撞体 ──────────────────────────────────────────────────────

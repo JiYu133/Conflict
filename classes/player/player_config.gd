@@ -162,6 +162,6 @@ var prone_roll_acceleration: float:
 var prone_capsule_height: float:
 	get: return movement_config.prone_capsule_height if movement_config else 0.42
 var prone_collision_y_offset: float:
-	get: return movement_config.prone_collision_y_offset if movement_config else -0.68
+	get: return movement_config.prone_collision_y_offset if movement_config else -0.69
 var prone_model_y_offset: float:
 	get: return movement_config.prone_model_y_offset if movement_config else -1.18

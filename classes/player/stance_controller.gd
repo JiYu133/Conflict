@@ -10,6 +10,8 @@ extends Node
 # 信号 ────────────────────────────────────────────────────
 signal stance_changed(new_value: float)
 ## 姿态值改变时触发（0.0=站立, 1.0=蹲下）
+signal prone_geometry_changed(new_blend: float)
+## 趴下碰撞箱/模型偏移混合值改变时触发（0.0=站/蹲，1.0=趴下）
 
 
 # 私有变量 ────────────────────────────────────────────────
@@ -26,6 +28,9 @@ var _prone_timer: float = 0.0
 
 var _stance_value: float = 0.0  # 当前姿态（平滑插值后的值）
 var _target_stance: float = 0.0  # 目标姿态（滚轮设定的目标）
+var _prone_geometry_blend: float = 0.0
+var _prone_geometry_target: float = 0.0
+var _prone_geometry_speed: float = 3.0
 
 # 输入防抖
 var _input_cooldown: float = 0.0
@@ -110,6 +115,9 @@ func is_prone() -> bool:
 func is_prone_transitioning() -> bool:
 	return _prone_transition
 
+func get_prone_geometry_blend() -> float:
+	return _prone_geometry_blend
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Prone is handled in _input so it is not affected by UI/event consumption.
 	return
@@ -118,6 +126,7 @@ func _enter_prone() -> void:
 	if _prone_transition or _is_prone:
 		return
 	_target_stance = 1.0
+	_prone_geometry_target = 1.0
 	_is_prone = true
 	_prone_transition = true
 	_prone_entering = true
@@ -132,6 +141,7 @@ func _enter_prone() -> void:
 			_prone_transition = false
 			prone_transition_changed.emit(false)
 			_player.animation_controller.play_prone_idle()
+	_prone_geometry_speed = 1.0 / maxf(_prone_timer, 0.01)
 
 func _exit_prone(to_stand: bool) -> void:
 	if _prone_transition or not _is_prone:
@@ -139,9 +149,11 @@ func _exit_prone(to_stand: bool) -> void:
 	_prone_transition = true
 	_prone_entering = false
 	_prone_exit_to_stand = to_stand
-	# Start raising the collision volume with the stance interpolation. Keeping
-	# the prone flag until the clip ends made the capsule jump upward at the
-	# final frame after the stance value had already returned to zero.
+	# Begin both stance and geometry interpolation with the authored exit clip.
+	# Delaying either target until the clip ends creates a one-frame capsule/model
+	# jump, which is visible as a camera bump.
+	_target_stance = 0.0 if to_stand else 1.0
+	_prone_geometry_target = 0.0
 	_is_prone = false
 	prone_changed.emit(false)
 	_prone_timer = 1.97
@@ -154,6 +166,7 @@ func _exit_prone(to_stand: bool) -> void:
 			_finish_prone_exit()
 	else:
 		_finish_prone_exit()
+	_prone_geometry_speed = 1.0 / maxf(_prone_timer, 0.01)
 
 func _finish_prone_exit() -> void:
 	if not _prone_transition:
@@ -167,6 +180,7 @@ func _finish_prone_exit() -> void:
 	# C exits into crouch. Z exits directly toward standing as soon as the
 	# authored prone-exit clip releases the skeleton.
 	_target_stance = 0.0 if not completing_entry and _prone_exit_to_stand else 1.0
+	_prone_geometry_target = 1.0 if completing_entry else 0.0
 	_prone_exit_to_stand = false
 	if was_prone != _is_prone:
 		prone_changed.emit(_is_prone)
@@ -184,6 +198,17 @@ func _process(delta: float) -> void:
 	# 防抖计时器递减
 	if _input_cooldown > 0.0:
 		_input_cooldown -= delta
+
+	# Collision and model offsets need their own blend. is_prone changes at the
+	# start of an exit for gameplay/animation ownership, but geometry must not
+	# switch between the prone and crouched capsules in that same frame.
+	if not is_equal_approx(_prone_geometry_blend, _prone_geometry_target):
+		_prone_geometry_blend = move_toward(
+			_prone_geometry_blend,
+			_prone_geometry_target,
+			_prone_geometry_speed * delta
+		)
+		prone_geometry_changed.emit(_prone_geometry_blend)
 
 	# 平滑插值到目标姿态
 	if not is_equal_approx(_stance_value, _target_stance):

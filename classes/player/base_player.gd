@@ -305,7 +305,9 @@ func _connect_signals() -> void:
 	weapon_manager.weapon_stats_changed.connect(_sync_weapon_weight_to_stamina)
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
-	stance_controller.prone_changed.connect(func(_active): movement_controller._on_stance_changed(stance_controller.get_stance_value()))
+	stance_controller.prone_geometry_changed.connect(
+		func(_blend): movement_controller._on_stance_changed(stance_controller.get_stance_value())
+	)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
 	# 运动状态 → 左手 IK 权重过渡

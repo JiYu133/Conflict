@@ -597,12 +597,21 @@ func _update_collision_shape(stance: float) -> void:
 
 	var shape := collision_shape.shape as CapsuleShape3D
 	var standing_height: float = _config.collision_shape_height
-	var prone: bool = _player.stance_controller != null and _player.stance_controller.is_prone()
-	var target_height: float = _config.prone_capsule_height if prone else lerp(standing_height, _config.crouch_capsule_height, stance)
+	var prone_blend: float = _player.stance_controller.get_prone_geometry_blend() \
+		if _player.stance_controller else 0.0
+	var non_prone_height: float = lerpf(standing_height, _config.crouch_capsule_height, stance)
+	var target_height: float = lerpf(non_prone_height, _config.prone_capsule_height, prone_blend)
 	shape.height = target_height
-	# 胶囊体底部保持在站立时的高度，避免蹲下时碰撞体整体抬高。
-	collision_shape.position.y = (_config.prone_collision_y_offset if prone else _config.collision_shape_y_offset) \
-		+ (standing_height - target_height) * 0.5
+	# Keep the non-prone capsule bottom anchored. The old sign moved the center
+	# upward as the capsule shrank, making CharacterBody fall and then get pushed
+	# upward again when standing — the visible one-frame camera bump.
+	var non_prone_center_y: float = _config.collision_shape_y_offset \
+		+ (non_prone_height - standing_height) * 0.5
+	collision_shape.position.y = lerpf(
+		non_prone_center_y,
+		_config.prone_collision_y_offset,
+		prone_blend
+	)
 
 
 func _update_model_offset(stance: float) -> void:
@@ -610,5 +619,8 @@ func _update_model_offset(stance: float) -> void:
 	var model_node: Node3D = _player.model_manager.model_node if _player.model_manager else null
 	if not model_node:
 		return
-	var target_y : float = _config.prone_model_y_offset if (_player.stance_controller and _player.stance_controller.is_prone()) else lerp(_config.model_y_offset, _config.crouch_y_offset, stance)
+	var prone_blend: float = _player.stance_controller.get_prone_geometry_blend() \
+		if _player.stance_controller else 0.0
+	var non_prone_y: float = lerpf(_config.model_y_offset, _config.crouch_y_offset, stance)
+	var target_y: float = lerpf(non_prone_y, _config.prone_model_y_offset, prone_blend)
 	model_node.position.y = target_y
