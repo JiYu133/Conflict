@@ -95,8 +95,8 @@ extends Resource
 ## 冲刺速度波动振幅（m/s）
 @export var gait_amplitude_sprint: float = 0.18
 
-# 姿态与蹲下 ──────────────────────────────────────────────────
-@export_group("姿态与蹲下")
+# 姿态 ──────────────────────────────────────────────────
+@export_group("姿态")
 ## 姿态过渡速度（单位/秒）
 @export var stance_transition_speed: float = 3.0
 ## 姿态调整步进值（每次滚轮的增量，0.0~1.0）
@@ -104,20 +104,31 @@ extends Resource
 ## 蹲下碰撞胶囊体高度（m）
 @export var crouch_capsule_height: float = 0.6
 ## 蹲下时模型 Y 轴偏移
-@export var crouch_y_offset: float = -0.85
+@export var crouch_y_offset: float = -1.3
 ## Walk → CrouchWalk 动画过渡时间（秒），建议与 1/stance_transition_speed 一致
 @export var crouch_walk_xfade_time: float = 0.3
+## 俯卧前进速度（m/s）。
 @export var prone_forward_speed: float = 0.8
+## 俯卧后退速度（m/s）。
 @export var prone_backward_speed: float = 0.55
+## 俯卧横向移动速度（m/s）。
 @export var prone_lateral_speed: float = 0.65
+## 俯卧翻滚的目标速度（m/s）。
 @export var prone_roll_speed: float = 3.2
+## 连续翻滚之间的最短冷却时间（秒）。
 @export var prone_roll_cooldown: float = 0.15
+## 超过此时间未继续翻滚时，重置连续翻滚计数（秒）。
 @export var prone_roll_chain_reset_time: float = 1.0
+## 单次俯卧翻滚持续时间（秒）。
 @export var prone_roll_duration: float = 0.45
+## 俯卧翻滚达到目标速度时使用的加速度（m/s²）。
 @export var prone_roll_acceleration: float = 18.0
+## 俯卧状态使用的碰撞胶囊体高度（m）。
 @export var prone_capsule_height: float = 0.6
+## 俯卧碰撞胶囊体中心的 Y 轴偏移（m）。
 @export var prone_collision_y_offset: float = -0.6
-@export var prone_model_y_offset: float = -1.18
+## 俯卧时角色模型的 Y 轴偏移（m）。
+@export var prone_model_y_offset: float = -1.35
 
 # 碰撞体 ──────────────────────────────────────────────────────
 @export_group("碰撞体")
@@ -128,13 +139,14 @@ extends Resource
 ## 碰撞体 Y 轴偏移（m）
 @export var collision_shape_y_offset: float = 0.0
 ## 根据当前 BodyHitbox 骨架中心形成的 3D 核心包络自动拟合主碰撞胶囊。
-@export var hitbox_driven_collision: bool = true
+@export var hitbox_driven_collision: bool = false
 ## 核心包络之外保留的统一安全余量（m）。
 @export_range(0.0, 0.2, 0.005) var collision_bounds_margin: float = 0.025
 ## 主碰撞胶囊尺寸和中心追随包络的最大速度（m/s）。
 @export_range(0.1, 10.0, 0.1) var collision_bounds_follow_speed: float = 2.0
 ## 自动尺寸的通用安全范围；不是动画专用参数。
 @export_range(0.2, 2.5, 0.05) var collision_bounds_min_height: float = 0.6
+## 自动拟合碰撞胶囊允许达到的最大高度（m）。
 @export_range(0.5, 4.0, 0.05) var collision_bounds_max_height: float = 3.0
 ## 自动胶囊最大半径，限制异常动画帧造成的过宽环境碰撞体。
 @export_range(0.2, 1.5, 0.05) var collision_bounds_max_radius: float = 0.75

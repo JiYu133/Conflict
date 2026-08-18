@@ -28,8 +28,13 @@ extends Resource
 @export var jump_cost: float = 15.0
 ## 半蹲持续消耗倍率（walk_cost_per_sec × stance_value × 此倍率）
 @export var crouch_cost_multiplier: float = 3.0
+## 趴下/起身过渡期间的体力消耗倍率（walk_cost_per_sec × 此倍率）。稳定趴下时不消耗体力。
+@export var prone_transition_cost_multiplier: float = 3.0
+## 俯卧翻滚首次消耗的体力值。
 @export var prone_roll_base_cost: float = 12.0
+## 连续翻滚时每增加一次连滚计数所增加的体力消耗。
 @export var prone_roll_increment_cost: float = 4.0
+## 单次俯卧翻滚允许消耗的最大体力值。
 @export var prone_roll_max_cost: float = 28.0
 
 ## 进入负重耐力惩罚的参考重量（kg）

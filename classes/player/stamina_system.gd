@@ -91,10 +91,18 @@ func _physics_process(delta: float) -> void:
 			if _recovery_timer >= _config.recovery_delay:
 				stamina = minf(max_stamina, stamina + _config.recovery_rate_idle * delta)
 
-	# 2b. 半蹲持续消耗：stance 越大消耗越多（按配置倍率）
+	# 2b. 半蹲持续消耗；趴下只在进入/起身过渡期间消耗，稳定趴下可恢复体力。
 	if _player.stance_controller:
-		var stance := _player.stance_controller.get_stance_value()
-		if stance > 0.05 and _movement_state != MovementState.SPRINTING and _movement_state != MovementState.RUNNING:
+		var stance_controller := _player.stance_controller
+		var stance := stance_controller.get_stance_value()
+		var prone_transitioning := stance_controller.is_prone_transitioning()
+		if prone_transitioning and _movement_state != MovementState.SPRINTING and _movement_state != MovementState.RUNNING:
+			var prone_transition_cost := _config.walk_cost_per_sec * _config.prone_transition_cost_multiplier * movement_cost_multiplier * delta
+			stamina = maxf(0.0, stamina - prone_transition_cost)
+			_recovery_timer = 0.0
+		elif not stance_controller.is_prone() \
+				and (stance_controller.is_stance_transitioning() or (stance > 0.05 and stance < 0.99)) \
+				and _movement_state != MovementState.SPRINTING and _movement_state != MovementState.RUNNING:
 			var crouch_cost: float = stance * _config.walk_cost_per_sec * _config.crouch_cost_multiplier * movement_cost_multiplier * delta
 			stamina = maxf(0.0, stamina - crouch_cost)
 			_recovery_timer = 0.0

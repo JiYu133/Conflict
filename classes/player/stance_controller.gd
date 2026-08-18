@@ -63,10 +63,11 @@ func _input(event: InputEvent) -> void:
 		return
 
 	# 姿态微调：默认绑定滚轮上/下，可在设置菜单改绑按键（允许 echo → 按住连续调整）
+	var stance_step := _config.movement_config.stance_step_size if _config and _config.movement_config else 0.1
 	if event.is_action_pressed("stance_raise", true):
-		adjust_stance(-0.1)  # 站起一档
+		adjust_stance(-stance_step)  # 站起一档
 	elif event.is_action_pressed("stance_lower", true):
-		adjust_stance(0.1)   # 蹲下一档
+		adjust_stance(stance_step)   # 蹲下一档
 
 	# C 键：站立/蹲姿互切；趴下时先回到蹲姿。
 	if event.is_action_pressed("crouch"):
@@ -97,6 +98,11 @@ func adjust_stance(delta: float) -> void:
 func get_stance_value() -> float:
 	"""获取当前姿态值（0.0=站立, 1.0=蹲下）"""
 	return _stance_value
+
+
+func is_stance_transitioning() -> bool:
+	"""是否正在调整站立/蹲姿高度（不含趴下过渡）。"""
+	return not is_equal_approx(_stance_value, _target_stance)
 
 
 func set_stance(value: float) -> void:
@@ -244,7 +250,11 @@ func _process(delta: float) -> void:
 	# 平滑插值到目标姿态
 	if not is_equal_approx(_stance_value, _target_stance):
 		var transition_speed: float = _config.stance_transition_speed if _config else 3.0
-		_stance_value = move_toward(_stance_value, _target_stance, transition_speed * delta)
+		# 指数平滑避免小步进在单帧内突然跳到下一姿态阶段。
+		var blend := 1.0 - exp(-maxf(transition_speed, 0.01) * delta)
+		_stance_value = lerpf(_stance_value, _target_stance, blend)
+		if absf(_stance_value - _target_stance) < 0.001:
+			_stance_value = _target_stance
 		stance_changed.emit(_stance_value)
 
 

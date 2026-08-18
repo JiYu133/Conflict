@@ -41,6 +41,7 @@ extends Resource
 ]
 
 # 手部骨骼候选名称（用于 Hand IK）──────────────────────────────
+## 用于解析右手骨骼的候选名称，按优先顺序匹配。
 @export var right_hand_bone_names: Array[String] = [
 	"mixamorig_RightHand", "RightHand", "Hand_R", "r_hand"
 ]
