@@ -66,7 +66,6 @@ extends Resource
 ## true  = 自动标定（应急）。装备武器/更换配件时记录「动画手腕朝向 相对于 握把朝向」
 ##         的差值并每帧还原，手腕保持动画姿态。可临时救场，但会【完全忽略】
 ##         美术对 Marker 朝向的调整——调 Marker 没反应时先检查这里是不是开着。
-@export var auto_calibrate_wrist: bool = false
 
 ## 在上述基础上再叠加的手腕修正角（欧拉角，度）。若手腕仍有偏差，改这里。
 @export var wrist_rotation_offset: Vector3 = Vector3.ZERO
@@ -76,6 +75,8 @@ extends Resource
 ## 数值很小即可（1~2 cm）；X = 握把左右，Y = 上下，Z = 沿枪身前后。
 @export var grip_position_offset: Vector3 = Vector3(0.0, -0.015, 0.0)
 
-## 趴下完整 IK 时，将握持点视为手掌接触点，而不是腕骨原点。
-## 数值表示腕骨到中指掌根距离的使用比例；0 为腕骨直接对齐，1 为掌根对齐。
-@export_range(0.0, 1.0) var prone_palm_contact_ratio: float = 0.55
+## 当武器资源缺少 LeftHandWristTarget 时，回退方案使用的腕骨到掌根偏移比例。
+@export_range(0.0, 1.0) var fallback_palm_contact_ratio: float = 1.0
+
+## 当武器资源缺少 LeftHandWristTarget 时，叠加在 LeftHandGrip 局部轴上的预设腕部偏移。
+@export var fallback_wrist_position_offset: Vector3 = Vector3.ZERO

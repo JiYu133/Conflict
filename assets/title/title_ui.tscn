@@ -4,6 +4,11 @@
 [ext_resource type="PackedScene" uid="uid://cia7vaq46uhgf" path="res://assets/title/loading_ui.tscn" id="2_loading"]
 [ext_resource type="AudioStream" uid="uid://cvjppo3omawtu" path="res://assets/audio/menu.wav" id="3_menu_music"]
 
+[sub_resource type="StyleBoxFlat" id="MenuPanel"]
+bg_color = Color(0.008, 0.012, 0.02, 0.88)
+border_width_right = 1
+border_color = Color(0.85, 0.72, 0.2, 0.25)
+
 [sub_resource type="StyleBoxFlat" id="ButtonNormal"]
 content_margin_left = 20.0
 content_margin_top = 11.0
@@ -26,17 +31,6 @@ border_color = Color(0.95, 0.78, 0.2, 1)
 corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 
-[sub_resource type="StyleBoxFlat" id="ButtonPressed"]
-content_margin_left = 24.0
-content_margin_top = 11.0
-content_margin_right = 18.0
-content_margin_bottom = 11.0
-bg_color = Color(0.85, 0.72, 0.2, 0.22)
-border_width_left = 4
-border_color = Color(0.95, 0.78, 0.2, 1)
-corner_radius_top_right = 2
-corner_radius_bottom_right = 2
-
 [sub_resource type="StyleBoxFlat" id="ButtonDisabled"]
 content_margin_left = 20.0
 content_margin_top = 11.0
@@ -48,10 +42,16 @@ border_color = Color(0.35, 0.37, 0.4, 0.25)
 corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 
-[sub_resource type="StyleBoxFlat" id="MenuPanel"]
-bg_color = Color(0.008, 0.012, 0.02, 0.88)
-border_width_right = 1
-border_color = Color(0.85, 0.72, 0.2, 0.25)
+[sub_resource type="StyleBoxFlat" id="ButtonPressed"]
+content_margin_left = 24.0
+content_margin_top = 11.0
+content_margin_right = 18.0
+content_margin_bottom = 11.0
+bg_color = Color(0.85, 0.72, 0.2, 0.22)
+border_width_left = 4
+border_color = Color(0.95, 0.78, 0.2, 1)
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
 
 [sub_resource type="StyleBoxFlat" id="StatusPanel"]
 content_margin_left = 14.0
@@ -135,25 +135,17 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="MenuPanel" type="Panel" parent="MenuRoot"]
+[node name="MenuPanel" type="Panel" parent="MenuRoot" unique_id=266203300]
 layout_mode = 1
-anchors_preset = 12
+anchors_preset = -1
+anchor_top = 1.0
 anchor_right = 0.42
 anchor_bottom = 1.0
 offset_right = 24.0
+grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 theme_override_styles/panel = SubResource("MenuPanel")
-
-[node name="TopRule" type="ColorRect" parent="MenuRoot"]
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 0.42
-offset_right = 24.0
-offset_bottom = 3.0
-grow_horizontal = 2
-mouse_filter = 2
-color = Color(0.85, 0.72, 0.2, 0.82)
 
 [node name="Content" type="VBoxContainer" parent="MenuRoot" unique_id=1162510688]
 layout_mode = 1
@@ -166,13 +158,6 @@ offset_right = 620.0
 offset_bottom = 356.0
 grow_vertical = 2
 theme_override_constants/separation = 8
-
-[node name="Kicker" type="Label" parent="MenuRoot/Content"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.85, 0.72, 0.2, 0.92)
-theme_override_fonts/font = ExtResource("1_ubark")
-theme_override_font_sizes/font_size = 14
-text = "NORTHLINE COMMAND  /  FIELD OPERATIONS"
 
 [node name="Title" type="Label" parent="MenuRoot/Content" unique_id=1093600405]
 layout_mode = 2
@@ -187,13 +172,13 @@ theme_override_fonts/font = ExtResource("1_ubark")
 theme_override_font_sizes/font_size = 14
 text = "THE LINE BETWEEN ORDER AND CHAOS"
 
-[node name="TitleRule" type="ColorRect" parent="MenuRoot/Content"]
+[node name="TitleRule" type="ColorRect" parent="MenuRoot/Content" unique_id=260058506]
 custom_minimum_size = Vector2(132, 2)
 layout_mode = 2
 mouse_filter = 2
 color = Color(0.85, 0.72, 0.2, 0.9)
 
-[node name="MenuSpacer" type="Control" parent="MenuRoot/Content"]
+[node name="MenuSpacer" type="Control" parent="MenuRoot/Content" unique_id=178637260]
 custom_minimum_size = Vector2(0, 12)
 layout_mode = 2
 mouse_filter = 2
@@ -206,8 +191,8 @@ theme_override_fonts/font = ExtResource("1_ubark")
 theme_override_font_sizes/font_size = 23
 theme_override_styles/normal = SubResource("ButtonNormal")
 theme_override_styles/hover = SubResource("ButtonHover")
-theme_override_styles/focus = SubResource("ButtonHover")
 theme_override_styles/disabled = SubResource("ButtonDisabled")
+theme_override_styles/focus = SubResource("ButtonHover")
 disabled = true
 text = "继续游戏    /    暂无存档"
 flat = true
@@ -221,9 +206,9 @@ theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
 theme_override_fonts/font = ExtResource("1_ubark")
 theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("ButtonNormal")
+theme_override_styles/pressed = SubResource("ButtonPressed")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
-theme_override_styles/pressed = SubResource("ButtonPressed")
 text = "开始游戏"
 flat = true
 alignment = 0
@@ -236,9 +221,9 @@ theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
 theme_override_fonts/font = ExtResource("1_ubark")
 theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("ButtonNormal")
+theme_override_styles/pressed = SubResource("ButtonPressed")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
-theme_override_styles/pressed = SubResource("ButtonPressed")
 text = "设置"
 flat = true
 alignment = 0
@@ -251,9 +236,9 @@ theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
 theme_override_fonts/font = ExtResource("1_ubark")
 theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("ButtonNormal")
+theme_override_styles/pressed = SubResource("ButtonPressed")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
-theme_override_styles/pressed = SubResource("ButtonPressed")
 text = "制作人员"
 flat = true
 alignment = 0
@@ -266,14 +251,14 @@ theme_override_colors/font_hover_color = Color(0.95, 0.78, 0.2, 1)
 theme_override_fonts/font = ExtResource("1_ubark")
 theme_override_font_sizes/font_size = 26
 theme_override_styles/normal = SubResource("ButtonNormal")
+theme_override_styles/pressed = SubResource("ButtonPressed")
 theme_override_styles/hover = SubResource("ButtonHover")
 theme_override_styles/focus = SubResource("ButtonHover")
-theme_override_styles/pressed = SubResource("ButtonPressed")
 text = "退出"
 flat = true
 alignment = 0
 
-[node name="StatusSpacer" type="Control" parent="MenuRoot/Content"]
+[node name="StatusSpacer" type="Control" parent="MenuRoot/Content" unique_id=167979723]
 custom_minimum_size = Vector2(0, 6)
 layout_mode = 2
 mouse_filter = 2
@@ -288,7 +273,6 @@ text = "PRE-ALPHA 测试版本
 当前内容与表现不代表最终品质"
 
 [node name="Version" type="Label" parent="." unique_id=850998614]
-layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
@@ -306,8 +290,7 @@ theme_override_font_sizes/font_size = 13
 text = "PRE-ALPHA  ·  BUILD 01"
 horizontal_alignment = 2
 
-[node name="InputHint" type="Label" parent="."]
-layout_mode = 1
+[node name="InputHint" type="Label" parent="." unique_id=1302002902]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
@@ -322,7 +305,6 @@ theme_override_font_sizes/font_size = 13
 text = "ENTER  选择    ·    鼠标  导航"
 
 [node name="Fade" type="ColorRect" parent="." unique_id=944075701]
-layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0

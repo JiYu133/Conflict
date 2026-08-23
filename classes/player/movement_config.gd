@@ -21,7 +21,7 @@ extends Resource
 @export var sprint_hold_threshold: float = 0.25
 
 # 物理参数 ────────────────────────────────────────────────────
-@export_group("物理参数")
+@export_group("地面与空中物理")
 ## 地面加速度（m/s²）
 @export var ground_acceleration: float = 6.0
 ## 跳跃力（m/s）
@@ -34,6 +34,8 @@ extends Resource
 @export var air_deceleration: float = 2.0
 ## 接地时 Y 速度钳制值
 @export var floor_snap_velocity: float = -0.5
+
+@export_group("移动约束与输入")
 ## 输入死区
 @export var input_dead_zone: float = 0.1
 ## 后退判定 dot 阈值
@@ -96,17 +98,21 @@ extends Resource
 @export var gait_amplitude_sprint: float = 0.18
 
 # 姿态 ──────────────────────────────────────────────────
-@export_group("姿态")
+@export_group("姿态过渡")
 ## 姿态过渡速度（单位/秒）
 @export var stance_transition_speed: float = 3.0
 ## 姿态调整步进值（每次滚轮的增量，0.0~1.0）
 @export var stance_step_size: float = 0.1
+
+@export_group("蹲下")
 ## 蹲下碰撞胶囊体高度（m）
 @export var crouch_capsule_height: float = 0.6
 ## 蹲下时模型 Y 轴偏移
 @export var crouch_y_offset: float = -1.3
 ## Walk → CrouchWalk 动画过渡时间（秒），建议与 1/stance_transition_speed 一致
 @export var crouch_walk_xfade_time: float = 0.3
+
+@export_group("俯卧")
 ## 俯卧前进速度（m/s）。
 @export var prone_forward_speed: float = 0.8
 ## 俯卧后退速度（m/s）。
@@ -130,14 +136,20 @@ extends Resource
 ## 俯卧时角色模型的 Y 轴偏移（m）。
 @export var prone_model_y_offset: float = -1.35
 
+@export_group("模型表现")
+## 站立时角色模型的 Y 轴偏移（m）。
+@export var model_y_offset: float = -0.5
+
 # 碰撞体 ──────────────────────────────────────────────────────
-@export_group("碰撞体")
+@export_group("手动碰撞体")
 ## 碰撞胶囊体高度（m）
 @export var collision_shape_height: float = 1.8
 ## 碰撞胶囊体半径（m）
 @export var collision_shape_radius: float = 0.4
 ## 碰撞体 Y 轴偏移（m）
 @export var collision_shape_y_offset: float = 0.0
+
+@export_group("动态碰撞拟合（实验）")
 ## 根据当前 BodyHitbox 骨架中心形成的 3D 核心包络自动拟合主碰撞胶囊。
 @export var hitbox_driven_collision: bool = false
 ## 核心包络之外保留的统一安全余量（m）。
@@ -156,5 +168,3 @@ extends Resource
 @export_range(1, 30, 1) var collision_axis_switch_stability_frames: int = 4
 ## 胶囊从竖直轴转向水平轴（或反向）的最大角速度。
 @export_range(30.0, 720.0, 10.0) var collision_axis_follow_speed_degrees: float = 240.0
-## 模型垂直偏移（m）
-@export var model_y_offset: float = -0.5

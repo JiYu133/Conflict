@@ -36,6 +36,8 @@ func _physics_process(delta: float) -> void:
 	if not _player or not _config:
 		return
 	_camera.process_moving_body_yaw_blend(delta)
+	if _movement and _movement.is_prone_rolling():
+		return
 	if _landing_blend_active:
 		if _camera.is_body_yaw_blending():
 			return
@@ -56,6 +58,10 @@ func is_turning() -> bool:
 
 func get_turn_progress() -> float:
 	return _last_progress if _turning else 0.0
+
+
+func cancel_for_prone_roll() -> void:
+	_cancel_turn()
 
 
 func _try_start_turn() -> void:

@@ -87,6 +87,24 @@ func get_prone_roll_progress() -> float:
 		return 0.0
 	return clampf(1.0 - _prone_roll_timer / _prone_roll_duration, 0.0, 1.0)
 
+## Ends a prone-only action before another system changes the player's pose.
+## This keeps roll velocity, camera banking, and the direct animation override
+## from leaking into an exit transition or a later control-state restore.
+func cancel_prone_roll() -> void:
+	if not _prone_rolling:
+		return
+	_prone_rolling = false
+	_prone_roll_direction = 0.0
+	_prone_roll_world_direction = Vector3.ZERO
+	_prone_roll_timer = 0.0
+	_prone_roll_duration = 0.0
+	_prone_roll_motion_timer = 0.0
+	_velocity.x = 0.0
+	_velocity.z = 0.0
+	if _player:
+		_player.velocity.x = 0.0
+		_player.velocity.z = 0.0
+
 func set_turn_constraint(active: bool, speed_ratio: float = 1.0, acceleration_ratio: float = 1.0) -> void:
 	_turn_constraint_active = active
 	_turn_speed_ratio = clampf(speed_ratio, 0.0, 1.0)
@@ -174,7 +192,9 @@ func _physics_process(delta: float) -> void:
 		_velocity = Vector3.ZERO
 		_player.velocity = Vector3.ZERO
 		return
-	if not _player.controllable and not ai_driving:
+	# Once a roll starts it continues through temporary control locks. Death and
+	# ragdoll still take the lifecycle branch above and cancel it explicitly.
+	if not _player.controllable and not ai_driving and not _prone_rolling:
 		if _was_controllable:
 			clear_locomotion_state()
 		_was_controllable = false
@@ -218,8 +238,6 @@ func _physics_process(delta: float) -> void:
 			_prone_roll_cooldown = _config.prone_roll_cooldown
 			_prone_roll_timer = 0.0
 			_prone_roll_motion_timer = 0.0
-			if _camera_controller:
-				_camera_controller.set_prone_roll_camera_angle(0.0)
 			if _player.animation_controller and _player.stance_controller and _player.stance_controller.is_prone():
 				_player.animation_controller.play_prone_idle()
 
@@ -476,6 +494,7 @@ func _exit_run() -> void:
 
 
 func clear_locomotion_state() -> void:
+	cancel_prone_roll()
 	if _is_sprinting:
 		_exit_sprint()
 	if _is_running:
@@ -533,6 +552,8 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 	var side: bool = abs(input_dir.x) > abs(input_dir.y) and abs(input_dir.x) > _config.input_dead_zone
 	if _is_prone_roll_combo_pressed(side, ai_driving) and not _prone_rolling and _prone_roll_cooldown <= 0.0:
 		if not _player.stamina_system or _player.stamina_system.consume_prone_roll():
+			if _player.turn_controller:
+				_player.turn_controller.cancel_for_prone_roll()
 			_prone_rolling = true
 			_prone_roll_direction = sign(input_dir.x)
 			var planar_right := basis.x
@@ -548,8 +569,6 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 					_prone_roll_duration = clip_length
 			_prone_roll_timer = _prone_roll_duration
 			_prone_roll_motion_timer = minf(_config.prone_roll_duration, _prone_roll_duration)
-			if _camera_controller:
-				_camera_controller.set_prone_roll_camera_angle(0.0)
 	var speed: float = 0.0
 	var movement_direction := direction
 	var should_move := has_input
@@ -578,6 +597,7 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 	_player.velocity = _velocity
 	_player.move_and_slide()
 	_velocity = _player.velocity
+	_had_input = has_input
 	# Enter/exit clips own the skeleton until StanceController marks the
 	# transition complete. Locomotion must not replace them frame-by-frame.
 	if _player.animation_controller and not _prone_rolling and not _player.stance_controller.is_prone_transitioning():

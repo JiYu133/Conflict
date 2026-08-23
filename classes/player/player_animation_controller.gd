@@ -127,6 +127,7 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 
 	GlobalLogger.info("AnimationController", "Initialized with AnimationTree.")
 	_setup_animations()
+	_normalize_prone_hips_height()
 	_setup_turn_filters()
 	_setup_turn_transitions()
 	_apply_config_to_transitions()
@@ -180,13 +181,89 @@ func _setup_animations() -> void:
 			var i := anim.get_track_count() - 1
 			while i >= 0:
 				var track_path := anim.track_get_path(i)
-				if not _is_turn_animation_library(lib_name) and anim.track_get_type(i) == Animation.TYPE_POSITION_3D and _is_root_motion_track(track_path):
+				if not _is_turn_animation_library(lib_name) \
+						and not _is_prone_locomotion_library(lib_name) \
+						and anim.track_get_type(i) == Animation.TYPE_POSITION_3D \
+						and _is_root_motion_track(track_path):
 					anim.remove_track(i)
 				i -= 1
 
 
+## Prone clips use different authored Hips heights (especially lateral crawl),
+## which moves the whole skeleton and therefore the head-mounted camera. Keep
+## the prone root at the idle height while preserving horizontal root motion.
+func _normalize_prone_hips_height() -> void:
+	var anim_player := _animator
+	if not is_instance_valid(anim_player) and _animation_tree:
+		var player_path: NodePath = _animation_tree.anim_player
+		anim_player = _animation_tree.get_node(player_path) as AnimationPlayer
+	if not is_instance_valid(anim_player):
+		return
+	var idle_library := anim_player.get_animation_library(&"prone_idle")
+	if not idle_library:
+		return
+	var idle_animation := idle_library.get_animation(&"mixamo_com")
+	var idle_height := _get_hips_height(idle_animation)
+	if is_nan(idle_height):
+		return
+	var prone_libraries := [
+		&"prone_idle", &"prone_forward", &"prone_backward",
+		&"prone_crawl_backward", &"prone_turn_left", &"prone_turn_right",
+		&"prone_roll", &"roll_left"
+	]
+	for library_name in prone_libraries:
+		var library := anim_player.get_animation_library(library_name)
+		if not library:
+			continue
+		for animation_name in library.get_animation_list():
+			var source := library.get_animation(animation_name)
+			if not source:
+				continue
+			var animation := source.duplicate(true) as Animation
+			_normalize_animation_hips_height(animation, idle_height)
+			library.remove_animation(animation_name)
+			library.add_animation(animation_name, animation)
+
+
+func _get_hips_height(animation: Animation) -> float:
+	if not animation:
+		return NAN
+	for track_index in animation.get_track_count():
+		if animation.track_get_type(track_index) != Animation.TYPE_POSITION_3D:
+			continue
+		if not str(animation.track_get_path(track_index)).contains("mixamorig_Hips"):
+			continue
+		if animation.track_get_key_count(track_index) == 0:
+			continue
+		var value := animation.track_get_key_value(track_index, 0) as Vector3
+		return value.y
+	return NAN
+
+
+func _normalize_animation_hips_height(animation: Animation, height: float) -> void:
+	if not animation:
+		return
+	for track_index in animation.get_track_count():
+		if animation.track_get_type(track_index) != Animation.TYPE_POSITION_3D:
+			continue
+		if not str(animation.track_get_path(track_index)).contains("mixamorig_Hips"):
+			continue
+		for key_index in animation.track_get_key_count(track_index):
+			var value := animation.track_get_key_value(track_index, key_index) as Vector3
+			value.y = height
+			animation.track_set_key_value(track_index, key_index, value)
+
+
 func _is_turn_animation_library(library_name: StringName) -> bool:
 	return str(library_name) in ["turn_left", "turn_right", "crouch_turn_left", "crouch_turn_right", "prone_turn_left", "prone_turn_right"]
+
+
+func _is_prone_locomotion_library(library_name: StringName) -> bool:
+	return str(library_name) in [
+		"prone_idle", "prone_forward", "prone_backward", "prone_crawl_backward",
+		"prone_turn_left", "prone_turn_right", "prone_roll", "roll_left",
+		"prone_enter", "prone_exit", "prone_fire"
+	]
 
 
 func _neutralize_turn_hips(animation: Animation) -> void:
@@ -578,13 +655,7 @@ func play_prone_idle() -> void:
 	if not player.has_animation(anim):
 		clear_prone_override()
 		return
-	if _animation_tree:
-		_animation_tree.active = false
-	var clip: Animation = player.get_animation(anim)
-	clip.loop_mode = Animation.LOOP_LINEAR
-	_prone_animation_override = anim
-	if player.current_animation != anim:
-		player.play(anim, PRONE_LOCOMOTION_BLEND_TIME)
+	_play_prone_clip(player, anim, true, PRONE_LOCOMOTION_BLEND_TIME)
 
 func play_prone_roll(left: bool) -> float:
 	var player := _prone_player()
@@ -594,12 +665,8 @@ func play_prone_roll(left: bool) -> float:
 	if not player.has_animation(anim):
 		play_prone_idle()
 		return 0.0
-	if _animation_tree:
-		_animation_tree.active = false
-	_prone_animation_override = anim
 	var clip := player.get_animation(anim)
-	clip.loop_mode = Animation.LOOP_NONE
-	player.play(anim)
+	_play_prone_clip(player, anim, false, 0.0)
 	player.seek(0.0, true)
 	return clip.length
 
@@ -627,13 +694,28 @@ func update_prone_motion(input_dir: Vector2, has_input: bool) -> void:
 	if not player.has_animation(anim):
 		clear_prone_override()
 		return
+	_play_prone_clip(player, anim, true, PRONE_LOCOMOTION_BLEND_TIME)
+
+
+func _play_prone_clip(
+	player: AnimationPlayer,
+	anim: StringName,
+	loop: bool,
+	blend_time: float
+) -> void:
+	if not player or not player.has_animation(anim):
+		return
 	if _animation_tree:
 		_animation_tree.active = false
+	var clip := player.get_animation(anim)
+	clip.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
 	_prone_animation_override = anim
-	var clip: Animation = player.get_animation(anim)
-	clip.loop_mode = Animation.LOOP_LINEAR
 	if player.current_animation != anim:
-		player.play(anim, PRONE_LOCOMOTION_BLEND_TIME)
+		player.play(anim, blend_time)
+
+
+func get_prone_animation_name() -> StringName:
+	return _prone_animation_override
 
 
 func begin_external_turn(turn_state: State, playback_speed: float) -> void:

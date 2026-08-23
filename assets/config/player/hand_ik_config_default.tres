@@ -13,5 +13,6 @@ ads_ik_weight = 0.8
 prone_ik_weight = 1.0
 weight_blend_time = 0.12
 grip_position_offset = Vector3(0, -0.015, 0)
-prone_palm_contact_ratio = 0.55
+fallback_palm_contact_ratio = 1.0
+fallback_wrist_position_offset = Vector3(0, 0, 0)
 metadata/_custom_type_script = "uid://b304dqmhgyp3b"

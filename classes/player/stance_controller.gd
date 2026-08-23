@@ -51,6 +51,9 @@ func _input(event: InputEvent) -> void:
 	# 只在存活、可控时处理（移动时也可调整）
 	if not _player.is_alive or not _player.controllable:
 		return
+	# A prone roll owns the complete pose until its authored animation finishes.
+	if _player.movement_controller and _player.movement_controller.is_prone_rolling():
+		return
 	var prone_pressed := event.is_action_pressed("prone")
 	if event is InputEventKey:
 		var key_event := event as InputEventKey

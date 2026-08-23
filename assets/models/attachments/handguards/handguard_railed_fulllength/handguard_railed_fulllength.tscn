@@ -13,6 +13,10 @@ script = ExtResource("1_base")
 transform = Transform3D(0, 1, 0, 1, 0, 0, 0, 0, -1, -0.07311324, -0.05368633, 0.11887932)
 visible = false
 
+[node name="LeftHandWristTarget" type="Marker3D" parent="."]
+transform = Transform3D(0, 1, 0, 1, 0, 0, 0, 0, -1, -0.07311324, -0.05368633, 0.11887932)
+visible = false
+
 [node name="Underbarrel" type="Marker3D" parent="." unique_id=547466798]
 script = ExtResource("2_slot")
 slot_type = 4

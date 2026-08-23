@@ -104,8 +104,10 @@ var _ragdoll_bone_idx: int = -1
 var _ragdoll_head_bone: PhysicalBone3D = null  # 头部物理骨骼
 var _ragdoll_physics_active: bool = false
 var _head_spring_enabled: bool = true
-const PRONE_ROLL_MAX_CAMERA_BANK: float = deg_to_rad(18.0)
-var _prone_roll_camera_angle: float = 0.0
+var _prone_roll_head_tracking: bool = false
+var _prone_roll_head_bone_idx: int = -1
+var _prone_roll_eye_offset: Vector3 = Vector3.ZERO
+var _prone_roll_head_to_camera_basis: Basis = Basis.IDENTITY
 ## 头部没有对应 PhysicalBone3D 时，使用颈部等最近物理父骨骼，
 ## 该变换把物理骨骼坐标转换为头部坐标，因此仍能保持头部位置/滚转。
 var _ragdoll_head_from_physical: Transform3D = Transform3D.IDENTITY
@@ -486,10 +488,13 @@ func _process(delta: float) -> void:
 	if not _head_spring_enabled:
 		return
 
-	if not controllable:
+	if _update_prone_roll_head_camera():
+		_update_ads(delta)
+		_update_weapon_spring(delta)
 		return
-	_update_prone_roll_camera(delta)
-	if not is_instance_valid(_look_controller) or not _look_controller.is_free_look_active():
+	if controllable and (
+		not is_instance_valid(_look_controller) or not _look_controller.is_free_look_active()
+	):
 		_sync_moving_body_yaw()
 
 	# 1. 读取头部在玩家局部空间的位置（弹簧不感知玩家旋转，只过滤动画位移）
@@ -528,7 +533,8 @@ func _process(delta: float) -> void:
 
 	var filtered_local := Vector3(
 		_spring_x.update(delta, head_local.x),
-		_turn_height_local_y if _turn_height_locked else _spring_y.update(delta, head_local.y),
+		_turn_height_local_y if _turn_height_locked
+		else _spring_y.update(delta, head_local.y),
 		_spring_z.update(delta, head_local.z)
 	)
 
@@ -540,7 +546,7 @@ func _process(delta: float) -> void:
 	_active_camera.global_rotation = Vector3(
 		get_vertical_angle() + _pain_pitch,
 		get_view_yaw() + _pain_yaw,
-		_pain_roll + _prone_roll_camera_angle
+		_pain_roll
 	)
 
 	_update_ads(delta)
@@ -704,29 +710,46 @@ func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
 func get_active_camera() -> Camera3D:
 	return _active_camera
 
-func set_prone_roll_camera_angle(angle: float) -> void:
-	_prone_roll_camera_angle = angle
-
-
-func _update_prone_roll_camera(delta: float) -> void:
-	if _player and _player.movement_controller and _player.movement_controller.is_prone_rolling():
-		var progress := _player.movement_controller.get_prone_roll_progress()
-		var direction := _player.movement_controller.get_prone_roll_direction()
-		# A half-sine gives one readable bank and returns to a level horizon at
-		# the end without ever flipping the player's view upside down.
-		# Camera3D looks along -Z, so its screen-space bank uses the opposite
-		# sign from the player's lateral input (right roll = negative Z bank).
-		_prone_roll_camera_angle = -direction * sin(progress * PI) * PRONE_ROLL_MAX_CAMERA_BANK
-		return
-	_prone_roll_camera_angle = wrapf(
-		lerp_angle(
-			_prone_roll_camera_angle,
-			0.0,
-			clampf(delta * 14.0, 0.0, 1.0)
-		),
-		-PI,
-		PI
-	)
+func _update_prone_roll_head_camera() -> bool:
+	var rolling := is_instance_valid(_player) \
+		and _player.movement_controller \
+		and _player.movement_controller.is_prone_rolling()
+	if not rolling:
+		if _prone_roll_head_tracking and is_instance_valid(_player):
+			var rendered_local := (
+				_player.global_transform.affine_inverse() * _active_camera.global_position
+			)
+			_spring_x.position = rendered_local.x
+			_spring_y.position = rendered_local.y
+			_spring_z.position = rendered_local.z
+			_spring_x.velocity = 0.0
+			_spring_y.velocity = 0.0
+			_spring_z.velocity = 0.0
+		_prone_roll_head_tracking = false
+		_prone_roll_head_bone_idx = -1
+		return false
+	var skeleton: Skeleton3D = _model_manager.skeleton if _model_manager else null
+	if not is_instance_valid(skeleton):
+		return false
+	if _prone_roll_head_bone_idx < 0:
+		_prone_roll_head_bone_idx = _find_head_bone_index(skeleton)
+	if _prone_roll_head_bone_idx < 0:
+		return false
+	var head_xform := skeleton.global_transform * skeleton.get_bone_global_pose(_prone_roll_head_bone_idx)
+	if not _prone_roll_head_tracking:
+		# Cache the rendered eye point relative to the skull so takeover has no
+		# positional or rotational jump, then follow the animated skull rigidly.
+		_prone_roll_eye_offset = head_xform.affine_inverse() * _active_camera.global_position
+		_prone_roll_head_to_camera_basis = (
+			head_xform.basis.orthonormalized().inverse()
+			* _active_camera.global_basis.orthonormalized()
+		).orthonormalized()
+		_prone_roll_head_tracking = true
+	_active_camera.global_position = head_xform * _prone_roll_eye_offset
+	_active_camera.global_basis = (
+		head_xform.basis.orthonormalized() * _prone_roll_head_to_camera_basis
+	).orthonormalized()
+	return true
 
 
 func get_base_mouse_sensitivity() -> float:

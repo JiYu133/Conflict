@@ -142,7 +142,7 @@ var collision_shape_radius: float:
 var collision_shape_y_offset: float:
 	get: return movement_config.collision_shape_y_offset if movement_config else 0.0
 var hitbox_driven_collision: bool:
-	get: return movement_config.hitbox_driven_collision if movement_config else true
+	get: return movement_config.hitbox_driven_collision if movement_config else false
 var collision_bounds_margin: float:
 	get: return movement_config.collision_bounds_margin if movement_config else 0.025
 var collision_bounds_follow_speed: float:
@@ -182,4 +182,4 @@ var prone_capsule_height: float:
 var prone_collision_y_offset: float:
 	get: return movement_config.prone_collision_y_offset if movement_config else -0.6
 var prone_model_y_offset: float:
-	get: return movement_config.prone_model_y_offset if movement_config else -1.18
+	get: return movement_config.prone_model_y_offset if movement_config else -1.35

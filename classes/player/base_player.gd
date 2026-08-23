@@ -229,11 +229,17 @@ func _initialize_subsystems() -> void:
 		self,
 		player_config.health_config if player_config else null
 		)
-	collision_controller.initialize(
-		self,
-		player_config.movement_config if player_config and player_config.movement_config else MovementConfig.new(),
+	var movement_config := (
+		player_config.movement_config
+		if player_config and player_config.movement_config
+		else MovementConfig.new()
+	)
+	var envelope_provider := (
 		Callable(health_system, "get_collision_envelope")
-		)
+		if movement_config.hitbox_driven_collision
+		else Callable()
+	)
+	collision_controller.initialize(self, movement_config, envelope_provider)
 	_sync_pose_geometry()
 	death_blood_effect = _create_subsystem(DEATH_BLOOD_EFFECT_SCRIPT.new(), "DeathBloodEffect") as DeathBloodEffect
 	death_blood_effect.initialize(
@@ -486,12 +492,28 @@ func _sync_weapon_weight_to_stamina() -> void:
 func _process(delta: float) -> void:
 	var procedural_animation_active := is_alive and not is_ragdolled
 	var prone := stance_controller and (stance_controller.is_prone() or stance_controller.is_prone_transitioning())
+	if prone:
+		_sync_prone_mesh_floor_offset()
 	# Prone clips own the spine and lower body, but the left hand must continue
 	# following the weapon grip or the full-body clip lets it release the rifle.
 	spine_aim_controller.process_aim(delta, procedural_animation_active and not prone)
 	hand_ik_controller.set_prone_state(prone)
 	hand_ik_controller.process_ik(delta, procedural_animation_active)
 	foot_ik_controller.process_ik(delta, procedural_animation_active and not prone)
+
+
+func _sync_prone_mesh_floor_offset() -> void:
+	if not model_manager or not player_config or not player_config.movement_config:
+		return
+	var config := player_config.movement_config
+	var stance_value := stance_controller.get_stance_value() if stance_controller else 0.0
+	var prone_blend := stance_controller.get_prone_geometry_blend() if stance_controller else 0.0
+	var non_prone_model_y := lerpf(config.model_y_offset, config.crouch_y_offset, stance_value)
+	var target_offset := lerpf(non_prone_model_y, config.prone_model_y_offset, prone_blend)
+	# Keep one mesh-root reference for every prone locomotion clip. Per-frame
+	# hitbox bounds vary with the animation and would move the head-mounted
+	# camera when idle/forward/lateral clips cross-fade.
+	model_manager.set_model_vertical_offset(target_offset)
 
 
 func _input(event: InputEvent) -> void:
@@ -695,8 +717,15 @@ func _sync_pose_geometry() -> void:
 		stance_value
 	)
 	var fallback_height := lerpf(non_prone_height, config.prone_capsule_height, prone_blend)
+	var non_prone_center := config.collision_shape_y_offset \
+		+ (non_prone_height - config.collision_shape_height) * 0.5
+	var fallback_center_y := lerpf(
+		non_prone_center,
+		config.prone_collision_y_offset,
+		prone_blend
+	)
 	if collision_controller:
-		collision_controller.set_fallback_height(fallback_height)
+		collision_controller.set_fallback_geometry(fallback_height, fallback_center_y)
 	var non_prone_model_y := lerpf(config.model_y_offset, config.crouch_y_offset, stance_value)
 	var model_y := lerpf(non_prone_model_y, config.prone_model_y_offset, prone_blend)
 	if model_manager:

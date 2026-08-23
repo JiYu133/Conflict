@@ -2,9 +2,9 @@ extends Node3D
 
 const SETTINGS_SERVICE_SCRIPT := preload("res://classes/ui/settings/settings_service.gd")
 const SETTINGS_MENU_SCRIPT := preload("res://classes/ui/settings/settings_menu.gd")
-const CREDITS_SCENE := preload("res://assets/title/credits.tscn")
+const CREDITS_SCENE := preload("res://assets/credits.tscn")
 const GAME_SCENE := "res://assets/map/TestMap.tscn"
-const MAP_LOADING_IMAGE_PATH := "res://assets/maps/previews/test_map_preview.png"
+const MAP_LOADING_IMAGE_PATH := "res://assets/map/previews/test_map_preview.png"
 const DEPLOYMENT_CONTROL_LOCK := "title_deployment"
 const MAP_LOADING_INFO := {
 	"title": "测试区域  /  北线设施",

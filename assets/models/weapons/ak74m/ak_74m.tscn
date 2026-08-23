@@ -12,4 +12,7 @@ transform = Transform3D(4.371138e-08, 1, 1.3113419e-07, 0.99999994, -4.371139e-0
 [node name="LeftHandGrip" type="Marker3D" parent="." unique_id=391024857]
 transform = Transform3D(-1, 6.181723e-08, -6.181723e-08, 6.748479e-09, 0.75958085, 0.65041256, 8.716191e-08, 0.65041256, -0.75958085, 0.12681597, 0.09189387, -0.07071066)
 
+[node name="LeftHandWristTarget" type="Marker3D" parent="."]
+transform = Transform3D(-1, 6.181723e-08, -6.181723e-08, 6.748479e-09, 0.75958085, 0.65041256, 8.716191e-08, 0.65041256, -0.75958085, 0.12681597, 0.09189387, -0.07071066)
+
 [node name="Model" parent="." unique_id=893712044 instance=ExtResource("2_model")]

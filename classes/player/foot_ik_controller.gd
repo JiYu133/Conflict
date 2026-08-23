@@ -227,8 +227,6 @@ func process_ik(delta: float, active: bool = true) -> void:
 	_diag_timer += 1
 	if _diag_timer >= DIAG_INTERVAL:
 		_diag_timer = 0
-		GlobalLogger.info("FootIK", "[诊断] L: blend=%.2f hit=%s  R: blend=%.2f hit=%s" % [
-			_left_blend, str(left_hit.colliding), _right_blend, str(right_hit.colliding)])
 
 
 func _apply_blends() -> void:

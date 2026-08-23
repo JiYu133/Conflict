@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://4m2gn8p1gks5"]
 
-[ext_resource type="Script" uid="uid://bryjibsn00dbb" path="res://assets/title/credits.gd" id="1"]
+[ext_resource type="Script" uid="uid://ddo7hshqrwhs1" path="res://assets/title/credits.gd" id="1"]
 [ext_resource type="FontFile" uid="uid://0n3bwgyunwgh" path="res://assets/fonts/ConflictCJKUI.ttf" id="2_53lk8"]
 
 [sub_resource type="StyleBoxFlat" id="CreditsButtonNormal"]
@@ -99,7 +99,24 @@ offset_bottom = 1100.0
 theme_override_colors/font_color = Color(0.88, 0.9, 0.93, 1)
 theme_override_fonts/font = ExtResource("2_53lk8")
 theme_override_font_sizes/font_size = 17
-text = "开发
+text = "
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+开发
 
 
 JiYu - 策划，主要程序，美术
@@ -114,10 +131,14 @@ Sakurana Hanaikada - 程序
 去桂林钓只鱼. - 程序，技术指导
 
 
-h&aq*%uzi@%oxg~?ly! - 美术
+ZRED - 模型
+
+
+Mio - 模型
 
 
 ForwardForWar - 音乐
+
 
 
 
@@ -150,6 +171,17 @@ WDNMD - 模型
 
 
 
+其他
+
+
+Steve3184 - 技术支持
+
+
+
+
+
+
+
 特别鸣谢所有参与测试与反馈的玩家
 
 
@@ -160,7 +192,7 @@ WDNMD - 模型
 
 Conflict Team
 
-26/8/14"
+26/8/18"
 horizontal_alignment = 1
 vertical_alignment = 1
 

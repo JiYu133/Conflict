@@ -269,6 +269,23 @@ func get_collision_envelope() -> AABB:
 	return AABB(minimum, maximum - minimum) if has_center else AABB()
 
 
+func get_visual_body_bounds() -> AABB:
+	if not _player:
+		return AABB()
+	var merged := AABB()
+	var has_bounds := false
+	var player_inverse := _player.global_transform.affine_inverse()
+	for hitbox in _hitboxes:
+		if not is_instance_valid(hitbox):
+			continue
+		var bounds := hitbox.get_bounds_in_space(player_inverse)
+		if bounds.size == Vector3.ZERO:
+			continue
+		merged = merged.merge(bounds) if has_bounds else bounds
+		has_bounds = true
+	return merged if has_bounds else AABB()
+
+
 ## Resolves a presentation-safe snapshot of the most important external bleed.
 ## Visual components receive this world position through an injected Callable;
 ## they never traverse VitalsModel, Wound, or the player skeleton themselves.

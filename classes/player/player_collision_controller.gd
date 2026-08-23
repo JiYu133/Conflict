@@ -36,6 +36,7 @@ var _envelope_provider: Callable
 var _collision_shape: CollisionShape3D
 var _floor_y: float = 0.0
 var _fallback_height: float = 1.8
+var _fallback_center_y: float = 0.0
 var _target_axis := Vector3.UP
 var _pending_axis := Vector3.UP
 var _pending_axis_frames: int = 0
@@ -76,10 +77,16 @@ func set_envelope_provider(provider: Callable) -> void:
 ## Supplies a value-only fallback for startup/model reload. Live hitbox data
 ## takes priority whenever the injected provider returns a valid envelope.
 func set_fallback_height(height: float) -> void:
+	set_fallback_geometry(height, _fallback_center_y)
+
+
+func set_fallback_geometry(height: float, center_y: float) -> void:
 	var next_height := maxf(height, 0.01)
-	if is_equal_approx(_fallback_height, next_height):
+	if is_equal_approx(_fallback_height, next_height) \
+		and is_equal_approx(_fallback_center_y, center_y):
 		return
 	_fallback_height = next_height
+	_fallback_center_y = center_y
 	_fallback_dirty = true
 
 
@@ -372,7 +379,7 @@ func _fit_fallback(_snap_axis: bool) -> void:
 		maxf(_config.collision_bounds_max_height, minimum_height)
 	)
 	_fit_axis = axis
-	_fit_center = Vector3(0.0, _floor_y + height * 0.5, 0.0)
+	_fit_center = Vector3(0.0, _fallback_center_y, 0.0)
 	_fit_height = height
 	_fit_radius = radius
 
@@ -440,11 +447,7 @@ func _apply_target(delta: float, snap: bool) -> void:
 		next_center.z = move_toward(_collision_shape.position.z, target_center.z, linear_step)
 
 	next_height = maxf(next_height, next_radius * 2.0)
-	next_center.y = _floor_y + _vertical_half_extent(
-		next_height,
-		next_radius,
-		next_axis
-	)
+	next_center.y = target_center.y
 	if not _geometry_differs(capsule, next_height, next_radius, next_axis, next_center):
 		_transition_blocked_emitted = false
 		return
