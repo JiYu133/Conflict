@@ -330,7 +330,7 @@ channel_length = clamp(
 
 初始化时创建 10 个 `BodyRegion`，重置血量和 `breathing_effectiveness = 1.0`。`total_bleed_rate()` 聚合全身外部出血；`total_internal_bleed_rate()` 聚合全身内部出血。两者共同参与生理 tick。
 
-`oxygenation`、`consciousness_level`、`pain_level` 当前仍为后续阶段字段。
+`oxygenation`、`consciousness_level`、`perfusion`、`stress_level` 和 `adrenaline_level` 由 P3 生理 tick 持续更新；意识恢复必须满足灌注与氧合阈值并调用显式恢复接口。
 
 ### Wound
 

@@ -33,6 +33,7 @@ const FIT_SEARCH_STEPS := 96
 var _body: CharacterBody3D
 var _config: MovementConfig
 var _envelope_provider: Callable
+var _envelope_sampling_enabled: bool = true
 var _collision_shape: CollisionShape3D
 var _floor_y: float = 0.0
 var _fallback_height: float = 1.8
@@ -72,6 +73,17 @@ func set_envelope_provider(provider: Callable) -> void:
 	_envelope_provider = provider
 	_has_sampled_envelope = false
 	_sample_elapsed = INF
+
+
+## Authored stance transitions use the fallback pose geometry so a final-frame
+## animation envelope change cannot replace the capsule in one physics tick.
+func set_envelope_sampling_enabled(enabled: bool) -> void:
+	if _envelope_sampling_enabled == enabled:
+		return
+	_envelope_sampling_enabled = enabled
+	_has_sampled_envelope = false
+	_sample_elapsed = INF
+	_fallback_dirty = true
 
 
 ## Supplies a value-only fallback for startup/model reload. Live hitbox data
@@ -206,7 +218,9 @@ func _update_geometry(delta: float, snap: bool, sample: bool = true) -> void:
 
 
 func _sample_envelope() -> AABB:
-	if not _config.hitbox_driven_collision or not _envelope_provider.is_valid():
+	if not _envelope_sampling_enabled \
+			or not _config.hitbox_driven_collision \
+			or not _envelope_provider.is_valid():
 		return AABB()
 	var value: Variant = _envelope_provider.call()
 	return value as AABB if value is AABB else AABB()
@@ -425,6 +439,15 @@ func _apply_target(delta: float, snap: bool) -> void:
 	var target_radius := _fit_radius
 	var target_axis := _fit_axis
 	var target_center := _fit_center
+	# Fitted and fallback poses are floor-anchored. During a non-snap axis
+	# rotation, the target center's Y value belongs to the target axis; reusing it
+	# for an intermediate axis would move the capsule bottom through the floor and
+	# make the clearance query reject every prone exit.
+	var target_floor_y := target_center.y - _vertical_half_extent(
+		target_height,
+		target_radius,
+		target_axis
+	)
 	var next_height := target_height
 	var next_radius := target_radius
 	var next_axis := target_axis
@@ -447,7 +470,14 @@ func _apply_target(delta: float, snap: bool) -> void:
 		next_center.z = move_toward(_collision_shape.position.z, target_center.z, linear_step)
 
 	next_height = maxf(next_height, next_radius * 2.0)
-	next_center.y = target_center.y
+	if snap:
+		next_center.y = target_center.y
+	else:
+		next_center.y = target_floor_y + _vertical_half_extent(
+			next_height,
+			next_radius,
+			next_axis
+		)
 	if not _geometry_differs(capsule, next_height, next_radius, next_axis, next_center):
 		_transition_blocked_emitted = false
 		return

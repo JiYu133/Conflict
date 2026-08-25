@@ -96,14 +96,6 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		movement.jumped.connect(_on_jumped)
 	if not movement.landed.is_connected(_on_landed):
 		movement.landed.connect(_on_landed)
-	if not movement.started_running.is_connected(_on_started_running):
-		movement.started_running.connect(_on_started_running)
-	if not movement.stopped_running.is_connected(_on_stopped_running):
-		movement.stopped_running.connect(_on_stopped_running)
-	if not movement.started_sprinting.is_connected(_on_started_sprinting):
-		movement.started_sprinting.connect(_on_started_sprinting)
-	if not movement.stopped_sprinting.is_connected(_on_stopped_sprinting):
-		movement.stopped_sprinting.connect(_on_stopped_sprinting)
 	if not player.died.is_connected(_on_died):
 		player.died.connect(_on_died)
 	if not player.revived.is_connected(_on_revived):
@@ -220,7 +212,8 @@ func _normalize_prone_hips_height() -> void:
 			if not source:
 				continue
 			var animation := source.duplicate(true) as Animation
-			_normalize_animation_hips_height(animation, idle_height)
+			var is_roll_clip: bool = library_name in [&"prone_roll", &"roll_left"]
+			_normalize_animation_hips_height(animation, idle_height, is_roll_clip)
 			library.remove_animation(animation_name)
 			library.add_animation(animation_name, animation)
 
@@ -240,7 +233,11 @@ func _get_hips_height(animation: Animation) -> float:
 	return NAN
 
 
-func _normalize_animation_hips_height(animation: Animation, height: float) -> void:
+func _normalize_animation_hips_height(
+	animation: Animation,
+	height: float,
+	remove_horizontal_motion: bool = false
+) -> void:
 	if not animation:
 		return
 	for track_index in animation.get_track_count():
@@ -248,9 +245,17 @@ func _normalize_animation_hips_height(animation: Animation, height: float) -> vo
 			continue
 		if not str(animation.track_get_path(track_index)).contains("mixamorig_Hips"):
 			continue
+		if animation.track_get_key_count(track_index) == 0:
+			continue
+		var first_value := animation.track_get_key_value(track_index, 0) as Vector3
 		for key_index in animation.track_get_key_count(track_index):
 			var value := animation.track_get_key_value(track_index, key_index) as Vector3
 			value.y = height
+			if remove_horizontal_motion:
+				# Roll distance is applied by CharacterBody3D. Keeping the authored
+				# Hips X/Z track would move the mesh a second time.
+				value.x = first_value.x
+				value.z = first_value.z
 			animation.track_set_key_value(track_index, key_index, value)
 
 
@@ -477,11 +482,8 @@ func _on_stance_changed(value: float) -> void:
 	_animation_tree.set(PARAM_STANCE_BLEND, value)
 	for turn_state_name in TURN_STATE_NAMES:
 		_animation_tree.set("parameters/%s/Base/blend_position" % turn_state_name, value)
-	# 走路状态下实时切换：半蹲阈值 0.3，避免在临界值来回抖动用滞后
-	if _state == State.WALK and value >= 0.3:
-		_transition(State.CROUCH_WALK)
-	elif _state == State.CROUCH_WALK and value < 0.2:
-		_transition(State.WALK)
+	# Ground locomotion is resolved once per frame in _process(). Keeping the
+	# stance signal focused on blend parameters avoids a second transition path.
 
 
 func _current_stance_value() -> float:
@@ -496,22 +498,6 @@ func _on_landed() -> void:
 		return
 	_land_timer = _config.land_recovery_time
 	_transition(State.LAND)
-
-func _on_started_running() -> void:
-	if _state not in [State.JUMP, State.FALL, State.LAND, State.DEATH]:
-		_transition(State.RUN)
-
-func _on_stopped_running() -> void:
-	if _state == State.RUN:
-		_transition(_resolve_ground_state())
-
-func _on_started_sprinting() -> void:
-	if _state not in [State.JUMP, State.FALL, State.LAND, State.DEATH]:
-		_transition(State.SPRINT)
-
-func _on_stopped_sprinting() -> void:
-	if _state == State.SPRINT:
-		_transition(_resolve_ground_state())
 
 func _on_died() -> void:
 	# 直接设置状态为 DEATH，不调用 _transition()。
@@ -547,9 +533,7 @@ func _resolve_ground_state() -> State:
 		return State.RUN
 
 	var h_speed_sq := _player.velocity.x * _player.velocity.x + _player.velocity.z * _player.velocity.z
-	var is_crouching := false
-	if _player.get("stance_controller") and _player.stance_controller:
-		is_crouching = _player.stance_controller.get_stance_value() >= 0.3
+	var is_crouching: bool = is_instance_valid(_movement) and _movement.is_crouched_locomotion()
 
 	# 滞后：当前是行走类状态时用 exit 阈值，否则用 enter 阈值
 	var is_walk_state := _state in [State.WALK, State.CROUCH_WALK]

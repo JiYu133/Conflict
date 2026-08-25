@@ -67,3 +67,27 @@ extends Resource
 @export_group("出血模拟 / Bleed Tick")
 ## 生理 tick 间隔（秒）。建议 0.1–0.25；越小越精确但越耗性能
 @export_range(0.05, 1.0) var tick_interval: float = 0.2
+
+@export_group("Physiology / P3")
+@export_range(0.0, 1.0) var open_chest_wound_penalty: float = 0.35
+@export_range(0.01, 2.0) var oxygenation_recovery_rate: float = 0.8
+@export_range(0.0, 1.0) var respiratory_arrest_threshold: float = 0.05
+@export_range(0.0, 1.0) var circulatory_arrest_threshold: float = 0.05
+@export_range(0.0, 1.0) var unconscious_perfusion_threshold: float = 0.4
+@export_range(0.0, 1.0) var unconscious_oxygenation_threshold: float = 0.35
+@export_range(0.0, 1.0) var revive_min_perfusion: float = 0.55
+@export_range(0.0, 1.0) var revive_min_oxygenation: float = 0.5
+
+@export_group("Stress Response / P3")
+@export var stress_enabled: bool = true
+@export_range(0.0, 3.0) var stress_severe_wound_threshold: float = 0.7
+@export_range(0.0, 100.0) var stress_bleed_rate_threshold: float = 5.0
+@export_range(0.0, 1.0) var stress_critical_blood_pct: float = 0.65
+@export_range(0.01, 10.0) var stress_rise_rate: float = 4.0
+@export_range(0.01, 2.0) var stress_decay_rate: float = 0.25
+@export_range(0.0, 30.0) var stress_duration: float = 8.0
+@export_range(0.0, 0.5) var adrenaline_consciousness_bonus: float = 0.12
+@export_range(0.0, 1.0) var adrenaline_pain_tolerance: float = 0.2
+@export_range(0.0, 1.0) var adrenaline_respiratory_load: float = 0.1
+
+## Neck, abdomen, pelvis, hands, and feet remain future BodyPartId/hitbox extensions.

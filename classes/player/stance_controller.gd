@@ -24,6 +24,7 @@ var _is_prone: bool = false
 var _prone_transition: bool = false
 var _prone_entering: bool = false
 var _prone_exit_to_stand: bool = false
+var _prone_exit_clip_finished: bool = false
 var _prone_timer: float = 0.0
 var _stance_before_prone: float = 0.0
 
@@ -35,7 +36,9 @@ var _prone_geometry_speed: float = 3.0
 
 # 输入防抖
 var _input_cooldown: float = 0.0
+var _prone_input_down: bool = false
 const INPUT_COOLDOWN_TIME: float = 0.05  # 50ms防抖，避免滚轮连续触发过快
+const STAND_POSE_THRESHOLD: float = 0.05
 
 
 # 初始化 ────────────────────────────────────────────────────
@@ -54,11 +57,14 @@ func _input(event: InputEvent) -> void:
 	# A prone roll owns the complete pose until its authored animation finishes.
 	if _player.movement_controller and _player.movement_controller.is_prone_rolling():
 		return
-	var prone_pressed := event.is_action_pressed("prone")
-	if event is InputEventKey:
-		var key_event := event as InputEventKey
-		prone_pressed = prone_pressed or (key_event.pressed and not key_event.echo and key_event.physical_keycode == KEY_Z)
-	if prone_pressed:
+	# Consume one toggle per physical press. The action is already bound to Z;
+	# handling a second physical-key fallback caused duplicate press events.
+	if event.is_action_released("prone"):
+		_prone_input_down = false
+	if event.is_action_pressed("prone"):
+		if _prone_input_down or _prone_transition:
+			return
+		_prone_input_down = true
 		if _is_prone:
 			_exit_prone(true)
 		else:
@@ -117,6 +123,18 @@ func set_stance(value: float) -> void:
 		stance_changed.emit(_stance_value)
 
 
+func transition_to_stance(value: float) -> void:
+	"""平滑切换到目标姿态，供 AI/自动姿态控制使用。"""
+	if _prone_transition or _is_prone:
+		return
+	_target_stance = clamp(value, 0.0, 1.0)
+	if _target_stance > STAND_POSE_THRESHOLD and _player:
+		var movement = _player.get("movement_controller")
+		if movement and movement.has_method("is_sprinting") and movement.is_sprinting():
+			if movement.has_method("_exit_sprint"):
+				movement._exit_sprint()
+
+
 # 每帧更新 ──────────────────────────────────────────────────
 
 func is_prone() -> bool:
@@ -124,6 +142,15 @@ func is_prone() -> bool:
 
 func is_prone_transitioning() -> bool:
 	return _prone_transition
+
+
+func is_exiting_prone_to_stand() -> bool:
+	"""Whether the active prone transition is returning to the standing pose."""
+	# Before the authored exit clip finishes, the intermediate target is crouch.
+	# Once that clip releases the pose, the shared stance blend continues to stand.
+	return _prone_transition and not _prone_entering \
+			and _prone_exit_to_stand and _prone_exit_clip_finished
+
 
 func get_prone_geometry_blend() -> float:
 	return _prone_geometry_blend
@@ -139,6 +166,7 @@ func reject_collision_transition() -> void:
 	_prone_transition = false
 	_prone_entering = false
 	_prone_exit_to_stand = false
+	_prone_exit_clip_finished = false
 	_prone_timer = 0.0
 	if rejected_entry:
 		_is_prone = false
@@ -170,6 +198,7 @@ func _enter_prone() -> void:
 	_is_prone = true
 	_prone_transition = true
 	_prone_entering = true
+	_prone_exit_clip_finished = false
 	_prone_timer = 0.55
 	prone_changed.emit(true)
 	prone_transition_changed.emit(true)
@@ -189,10 +218,10 @@ func _exit_prone(to_stand: bool) -> void:
 	_prone_transition = true
 	_prone_entering = false
 	_prone_exit_to_stand = to_stand
-	# Begin both stance and geometry interpolation with the authored exit clip.
-	# Delaying either target until the clip ends creates a one-frame capsule/model
-	# jump, which is visible as a camera bump.
-	_target_stance = 0.0 if to_stand else 1.0
+	_prone_exit_clip_finished = false
+	# The authored exit clip ends in a crouched pose. Z then continues with the
+	# normal stance blend to standing; C remains crouched after the clip.
+	_target_stance = 1.0
 	_prone_geometry_target = 0.0
 	_is_prone = false
 	prone_changed.emit(false)
@@ -211,19 +240,31 @@ func _exit_prone(to_stand: bool) -> void:
 func _finish_prone_exit() -> void:
 	if not _prone_transition:
 		return
-	_prone_transition = false
-	prone_transition_changed.emit(false)
+	# The authored exit clip can finish while the shared stance blend is still
+	# between prone and standing. Keep the transition owned by this controller
+	# until the stand target is reached; otherwise the animation system briefly
+	# sees a crouch pose and the collision capsule changes owner in one frame.
+	if not _prone_entering and _prone_exit_to_stand and not _prone_exit_clip_finished:
+		_prone_exit_clip_finished = true
+		_target_stance = 0.0
+		_prone_timer = 0.0
+		return
 	var completing_entry := _prone_entering
 	_prone_entering = false
 	var was_prone := _is_prone
 	_is_prone = completing_entry
-	# C exits into crouch. Z exits directly toward standing as soon as the
-	# authored prone-exit clip releases the skeleton.
+	# C exits into crouch. Z starts crouched, then reaches standing through the
+	# regular stance interpolation after the authored prone-exit clip.
 	_target_stance = 0.0 if not completing_entry and _prone_exit_to_stand else 1.0
 	_prone_geometry_target = 1.0 if completing_entry else 0.0
 	_prone_exit_to_stand = false
+	_prone_exit_clip_finished = false
+	_prone_transition = false
+	# Publish only after every pose field is coherent. In particular, listeners
+	# must never observe transition=false while is_prone still has its old value.
 	if was_prone != _is_prone:
 		prone_changed.emit(_is_prone)
+	prone_transition_changed.emit(false)
 	if _player and _player.get("animation_controller"):
 		if _is_prone:
 			_player.animation_controller.play_prone_idle()
@@ -232,8 +273,10 @@ func _finish_prone_exit() -> void:
 
 func _process(delta: float) -> void:
 	if _prone_transition:
-		_prone_timer -= delta
-		if _prone_timer <= 0.0:
+		if not _prone_exit_clip_finished:
+			_prone_timer -= delta
+		if (_prone_exit_clip_finished and _stance_value <= STAND_POSE_THRESHOLD) \
+				or (not _prone_exit_clip_finished and _prone_timer <= 0.0):
 			_finish_prone_exit()
 	# 防抖计时器递减
 	if _input_cooldown > 0.0:
@@ -267,8 +310,7 @@ func _handle_crouch_toggle() -> void:
 	if _is_prone:
 		_exit_prone(false)
 		return
-	const STAND_THRESHOLD := 0.05  # 目标值接近 0 视为完全站立
-	if _target_stance <= STAND_THRESHOLD:
+	if _target_stance <= STAND_POSE_THRESHOLD:
 		# 当前已是完全站立 → 直接蹲到最低
 		_target_stance = 1.0
 		_input_cooldown = INPUT_COOLDOWN_TIME

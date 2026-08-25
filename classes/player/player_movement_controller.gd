@@ -21,6 +21,13 @@ signal stopped_running
 signal started_sprinting
 ## 开始冲刺（长按 Shift，全力疾跑）
 signal stopped_sprinting
+
+enum LocomotionMode {
+	STAND,
+	CROUCH,
+	PRONE,
+}
+const CROUCH_STANCE_THRESHOLD := 0.3
 ## 停止冲刺
 
 
@@ -87,6 +94,18 @@ func get_prone_roll_progress() -> float:
 		return 0.0
 	return clampf(1.0 - _prone_roll_timer / _prone_roll_duration, 0.0, 1.0)
 
+## Single source of truth for the three gameplay locomotion postures.
+func get_locomotion_mode() -> LocomotionMode:
+	if _player and _player.stance_controller \
+			and (_player.stance_controller.is_prone() or _player.stance_controller.is_prone_transitioning()):
+		return LocomotionMode.PRONE
+	var stance_value := _player.stance_controller.get_stance_value() if _player and _player.stance_controller else 0.0
+	return LocomotionMode.CROUCH if stance_value >= CROUCH_STANCE_THRESHOLD else LocomotionMode.STAND
+
+
+func is_crouched_locomotion() -> bool:
+	return get_locomotion_mode() == LocomotionMode.CROUCH
+
 ## Ends a prone-only action before another system changes the player's pose.
 ## This keeps roll velocity, camera banking, and the direct animation override
 ## from leaking into an exit transition or a later control-state restore.
@@ -113,18 +132,19 @@ func set_turn_constraint(active: bool, speed_ratio: float = 1.0, acceleration_ra
 func get_max_speed() -> float:
 	if not _config:
 		return 4.0
-	var base: float
-	if _is_sprinting:
-		base = _config.sprint_speed
-	elif _is_running:
-		base = _config.run_speed
-	else:
-		# 根据姿态插值速度：站立=walk_speed, 蹲下=crouch_speed
-		var stance = _player.stance_controller.get_stance_value() if _player.stance_controller else 0.0
-		base = lerp(_config.walk_speed, _config.crouch_speed, stance)
+	var base := _get_ground_speed()
 	if _player and _player.health_system:
 		base *= _player.health_system.get_movement_speed_multiplier()
 	return base
+
+
+func _get_ground_speed() -> float:
+	if _is_sprinting:
+		return _config.sprint_speed
+	if _is_running:
+		return _config.run_speed
+	var stance_value := _player.stance_controller.get_stance_value() if _player and _player.stance_controller else 0.0
+	return lerpf(_config.walk_speed, _config.crouch_speed, stance_value)
 
 
 func initialize(player: BasePlayer, config: PlayerConfig, camera_controller: PlayerCameraController) -> void:
@@ -261,7 +281,7 @@ func _physics_process(delta: float) -> void:
 		shift_held = Input.is_action_pressed("sprint")
 		has_forward = Input.is_action_pressed("move_forward")
 	var has_input := input_dir.length() > _config.input_dead_zone
-	if _player.stance_controller and (_player.stance_controller.is_prone() or _player.stance_controller.is_prone_transitioning()):
+	if get_locomotion_mode() == LocomotionMode.PRONE:
 		_process_prone_movement(delta, input_dir, has_input, ai_driving)
 		return
 
@@ -304,15 +324,7 @@ func _physics_process(delta: float) -> void:
 	# ──────────────────────────────────────────────────────
 	if _player.is_on_floor():
 		# 3a. 确定基础目标速度（与 get_max_speed() 保持一致的优先级）
-		var speed: float
-		if _is_sprinting:
-			speed = _config.sprint_speed
-		elif _is_running:
-			speed = _config.run_speed
-		else:
-			# 根据姿态插值速度
-			var stance = _player.stance_controller.get_stance_value() if _player.stance_controller else 0.0
-			speed = lerp(_config.walk_speed, _config.crouch_speed, stance)
+		var speed := _get_ground_speed()
 		# 功能性损伤乘数
 		if _player.health_system:
 			speed *= _player.health_system.get_movement_speed_multiplier()

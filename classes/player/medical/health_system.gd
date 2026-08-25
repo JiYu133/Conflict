@@ -32,6 +32,12 @@ signal state_changed(new_state: MedicalEnums.HealthState)
 signal went_unconscious
 signal medically_died(death_type: PlayerRagdollSystem.DeathType, direction: Vector3)
 signal pain_changed(level: float)
+signal treatment_started(target: BasePlayer, treatment: int)
+signal treatment_interrupted(target: BasePlayer, treatment: int, reason: StringName)
+signal treatment_completed(target: BasePlayer, treatment: int)
+signal consciousness_changed(level: float)
+signal respiration_changed(effectiveness: float, oxygenation: float)
+signal stress_changed(level: float, adrenaline_level: float)
 ## P2：器官受损/被摧毁（structure_id 见 AnatomyConfig，如 &"heart"）
 signal organ_damaged(part: MedicalEnums.BodyPartId, structure_id: StringName, new_state: MedicalEnums.OrganState)
 ## P2：骨折
@@ -132,9 +138,14 @@ func apply_treatment(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartI
 		MedicalEnums.TreatmentType.CHEST_SEAL:
 			if part == MedicalEnums.BodyPartId.TORSO:
 				for wound in region.wounds:
-					if wound.internal_bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_packed:
-						wound.is_packed = true
+					if wound.is_open_chest_wound and not wound.is_chest_sealed:
+						wound.is_chest_sealed = true
 						treated = true
+		MedicalEnums.TreatmentType.WOUND_PACKING:
+			for wound in region.wounds:
+				if wound.is_packable and not wound.is_packed:
+					wound.is_packed = true
+					treated = true
 		MedicalEnums.TreatmentType.SPLINT:
 			for bone in region.fractured_bones:
 				if not region.is_splinted(bone):
@@ -146,6 +157,8 @@ func apply_treatment(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartI
 					wound.pain_contribution *= 0.5
 					treated = true
 	if treated:
+		_recompute_respiration(0.0)
+		respiration_changed.emit(vitals.breathing_effectiveness, vitals.oxygenation)
 		vitals.recompute_pain()
 		bleeding_changed.emit(vitals.total_bleed_rate())
 		pain_changed.emit(vitals.pain_level)
@@ -171,8 +184,12 @@ func get_first_treatable_part(t: MedicalEnums.TreatmentType) -> int:
 			MedicalEnums.TreatmentType.CHEST_SEAL:
 				if part == MedicalEnums.BodyPartId.TORSO:
 					for wound in region.wounds:
-						if wound.internal_bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_packed:
+						if wound.is_open_chest_wound and not wound.is_chest_sealed:
 							return part
+			MedicalEnums.TreatmentType.WOUND_PACKING:
+				for wound in region.wounds:
+					if wound.is_packable and not wound.is_packed:
+						return part
 			MedicalEnums.TreatmentType.SPLINT:
 				if not region.fractured_bones.is_empty():
 					for bone in region.fractured_bones:
@@ -209,6 +226,32 @@ func get_part_health(part: MedicalEnums.BodyPartId) -> float:
 ## 返回当前生理状态
 func get_state() -> MedicalEnums.HealthState:
 	return current_state
+
+func notify_treatment_started(target: BasePlayer, treatment: int) -> void:
+	treatment_started.emit(target, treatment)
+
+func notify_treatment_interrupted(target: BasePlayer, treatment: int, reason: StringName) -> void:
+	treatment_interrupted.emit(target, treatment, reason)
+
+func notify_treatment_completed(target: BasePlayer, treatment: int) -> void:
+	treatment_completed.emit(target, treatment)
+
+func get_effective_pain_level() -> float:
+	if not vitals:
+		return 0.0
+	return clampf(vitals.pain_level - vitals.adrenaline_level * _config.adrenaline_pain_tolerance, 0.0, 1.0)
+
+func revive_from_unconscious() -> bool:
+	if _is_dead or current_state != MedicalEnums.HealthState.UNCONSCIOUS or not vitals:
+		return false
+	if vitals.perfusion < _config.revive_min_perfusion or vitals.oxygenation < _config.revive_min_oxygenation:
+		return false
+	current_state = MedicalEnums.HealthState.CRITICAL if vitals.get_blood_pct() <= _config.critical_blood_threshold_pct else MedicalEnums.HealthState.INJURED
+	vitals.consciousness_level = maxf(vitals.consciousness_level, _config.revive_min_oxygenation)
+	_player.regain_consciousness()
+	state_changed.emit(current_state)
+	consciousness_changed.emit(vitals.consciousness_level)
+	return true
 
 ## 为新一局出生重置医疗状态。不是救助或治疗 API。
 func reset_for_spawn() -> void:
@@ -544,6 +587,8 @@ func _apply_vessel_damage(s: AnatomyStructure, wound: Wound) -> void:
 		wound.internal_bleed_rate = maxi(wound.internal_bleed_rate, s.severed_bleed) as MedicalEnums.BleedRate
 	else:
 		wound.bleed_rate = maxi(wound.bleed_rate, s.severed_bleed) as MedicalEnums.BleedRate
+		if wound.type in [MedicalEnums.WoundType.PENETRATING, MedicalEnums.WoundType.LACERATION]:
+			wound.is_packable = true
 	GlobalLogger.info("HealthSystem", "Vessel severed: %s (%s, %s)" % [
 		s.display_name, MedicalEnums.BleedRate.keys()[s.severed_bleed],
 		"internal" if s.bleed_is_internal else "external"
@@ -562,7 +607,7 @@ func _apply_organ_damage(s: AnatomyStructure, wound: Wound, damage: float, regio
 	wound.internal_bleed_rate = maxi(wound.internal_bleed_rate, bleed) as MedicalEnums.BleedRate
 
 	if s.breathing_penalty > 0.0:
-		vitals.breathing_effectiveness = maxf(0.0, vitals.breathing_effectiveness - s.breathing_penalty * damage)
+		wound.is_open_chest_wound = true
 
 	if new_state == MedicalEnums.OrganState.DESTROYED and s.lethal_when_destroyed:
 		_lethal_organ_destroyed = true
@@ -605,6 +650,7 @@ func _build_wound(info: DamageInfo, severity: float, region: BodyRegion) -> Woun
 
 	w.severity = severity
 	w.bleed_rate = _classify_soft_tissue_bleed(severity)
+	w.is_packable = w.type in [MedicalEnums.WoundType.PENETRATING, MedicalEnums.WoundType.LACERATION] and w.bleed_rate >= MedicalEnums.BleedRate.VENOUS
 	w.pain_contribution = severity * 0.5  # P4 存根
 	return w
 
@@ -632,6 +678,15 @@ func _run_physiology_tick(dt: float) -> void:
 	if total > 0.0:
 		vitals.blood_volume_ml = maxf(0.0, vitals.blood_volume_ml - total * dt)
 		blood_changed.emit(vitals.get_blood_pct())
+	vitals.perfusion = vitals.get_blood_pct()
+	_update_stress(dt, total)
+	_recompute_respiration(dt)
+	var target_consciousness := clampf(minf(vitals.perfusion, vitals.oxygenation) + vitals.adrenaline_level * _config.adrenaline_consciousness_bonus, 0.0, 1.0)
+	var old_consciousness := vitals.consciousness_level
+	vitals.consciousness_level = move_toward(vitals.consciousness_level, target_consciousness, dt * 2.0)
+	if absf(vitals.consciousness_level - old_consciousness) > 0.001:
+		consciousness_changed.emit(vitals.consciousness_level)
+	respiration_changed.emit(vitals.breathing_effectiveness, vitals.oxygenation)
 
 	# 疼痛等级：每 tick 由伤口 pain_contribution 汇总
 	vitals.recompute_pain()
@@ -643,11 +698,56 @@ func _run_physiology_tick(dt: float) -> void:
 
 # 私有 — 状态评估与死亡桥 ──────────────────────────────────
 
+func _recompute_respiration(dt: float) -> void:
+	var lung_penalty := 0.0
+	for part_id: int in vitals.regions:
+		var region := vitals.regions[part_id] as BodyRegion
+		for structure in _anatomy.get_structures_for_part(part_id as MedicalEnums.BodyPartId):
+			var s := structure as AnatomyStructure
+			if s.breathing_penalty > 0.0:
+				lung_penalty += minf(1.0, region.get_organ_damage(s.structure_id)) * s.breathing_penalty
+		for wound in region.wounds:
+			if wound.is_open_chest_wound and not wound.is_chest_sealed:
+				lung_penalty += _config.open_chest_wound_penalty
+	var target := clampf(1.0 - lung_penalty - vitals.adrenaline_level * _config.adrenaline_respiratory_load, 0.0, 1.0)
+	vitals.breathing_effectiveness = target
+	vitals.oxygenation = move_toward(vitals.oxygenation, target, _config.oxygenation_recovery_rate * dt)
+
+func _update_stress(dt: float, total_bleed_rate: float) -> void:
+	if not _config.stress_enabled:
+		vitals.stress_level = 0.0
+		vitals.adrenaline_level = 0.0
+		stress_changed.emit(0.0, 0.0)
+		return
+	var threatened := total_bleed_rate >= _config.stress_bleed_rate_threshold or vitals.get_blood_pct() <= _config.stress_critical_blood_pct or current_state in [MedicalEnums.HealthState.CRITICAL, MedicalEnums.HealthState.UNCONSCIOUS]
+	if not threatened:
+		for part_id: int in vitals.regions:
+			for wound in (vitals.regions[part_id] as BodyRegion).wounds:
+				if wound.severity >= _config.stress_severe_wound_threshold:
+					threatened = true
+					break
+	if threatened:
+		vitals.stress_time_remaining = _config.stress_duration
+		vitals.stress_level = move_toward(vitals.stress_level, 1.0, _config.stress_rise_rate * dt)
+	else:
+		vitals.stress_time_remaining = maxf(0.0, vitals.stress_time_remaining - dt)
+		if vitals.stress_time_remaining <= 0.0:
+			vitals.stress_level = move_toward(vitals.stress_level, 0.0, _config.stress_decay_rate * dt)
+	vitals.adrenaline_level = vitals.stress_level
+	stress_changed.emit(vitals.stress_level, vitals.adrenaline_level)
+
+func is_respiratory_arrest() -> bool:
+	return vitals != null and vitals.oxygenation <= _config.respiratory_arrest_threshold
+
+func is_circulatory_arrest() -> bool:
+	return vitals != null and vitals.perfusion <= _config.circulatory_arrest_threshold
+
 func _evaluate_state(last_hit_direction: Vector3, include_impact_data: bool = true) -> void:
 	if _is_dead:
 		return
 
 	var new_state := _compute_state()
+	var state_was_changed := new_state != current_state
 	if new_state != current_state:
 		current_state = new_state
 		state_changed.emit(current_state)
@@ -656,7 +756,7 @@ func _evaluate_state(last_hit_direction: Vector3, include_impact_data: bool = tr
 		MedicalEnums.HealthState.DEAD:
 			_trigger_death(last_hit_direction, include_impact_data)
 		MedicalEnums.HealthState.UNCONSCIOUS:
-			if _player.controllable or _player.is_ai_player:
+			if state_was_changed and (_player.controllable or _player.is_ai_player):
 				went_unconscious.emit()
 				var impact_energy := _last_hit_energy_j if include_impact_data else 0.0
 				var impact_mass := _last_hit_mass_kg if include_impact_data else 0.0
@@ -692,11 +792,13 @@ func _compute_state() -> MedicalEnums.HealthState:
 	var blood_pct: float = vitals.get_blood_pct()
 	if blood_pct <= _config.fatal_blood_threshold_pct:
 		return MedicalEnums.HealthState.DEAD
+	if is_circulatory_arrest() or is_respiratory_arrest():
+		return MedicalEnums.HealthState.DEAD
 	# UNCONSCIOUS 是粘性状态：一旦昏迷，不会因血量稳定而自动恢复，
-	# 只有显式治疗（P3 肾上腺素）才能唤醒。
+	# 只有满足灌注和氧合条件的显式恢复接口才能唤醒。
 	if current_state == MedicalEnums.HealthState.UNCONSCIOUS:
 		return MedicalEnums.HealthState.UNCONSCIOUS
-	if blood_pct <= _config.unconscious_blood_threshold_pct:
+	if vitals.perfusion <= _config.unconscious_perfusion_threshold or vitals.oxygenation <= _config.unconscious_oxygenation_threshold or blood_pct <= _config.unconscious_blood_threshold_pct:
 		return MedicalEnums.HealthState.UNCONSCIOUS
 	if blood_pct <= _config.critical_blood_threshold_pct:
 		return MedicalEnums.HealthState.CRITICAL
@@ -901,6 +1003,7 @@ func debug_add_wound(part: MedicalEnums.BodyPartId, severity: float, bleed_overr
 	w.type = MedicalEnums.WoundType.PENETRATING
 	w.severity = severity
 	w.bleed_rate = (bleed_override as MedicalEnums.BleedRate) if bleed_override >= 0 else _classify_soft_tissue_bleed(severity)
+	w.is_packable = w.bleed_rate >= MedicalEnums.BleedRate.VENOUS
 	w.pain_contribution = severity * 0.5
 	region.add_wound(w)
 	wound_added.emit(w)

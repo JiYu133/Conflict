@@ -12,6 +12,8 @@ var active_treatment: int = -1
 var active_time := 0.0
 
 signal treatment_started(target: BasePlayer, treatment: int)
+signal treatment_interrupted(target: BasePlayer, treatment: int, reason: StringName)
+signal treatment_completed(target: BasePlayer, treatment: int)
 signal treatment_finished(target: BasePlayer, treatment: int, success: bool)
 
 func initialize(owner: BasePlayer, encounter_config: EncounterConfig = null) -> void:
@@ -21,6 +23,7 @@ func initialize(owner: BasePlayer, encounter_config: EncounterConfig = null) -> 
 		MedicalEnums.TreatmentType.BANDAGE: config.bandage_count,
 		MedicalEnums.TreatmentType.TOURNIQUET: config.tourniquet_count,
 		MedicalEnums.TreatmentType.CHEST_SEAL: config.chest_seal_count,
+		MedicalEnums.TreatmentType.WOUND_PACKING: config.wound_packing_count,
 		MedicalEnums.TreatmentType.SPLINT: config.splint_count,
 		MedicalEnums.TreatmentType.MORPHINE: config.morphine_count,
 	}
@@ -31,6 +34,7 @@ func get_wheel_options() -> Array[RadialMenuOption]:
 		MedicalEnums.TreatmentType.BANDAGE,
 		MedicalEnums.TreatmentType.TOURNIQUET,
 		MedicalEnums.TreatmentType.CHEST_SEAL,
+		MedicalEnums.TreatmentType.WOUND_PACKING,
 		MedicalEnums.TreatmentType.SPLINT,
 		MedicalEnums.TreatmentType.MORPHINE,
 	]:
@@ -64,10 +68,12 @@ func begin_treatment(treatment: int) -> bool:
 		player.weapon_manager.release_trigger()
 		player.weapon_manager.set_aiming(false)
 	treatment_started.emit(active_target, treatment)
+	if active_target.health_system:
+		active_target.health_system.notify_treatment_started(active_target, treatment)
 	return true
 
 func cancel_treatment() -> void:
-	_finish(false)
+	_interrupt(&"cancelled")
 
 func get_inventory(treatment: int) -> int:
 	return int(inventory.get(treatment, 0))
@@ -79,10 +85,10 @@ func _process(delta: float) -> void:
 	if not active:
 		return
 	if not is_instance_valid(active_target) or not active_target.is_alive or not player.is_alive:
-		_finish(false)
+		_interrupt(&"target_or_actor_invalid")
 		return
 	if player.global_position.distance_to(active_target.global_position) > config.max_medical_distance:
-		_finish(false)
+		_interrupt(&"distance_exceeded")
 		return
 	active_time += delta
 	if active_time < config.treatment_duration:
@@ -91,9 +97,11 @@ func _process(delta: float) -> void:
 	var success := part >= 0 and active_target.health_system.apply_treatment(active_treatment, part)
 	if success:
 		inventory[active_treatment] = int(inventory[active_treatment]) - 1
-	_finish(success)
+		_complete()
+	else:
+		_interrupt(&"no_longer_applicable")
 
-func _finish(success: bool) -> void:
+func _interrupt(reason: StringName) -> void:
 	if not active:
 		return
 	var target := active_target
@@ -104,7 +112,29 @@ func _finish(success: bool) -> void:
 	active_time = 0.0
 	if player:
 		player.release_control_lock(BasePlayer.CONTROL_LOCK_MEDICAL)
-	treatment_finished.emit(target, treatment, success)
+	treatment_interrupted.emit(target, treatment, reason)
+	if is_instance_valid(target) and target.health_system:
+		target.health_system.notify_treatment_interrupted(target, treatment, reason)
+	treatment_finished.emit(target, treatment, false)
+
+func _complete() -> void:
+	if not active:
+		return
+	var target := active_target
+	var treatment := active_treatment
+	active = false
+	active_target = null
+	active_treatment = -1
+	active_time = 0.0
+	if player:
+		player.release_control_lock(BasePlayer.CONTROL_LOCK_MEDICAL)
+	treatment_completed.emit(target, treatment)
+	if is_instance_valid(target) and target.health_system:
+		target.health_system.notify_treatment_completed(target, treatment)
+	treatment_finished.emit(target, treatment, true)
+
+func _exit_tree() -> void:
+	_interrupt(&"component_removed")
 
 func _find_target() -> BasePlayer:
 	if not player:
@@ -135,6 +165,8 @@ func _find_treatment_part(target: BasePlayer, treatment: int) -> int:
 	return target.health_system.get_first_treatable_part(treatment)
 
 func _display_name(treatment: int) -> String:
+	if treatment == MedicalEnums.TreatmentType.WOUND_PACKING:
+		return "Wound packing"
 	match treatment:
 		MedicalEnums.TreatmentType.BANDAGE: return "绷带"
 		MedicalEnums.TreatmentType.TOURNIQUET: return "止血带"
@@ -142,4 +174,3 @@ func _display_name(treatment: int) -> String:
 		MedicalEnums.TreatmentType.SPLINT: return "夹板"
 		MedicalEnums.TreatmentType.MORPHINE: return "吗啡"
 	return "医疗"
-

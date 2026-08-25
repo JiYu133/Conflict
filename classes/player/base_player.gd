@@ -56,6 +56,7 @@ var _is_alive: bool = true
 @export var faction: Faction = Faction.None # 玩家阵营
 ## 布娃娃激活期间为 true，movement controller 据此跳过物理更新
 var is_ragdolled: bool = false
+var _prone_collision_sampling_pending_frames: int = 0
 
 const CONTROL_LOCK_PAUSE := "pause_menu"
 const CONTROL_LOCK_FREE_CAMERA := "free_camera"
@@ -321,6 +322,7 @@ func _connect_signals() -> void:
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
 	stance_controller.prone_geometry_changed.connect(_on_prone_geometry_changed)
+	stance_controller.prone_transition_changed.connect(_on_prone_transition_changed)
 	collision_controller.transition_blocked.connect(_on_collision_transition_blocked)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
@@ -490,6 +492,12 @@ func _sync_weapon_weight_to_stamina() -> void:
 
 
 func _process(delta: float) -> void:
+	if _prone_collision_sampling_pending_frames > 0 \
+			and stance_controller \
+			and not stance_controller.is_prone_transitioning():
+		_prone_collision_sampling_pending_frames -= 1
+		if _prone_collision_sampling_pending_frames == 0 and collision_controller:
+			collision_controller.set_envelope_sampling_enabled(true)
 	var procedural_animation_active := is_alive and not is_ragdolled
 	var prone := stance_controller and (stance_controller.is_prone() or stance_controller.is_prone_transitioning())
 	if prone:
@@ -507,6 +515,10 @@ func _sync_prone_mesh_floor_offset() -> void:
 		return
 	var config := player_config.movement_config
 	var stance_value := stance_controller.get_stance_value() if stance_controller else 0.0
+	if stance_controller and stance_controller.is_exiting_prone_to_stand():
+		# The prone exit is already targeting standing; do not let the stale
+		# crouch blend pull the mesh down while the stance value catches up.
+		stance_value = 0.0
 	var prone_blend := stance_controller.get_prone_geometry_blend() if stance_controller else 0.0
 	var non_prone_model_y := lerpf(config.model_y_offset, config.crouch_y_offset, stance_value)
 	var target_offset := lerpf(non_prone_model_y, config.prone_model_y_offset, prone_blend)
@@ -696,6 +708,19 @@ func _on_prone_geometry_changed(_blend: float) -> void:
 	_sync_pose_geometry()
 
 
+func _on_prone_transition_changed(_active: bool) -> void:
+	if collision_controller:
+		if _active:
+			_prone_collision_sampling_pending_frames = 0
+			collision_controller.set_envelope_sampling_enabled(false)
+		else:
+			# AnimationPlayer applies the post-transition clip on the next frame.
+			# Keep envelope fitting disabled until that pose is visible, otherwise
+			# the old prone skeleton is sampled as the new standing state begins.
+			_prone_collision_sampling_pending_frames = 2
+	_sync_pose_geometry()
+
+
 ## Collision owns world-clearance policy; stance owns pose state. BasePlayer is
 ## the only place that translates the value-only rejection signal between them.
 func _on_collision_transition_blocked() -> void:
@@ -710,6 +735,9 @@ func _sync_pose_geometry() -> void:
 		return
 	var config := player_config.movement_config
 	var stance_value := stance_controller.get_stance_value() if stance_controller else 0.0
+	if stance_controller and stance_controller.is_exiting_prone_to_stand():
+		# Keep mesh and collision on the same standing target throughout exit.
+		stance_value = 0.0
 	var prone_blend := stance_controller.get_prone_geometry_blend() if stance_controller else 0.0
 	var non_prone_height := lerpf(
 		config.collision_shape_height,
@@ -938,7 +966,7 @@ func set_ai_fire_input(pressed: bool) -> void:
 func set_ai_stance(crouching: bool) -> bool:
 	if not is_ai_player or not stance_controller or not is_alive:
 		return false
-	stance_controller.set_stance(1.0 if crouching else 0.0)
+	stance_controller.transition_to_stance(1.0 if crouching else 0.0)
 	return true
 
 

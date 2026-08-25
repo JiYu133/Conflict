@@ -52,6 +52,7 @@ extends Resource
 @export var tourniquet_count: int = 2
 ## Number of chest seals available per encounter.
 @export var chest_seal_count: int = 2
+@export var wound_packing_count: int = 2
 ## Number of splints available per encounter.
 @export var splint_count: int = 2
 ## Number of morphine doses available per encounter.
