@@ -71,6 +71,12 @@ extends Resource
 @export_range(0.1, 3.0, 0.01) var turn_min_playback_speed: float = 1.25
 ## 原地转身动画可达到的最大播放速度。
 @export_range(0.1, 3.0, 0.01) var turn_max_playback_speed: float = 1.5
+## 俯卧静止转身动画的最低播放速度；与站立/蹲下转身独立配置。
+@export_range(0.1, 5.0, 0.01) var prone_turn_min_playback_speed: float = 1.0
+## 俯卧静止转身动画的最高播放速度。
+@export_range(0.1, 5.0, 0.01) var prone_turn_max_playback_speed: float = 1.0
+## 俯卧爬行时转身的播放速度比例，略低于静止转身。
+@export_range(0.1, 1.0, 0.01) var prone_crawl_turn_speed_multiplier: float = 0.8
 ## 原地转身受限时的移动速度比例。
 @export_range(0.0, 1.0, 0.01) var turn_constrained_speed_ratio: float = 0.25
 ## 原地转身受限时的加速度比例。
@@ -101,6 +107,8 @@ extends Resource
 @export_group("姿态过渡")
 ## 姿态过渡速度（单位/秒）
 @export var stance_transition_speed: float = 3.0
+## Automatic C/Z stance changes use normal-speed interpolation; wheel micro-adjustments keep the slower speed above.
+@export var automatic_stance_transition_speed: float = 8.0
 ## 姿态调整步进值（每次滚轮的增量，0.0~1.0）
 @export var stance_step_size: float = 0.1
 

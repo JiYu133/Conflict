@@ -8,6 +8,7 @@ const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
 const SETTINGS_TEXT = preload("res://classes/ui/settings/settings_text.gd")
 const HISTORY_PATH := "user://console_history.cfg"
 const HISTORY_LIMIT := 50
+const DEBUG_API_SCRIPT := preload("res://classes/debug/debug_api.gd")
 
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.48)
 const COL_PANEL := Color(0.063, 0.067, 0.075, 0.92)
@@ -53,6 +54,7 @@ const COMMAND_ORDER := [
 ]
 
 var _player
+var _debug_api: DebugAPI
 var _open := false
 var _transitioning := false
 var _previous_mouse_mode := Input.MOUSE_MODE_CAPTURED
@@ -76,6 +78,7 @@ var _transition: Tween
 
 func initialize(player) -> void:
 	_player = player
+	_debug_api = DebugAPI.new(get_tree())
 
 
 func is_open() -> bool:
@@ -264,8 +267,7 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 			var scale := float(args[0])
 			if scale < 0.05 or scale > 4.0:
 				return _error_result("范围错误：时间倍率必须在 0.05 到 4.00 之间。")
-			Engine.time_scale = scale
-			return _ok_result("时间倍率已设置为 %.2f。" % scale)
+			return _api_result(_debug_api.set_time_scale(scale), "时间倍率已设置为 %.2f。" % scale)
 		"freecam":
 			if not args.is_empty():
 				return _error_result("参数数量错误：freecam 不接受参数。")
@@ -278,16 +280,15 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 			if not args.is_empty():
 				return _error_result("参数数量错误：revive 不接受参数。")
 			if not _player.is_alive:
-				_player.revive()
+				var revive_result := _debug_api.revive(_player)
 				Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-				return _ok_result("玩家已复活。")
+				return _api_result(revive_result, "玩家已复活。")
 			return _ok_result("玩家当前已经存活。")
 		"kill":
 			if not args.is_empty():
 				return _error_result("参数数量错误：kill 不接受参数。")
 			if _player.is_alive:
-				_player.die()
-				return _ok_result("玩家已被杀死。")
+				return _api_result(_debug_api.kill(_player), "玩家已被杀死。")
 			return _ok_result("玩家当前已经死亡。")
 		"health":
 			if args.size() != 1:
@@ -299,15 +300,13 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 				return _error_result("范围错误：血量必须在 0 到 100 之间。")
 			if not _player.health_system:
 				return _error_result("当前系统不可用：医疗系统未初始化。")
-			_player.health_system.debug_set_blood_pct(health / 100.0)
-			return _ok_result("血量已设置为 %.1f%%。" % health)
+			return _api_result(_debug_api.set_player_health(health, _player), "血量已设置为 %.1f%%。" % health)
 		"clear_wounds":
 			if not args.is_empty():
 				return _error_result("参数数量错误：clear_wounds 不接受参数。")
 			if not _player.health_system:
 				return _error_result("当前系统不可用：医疗系统未初始化。")
-			_player.health_system.debug_clear_wounds()
-			return _ok_result("全部伤口已清除。")
+			return _api_result(_debug_api.clear_wounds(_player), "全部伤口已清除。")
 		"clear_blood":
 			if not args.is_empty():
 				return _error_result("参数数量错误：clear_blood 不接受参数。")
@@ -329,15 +328,13 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 				return _error_result("参数数量错误：press_trigger 不接受参数。")
 			if not _get_current_weapon():
 				return _error_result("当前系统不可用：没有已装备武器。")
-			_player.weapon_manager.press_trigger()
-			return _ok_result("已模拟按下扳机。")
+			return _api_result(_debug_api.press_trigger(_player), "已模拟按下扳机。")
 		"release_trigger":
 			if not args.is_empty():
 				return _error_result("参数数量错误：release_trigger 不接受参数。")
 			if not _get_current_weapon():
 				return _error_result("当前系统不可用：没有已装备武器。")
-			_player.weapon_manager.release_trigger()
-			return _ok_result("已模拟松开扳机。")
+			return _api_result(_debug_api.release_trigger(_player), "已模拟松开扳机。")
 		"cycle_fire_mode":
 			if not args.is_empty():
 				return _error_result("参数数量错误：cycle_fire_mode 不接受参数。")
@@ -378,16 +375,15 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 				return _error_result("参数数量错误：reload 不接受参数。")
 			if not _player.weapon_manager or not _player.weapon_manager.current_weapon:
 				return _error_result("当前系统不可用：没有已装备武器。")
-			_player.weapon_manager.reload()
-			return _ok_result("已调用换弹流程。")
+			return _api_result(_debug_api.reload(_player), "已调用换弹流程。")
 		"teleport":
 			if args.size() != 3:
 				return _error_result("参数数量错误：用法为 teleport <x> <y> <z>。")
 			for value in args:
 				if not value.is_valid_float():
 					return _error_result("参数错误：坐标必须全部是数字。")
-			_player.global_position = Vector3(float(args[0]), float(args[1]), float(args[2]))
-			return _ok_result("玩家已传送到 %s。" % str(_player.global_position))
+			var destination := Vector3(float(args[0]), float(args[1]), float(args[2]))
+			return _api_result(_debug_api.set_player_position(destination, _player), "玩家已传送到 %s。" % str(destination))
 		"bot":
 			return _run_bot_command(args)
 		"encounter_start":
@@ -624,8 +620,9 @@ func _run_give_ammo(args: Array[String]) -> Dictionary:
 
 	var current_mag := maxi(int(args[0]), 0)
 	var reserve_rounds := maxi(int(args[1]), 0)
-	weapon.debug_set_ammo_state(current_mag, reserve_rounds, chambered, release_bolt)
-
+	var api_result := _debug_api.set_ammo(current_mag, reserve_rounds, chambered, release_bolt, _player)
+	if not api_result.get("ok", false):
+		return _api_result(api_result)
 	return _ok_result(
 		"弹匣已设置：当前弹匣 %d 发，备用 %d 发，膛内%s，枪机%s。"
 		% [
@@ -655,8 +652,7 @@ func _run_medical_wound(args: Array[String]) -> Dictionary:
 		bleed = _parse_bleed_rate(args[2])
 		if bleed == -2:
 			return _error_result("参数错误：未知出血等级 %s，可用 none、capillary、venous、arterial 或 auto。" % args[2])
-	_player.health_system.debug_add_wound(int(part), severity, bleed)
-	return _ok_result("已向 %s 注入严重度 %.2f 的伤口。" % [args[0], severity])
+	return _api_result(_debug_api.add_wound(int(part), severity, bleed, _player), "已向 %s 注入严重度 %.2f 的伤口。" % [args[0], severity])
 
 
 func _run_medical_kill(args: Array[String]) -> Dictionary:
@@ -720,19 +716,17 @@ func _parse_bool_arg(value: String):
 
 
 func _status_text() -> String:
-	var health := "未知"
-	var state := "未知"
-	if _player.health_system and _player.health_system.vitals:
-		health = "%.1f%%" % (_player.health_system.vitals.get_blood_pct() * 100.0)
-		var state_id: int = _player.health_system.current_state
-		state = MedicalEnums.HealthState.keys()[state_id]
-	var weapon_text := "无"
-	if _player.weapon_manager and _player.weapon_manager.current_weapon:
-		var ammo = _player.weapon_manager.current_weapon.ammo_component
-		if ammo:
-			weapon_text = "%d / %d%s" % [ammo.get_current_magazine_count(), ammo.get_reserve_count(), "（膛内）" if ammo.has_chambered_round() else ""]
+	var snapshot: Dictionary = _debug_api.get_player_snapshot(_player)
+	if not snapshot.get("ok", false):
+		return String(snapshot.get("message", "玩家状态不可用。"))
+	var snapshot_data: Dictionary = snapshot.get("data", {})
+	var player_data: Dictionary = snapshot_data.get("player", {})
+	var weapon_data: Dictionary = snapshot_data.get("weapon", {})
+	var health_text := "未知" if player_data.health_pct == null else "%.1f%%" % float(player_data.health_pct * 100.0)
+	var state_text : String = "未知" if player_data.medical_state == null else MedicalEnums.HealthState.keys()[int(player_data.medical_state)]
+	var weapon_text : String = "无" if weapon_data.is_empty() else "%d / %d%s" % [weapon_data.magazine, weapon_data.reserve, "（膛内）" if weapon_data.chambered else ""]
 	return "存活：%s\n血量：%s\n医疗状态：%s\n位置：%s\n弹药：%s\n时间倍率：%.2f" % [
-		"是" if _player.is_alive else "否", health, state, str(_player.global_position), weapon_text, Engine.time_scale
+		"是" if player_data.alive else "否", health_text, state_text, str(_player.global_position), weapon_text, Engine.time_scale
 	]
 
 
@@ -984,6 +978,12 @@ func _ok_result(message: String) -> Dictionary:
 
 func _error_result(message: String) -> Dictionary:
 	return {"ok": false, "message": message}
+
+
+func _api_result(result: Dictionary, success_message: String = "") -> Dictionary:
+	if result.get("ok", false):
+		return _ok_result(success_message if not success_message.is_empty() else String(result.get("message", "命令执行完成。")))
+	return _error_result(String(result.get("message", "调试 API 调用失败：%s" % result.get("code", "unknown"))))
 
 
 func _close_other_overlays() -> void:

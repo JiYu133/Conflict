@@ -83,8 +83,13 @@ func _apply_base_yaw_input(input_yaw: float) -> float:
 		return _base_yaw + input_yaw
 
 	var limit := deg_to_rad(movement_config.turn_view_limit_degrees)
+	var prone := _player.stance_controller \
+			and (_player.stance_controller.is_prone() \
+			or _player.stance_controller.is_prone_transitioning())
 	# Airborne input rotates the view but never synchronizes the body.
-	if _player.is_on_floor() and _is_moving():
+	# Prone movement is intentionally excluded: its body yaw is owned by the
+	# prone turn controller rather than standing-style free body alignment.
+	if _player.is_on_floor() and _is_moving() and not prone:
 		return _base_yaw + input_yaw
 	var ratio := 1.0
 	if _player.is_on_floor():

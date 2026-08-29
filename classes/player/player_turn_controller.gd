@@ -18,7 +18,8 @@ var _turn_angle := 0.0
 var _last_progress := 0.0
 var _clip_length := 0.0
 var _landing_blend_active := false
-var _prone_turn_hold := false
+var _playback_speed := 1.0
+var _turn_block_reason := "none"
 
 
 func initialize(player: BasePlayer, camera: PlayerCameraController, movement: PlayerMovementController, animation: PlayerAnimationController, config: MovementConfig) -> void:
@@ -37,6 +38,8 @@ func _physics_process(delta: float) -> void:
 		return
 	_camera.process_moving_body_yaw_blend(delta)
 	if _movement and _movement.is_prone_rolling():
+		_turn_block_reason = "prone_roll"
+		_cancel_turn()
 		return
 	if _landing_blend_active:
 		if _camera.is_body_yaw_blending():
@@ -44,6 +47,7 @@ func _physics_process(delta: float) -> void:
 		_landing_blend_active = false
 		return
 	if not _player.is_alive or _player.is_ragdolled or not _player.is_on_floor():
+		_turn_block_reason = "not_turnable"
 		_cancel_turn()
 		return
 	if _turning:
@@ -59,23 +63,38 @@ func is_turning() -> bool:
 func get_turn_progress() -> float:
 	return _last_progress if _turning else 0.0
 
+func get_debug_snapshot() -> Dictionary:
+	var prone_turn := _turn_state in [PlayerAnimationController.State.PRONE_TURN_LEFT, PlayerAnimationController.State.PRONE_TURN_RIGHT]
+	var direction := "left" if _turn_state in [PlayerAnimationController.State.TURN_LEFT, PlayerAnimationController.State.CROUCH_TURN_LEFT, PlayerAnimationController.State.PRONE_TURN_LEFT] else "right" if _turn_state in [PlayerAnimationController.State.TURN_RIGHT, PlayerAnimationController.State.CROUCH_TURN_RIGHT, PlayerAnimationController.State.PRONE_TURN_RIGHT] else "none"
+	return {
+		"turning": _turning,
+		"direction": direction,
+		"prone_turn_direction": direction if prone_turn else "none",
+		"is_prone_turn": prone_turn,
+		"is_crawl_turn": prone_turn and _camera != null and _camera._is_moving(),
+		"playback_speed": _playback_speed,
+		"remaining_angle": _camera.get_body_yaw_offset() if _camera else 0.0,
+		"remaining_turn_angle": _turn_angle * (1.0 - _last_progress) if _turning else 0.0,
+		"block_reason": _turn_block_reason,
+	}
+
 
 func cancel_for_prone_roll() -> void:
 	_cancel_turn()
 
 
 func _try_start_turn() -> void:
-	if not _config.turn_in_place_enabled or not _animation or (_animation.get_current_state() != PlayerAnimationController.State.IDLE and not _is_prone()):
+	# Entry/exit and crouch-to-prone phases own the complete skeleton. Starting
+	# a turn here would replace their direct AnimationPlayer clip mid-transition.
+	if not _config.turn_in_place_enabled or not _animation \
+			or (_player.stance_controller and _player.stance_controller.is_prone_transitioning()) \
+			or (_animation.get_current_state() != PlayerAnimationController.State.IDLE and not _is_prone()):
 		return
 	var offset := _camera.get_body_yaw_offset()
 	if absf(offset) < deg_to_rad(_config.turn_trigger_angle_degrees):
-		_prone_turn_hold = false
+		_turn_block_reason = "below_trigger"
 		return
 	var prone := _is_prone()
-	if not prone:
-		_prone_turn_hold = false
-	if prone and _prone_turn_hold:
-		return
 	var crouching := not prone and _player.stance_controller and _player.stance_controller.get_stance_value() >= 0.3
 	if offset > 0.0:
 		_turn_state = PlayerAnimationController.State.PRONE_TURN_LEFT if prone else (PlayerAnimationController.State.CROUCH_TURN_LEFT if crouching else PlayerAnimationController.State.TURN_LEFT)
@@ -88,11 +107,17 @@ func _try_start_turn() -> void:
 	_last_progress = 0.0
 	_turning = true
 	_animation.begin_external_turn(_turn_state, _get_playback_speed())
+	_turn_block_reason = "active"
 	_movement.set_turn_constraint(true, _config.turn_constrained_speed_ratio, _config.turn_constrained_acceleration_ratio)
 
 
 func _process_turn(delta: float = 0.0) -> void:
-	if _camera._is_moving():
+	if _player.stance_controller and _player.stance_controller.is_prone_transitioning():
+		_cancel_turn()
+		return
+	# Prone crawling still uses the authored turn clip. Standing/crouched turns
+	# are cancelled by locomotion as before.
+	if _camera._is_moving() and not _is_prone():
 		_exit_turn_to_locomotion()
 		return
 	var opposite_state := _get_turn_state_for_offset(_camera.get_body_yaw_offset())
@@ -111,13 +136,11 @@ func _process_turn(delta: float = 0.0) -> void:
 		_turning = false
 		_movement.set_turn_constraint(false)
 		_animation.end_external_turn()
-		if _turn_state in [PlayerAnimationController.State.PRONE_TURN_LEFT, PlayerAnimationController.State.PRONE_TURN_RIGHT]:
-			_prone_turn_hold = true
+		_turn_block_reason = "completed"
 
 
 func _exit_turn_to_locomotion() -> void:
 	_turning = false
-	_prone_turn_hold = false
 	_last_progress = 0.0
 	_movement.set_turn_constraint(false)
 	_animation.end_external_turn()
@@ -149,7 +172,15 @@ func _get_playback_speed() -> float:
 	var trigger := deg_to_rad(_config.turn_trigger_angle_degrees)
 	var limit := deg_to_rad(_config.turn_view_limit_degrees)
 	var t := inverse_lerp(trigger, maxf(limit, trigger + 0.001), absf(_camera.get_body_yaw_offset()))
-	return lerpf(_config.turn_min_playback_speed, _config.turn_max_playback_speed, clampf(t, 0.0, 1.0))
+	var speed := lerpf(_config.turn_min_playback_speed, _config.turn_max_playback_speed, clampf(t, 0.0, 1.0))
+	if _is_prone():
+		# Prone in-place turns are intentionally fixed-speed; crawl turns only
+		# apply their independent multiplier.
+		speed = _config.prone_turn_min_playback_speed
+		if _camera._is_moving():
+			speed *= _config.prone_crawl_turn_speed_multiplier
+	_playback_speed = speed
+	return speed
 
 
 func _cancel_turn() -> void:
@@ -160,6 +191,7 @@ func _cancel_turn() -> void:
 	_movement.set_turn_constraint(false)
 	if _animation:
 		_animation.end_external_turn()
+	_turn_block_reason = "cancelled"
 
 
 func _on_landed() -> void:

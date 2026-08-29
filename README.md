@@ -48,6 +48,8 @@
 
 ## 开发文档
 
+- [DebugAPI 无头调试接口](docs/debug/DebugAPI.md) — AI、自动化测试和控制台的统一调试入口
+
 完整的类 API 文档位于 [`docs/`](docs/README.md)，涵盖项目全部 34 个类：
 
 - [Player 系统](docs/player/) — 玩家、移动、摄像机、动画、武器检测

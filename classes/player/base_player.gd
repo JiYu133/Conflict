@@ -492,9 +492,12 @@ func _sync_weapon_weight_to_stamina() -> void:
 
 
 func _process(delta: float) -> void:
+	var stance_geometry_settled := not stance_controller \
+			or not stance_controller.is_stance_transitioning()
 	if _prone_collision_sampling_pending_frames > 0 \
 			and stance_controller \
-			and not stance_controller.is_prone_transitioning():
+			and not stance_controller.is_prone_transitioning() \
+			and stance_geometry_settled:
 		_prone_collision_sampling_pending_frames -= 1
 		if _prone_collision_sampling_pending_frames == 0 and collision_controller:
 			collision_controller.set_envelope_sampling_enabled(true)
@@ -515,10 +518,6 @@ func _sync_prone_mesh_floor_offset() -> void:
 		return
 	var config := player_config.movement_config
 	var stance_value := stance_controller.get_stance_value() if stance_controller else 0.0
-	if stance_controller and stance_controller.is_exiting_prone_to_stand():
-		# The prone exit is already targeting standing; do not let the stale
-		# crouch blend pull the mesh down while the stance value catches up.
-		stance_value = 0.0
 	var prone_blend := stance_controller.get_prone_geometry_blend() if stance_controller else 0.0
 	var non_prone_model_y := lerpf(config.model_y_offset, config.crouch_y_offset, stance_value)
 	var target_offset := lerpf(non_prone_model_y, config.prone_model_y_offset, prone_blend)
@@ -713,6 +712,13 @@ func _on_prone_transition_changed(_active: bool) -> void:
 		if _active:
 			_prone_collision_sampling_pending_frames = 0
 			collision_controller.set_envelope_sampling_enabled(false)
+		elif stance_controller and stance_controller.is_prone():
+			# Keep the prone capsule on the same authored fallback path used by
+			# crouch. Re-enabling animation-envelope fitting while prone would let
+			# an idle/roll pose replace the interpolated target and move the body
+			# root, which is visible immediately through the head-mounted camera.
+			_prone_collision_sampling_pending_frames = 0
+			collision_controller.set_envelope_sampling_enabled(false)
 		else:
 			# AnimationPlayer applies the post-transition clip on the next frame.
 			# Keep envelope fitting disabled until that pose is visible, otherwise
@@ -735,9 +741,6 @@ func _sync_pose_geometry() -> void:
 		return
 	var config := player_config.movement_config
 	var stance_value := stance_controller.get_stance_value() if stance_controller else 0.0
-	if stance_controller and stance_controller.is_exiting_prone_to_stand():
-		# Keep mesh and collision on the same standing target throughout exit.
-		stance_value = 0.0
 	var prone_blend := stance_controller.get_prone_geometry_blend() if stance_controller else 0.0
 	var non_prone_height := lerpf(
 		config.collision_shape_height,

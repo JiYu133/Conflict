@@ -793,6 +793,13 @@ func get_view_basis() -> Basis:
 func _sync_moving_body_yaw() -> void:
 	if not is_instance_valid(_player) or not _player.is_on_floor() or not _is_moving():
 		return
+	# Standing/crouched locomotion can follow the view directly. Prone locomotion
+	# must pass through the authored turn clip, including while crawling.
+	if _player.stance_controller and (
+			_player.stance_controller.is_prone()
+			or _player.stance_controller.is_prone_transitioning()
+	):
+		return
 	# Landing keeps horizontal velocity for a few frames. Do not let the
 	# locomotion follow path snap the body before TurnController evaluates the
 	# pending view offset and starts the authored turn clip.

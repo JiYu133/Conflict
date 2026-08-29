@@ -26,10 +26,16 @@ var _prone_entering: bool = false
 var _prone_exit_to_stand: bool = false
 var _prone_exit_clip_finished: bool = false
 var _prone_timer: float = 0.0
+## Entry is staged: first reach the crouched pose through the normal stance
+## blend, then play the authored crouch-to-prone clip.  Keeping this phase in
+## the stance controller makes the whole Z action atomic and non-interruptible.
+var _prone_entry_crouch_pending: bool = false
+var _prone_entry_crouch_timer: float = 0.0
 var _stance_before_prone: float = 0.0
 
 var _stance_value: float = 0.0  # 当前姿态（平滑插值后的值）
 var _target_stance: float = 0.0  # 目标姿态（滚轮设定的目标）
+var _automatic_stance_transition: bool = false
 var _prone_geometry_blend: float = 0.0
 var _prone_geometry_target: float = 0.0
 var _prone_geometry_speed: float = 3.0
@@ -90,6 +96,9 @@ func adjust_stance(delta: float) -> void:
 	if _input_cooldown > 0.0:
 		return
 
+	# Wheel changes are deliberately slow and continuous. Authored C/Z actions
+	# set the automatic flag and use the normal-speed transition below.
+	_automatic_stance_transition = false
 	_target_stance = clamp(_target_stance + delta, 0.0, 1.0)
 	_input_cooldown = INPUT_COOLDOWN_TIME
 
@@ -117,6 +126,7 @@ func is_stance_transitioning() -> bool:
 func set_stance(value: float) -> void:
 	"""直接设置姿态值（用于强制站起等场景）"""
 	var previous := _stance_value
+	_automatic_stance_transition = false
 	_stance_value = clamp(value, 0.0, 1.0)
 	_target_stance = _stance_value
 	if not is_equal_approx(previous, _stance_value):
@@ -127,6 +137,7 @@ func transition_to_stance(value: float) -> void:
 	"""平滑切换到目标姿态，供 AI/自动姿态控制使用。"""
 	if _prone_transition or _is_prone:
 		return
+	_automatic_stance_transition = true
 	_target_stance = clamp(value, 0.0, 1.0)
 	if _target_stance > STAND_POSE_THRESHOLD and _player:
 		var movement = _player.get("movement_controller")
@@ -167,6 +178,8 @@ func reject_collision_transition() -> void:
 	_prone_entering = false
 	_prone_exit_to_stand = false
 	_prone_exit_clip_finished = false
+	_prone_entry_crouch_pending = false
+	_prone_entry_crouch_timer = 0.0
 	_prone_timer = 0.0
 	if rejected_entry:
 		_is_prone = false
@@ -193,30 +206,52 @@ func _enter_prone() -> void:
 	if _prone_transition or _is_prone:
 		return
 	_stance_before_prone = _target_stance
+	_automatic_stance_transition = true
 	_target_stance = 1.0
 	_prone_geometry_target = 1.0
 	_is_prone = true
 	_prone_transition = true
 	_prone_entering = true
 	_prone_exit_clip_finished = false
-	_prone_timer = 0.55
+	_prone_entry_crouch_pending = _stance_value < 0.98
+	_prone_entry_crouch_timer = 0.0
+	_prone_timer = 0.0
+	_prone_geometry_target = 0.0 if _prone_entry_crouch_pending else 1.0
 	prone_changed.emit(true)
 	prone_transition_changed.emit(true)
-	if _player.get("animation_controller"):
+	# A crouched player can enter the authored clip immediately.  From standing,
+	# leave AnimationTree active so its Idle blend visibly performs the crouch
+	# before the direct prone clip takes ownership of the skeleton.
+	if not _prone_entry_crouch_pending:
+		_begin_prone_entry_clip()
+
+
+func _begin_prone_entry_clip() -> void:
+	if not _prone_transition or not _prone_entering:
+		return
+	_prone_entry_crouch_pending = false
+	_prone_entry_crouch_timer = 0.0
+	_prone_geometry_target = 1.0
+	if _player and _player.get("animation_controller"):
 		var animation: PlayerAnimationController = _player.animation_controller
 		if animation.play_prone_transition("enter"):
 			_prone_timer = maxf(animation.get_prone_transition_length("enter"), 0.01)
 		else:
-			_prone_transition = false
-			prone_transition_changed.emit(false)
-			_player.animation_controller.play_prone_idle()
+			_finish_prone_exit(true)
+			return
+	else:
+		_finish_prone_exit(true)
+		return
 	_prone_geometry_speed = 1.0 / maxf(_prone_timer, 0.01)
 
 func _exit_prone(to_stand: bool) -> void:
 	if _prone_transition or not _is_prone:
 		return
 	_prone_transition = true
+	_automatic_stance_transition = true
 	_prone_entering = false
+	_prone_entry_crouch_pending = false
+	_prone_entry_crouch_timer = 0.0
 	_prone_exit_to_stand = to_stand
 	_prone_exit_clip_finished = false
 	# The authored exit clip ends in a crouched pose. Z then continues with the
@@ -232,22 +267,32 @@ func _exit_prone(to_stand: bool) -> void:
 		if animation.play_prone_transition("exit"):
 			_prone_timer = maxf(animation.get_prone_transition_length("exit"), 0.01)
 		else:
-			_finish_prone_exit()
+			_finish_prone_exit(true)
 	else:
-		_finish_prone_exit()
+		_finish_prone_exit(true)
 	_prone_geometry_speed = 1.0 / maxf(_prone_timer, 0.01)
 
-func _finish_prone_exit() -> void:
+## Completes the current prone phase.  The default force flag keeps this
+## helper deterministic for tooling/tests; the frame loop passes false so a Z
+## exit can release into the normal crouch-to-stand blend without snapping.
+func _finish_prone_exit(force: bool = true) -> void:
 	if not _prone_transition:
 		return
 	# The authored exit clip can finish while the shared stance blend is still
 	# between prone and standing. Keep the transition owned by this controller
 	# until the stand target is reached; otherwise the animation system briefly
 	# sees a crouch pose and the collision capsule changes owner in one frame.
-	if not _prone_entering and _prone_exit_to_stand and not _prone_exit_clip_finished:
+	if not force and not _prone_entering and _prone_exit_to_stand and not _prone_exit_clip_finished:
 		_prone_exit_clip_finished = true
+		_automatic_stance_transition = true
 		_target_stance = 0.0
 		_prone_timer = 0.0
+		# The authored prone-exit clip ends in a crouch. Release the direct
+		# override now, while stance is still crouched, so AnimationTree's Idle
+		# blend visibly plays the crouch-to-stand portion instead of snapping at
+		# the very end of the transition.
+		if _player and _player.get("animation_controller"):
+			_player.animation_controller.clear_prone_override()
 		return
 	var completing_entry := _prone_entering
 	_prone_entering = false
@@ -273,11 +318,27 @@ func _finish_prone_exit() -> void:
 
 func _process(delta: float) -> void:
 	if _prone_transition:
-		if not _prone_exit_clip_finished:
+		if _prone_entering and _prone_entry_crouch_pending:
+			# The exponential stance blend asymptotically approaches 1.0.  The
+			# timeout is only a fallback for unusual configs or a paused animation.
+			_prone_entry_crouch_timer += delta
+			var crouch_ready := _stance_value >= 0.98
+			var crouch_speed : float = _config.movement_config.automatic_stance_transition_speed if _config and _config.movement_config else 8.0
+			# Four exponential time constants reach roughly 98%; retain a small
+			# lower bound so high-speed configs still show a distinct crouch phase.
+			var crouch_timeout := _prone_entry_crouch_timer >= maxf(0.25, 4.0 / maxf(crouch_speed, 0.01))
+			if crouch_ready or crouch_timeout:
+				_begin_prone_entry_clip()
+		elif not _prone_exit_clip_finished:
 			_prone_timer -= delta
-		if (_prone_exit_clip_finished and _stance_value <= STAND_POSE_THRESHOLD) \
-				or (not _prone_exit_clip_finished and _prone_timer <= 0.0):
-			_finish_prone_exit()
+		var transition_finished := false
+		if not _prone_entry_crouch_pending:
+			transition_finished = (
+				(_prone_exit_clip_finished and _stance_value <= STAND_POSE_THRESHOLD)
+				or (not _prone_exit_clip_finished and _prone_timer <= 0.0)
+			)
+		if transition_finished:
+			_finish_prone_exit(false)
 	# 防抖计时器递减
 	if _input_cooldown > 0.0:
 		_input_cooldown -= delta
@@ -295,8 +356,12 @@ func _process(delta: float) -> void:
 
 	# 平滑插值到目标姿态
 	if not is_equal_approx(_stance_value, _target_stance):
-		var transition_speed: float = _config.stance_transition_speed if _config else 3.0
-		# 指数平滑避免小步进在单帧内突然跳到下一姿态阶段。
+		var movement_config: MovementConfig = _config.movement_config if _config else null
+		var transition_speed: float = (
+			movement_config.automatic_stance_transition_speed
+			if _automatic_stance_transition
+			else movement_config.stance_transition_speed
+		) if movement_config else (8.0 if _automatic_stance_transition else 3.0)
 		var blend := 1.0 - exp(-maxf(transition_speed, 0.01) * delta)
 		_stance_value = lerpf(_stance_value, _target_stance, blend)
 		if absf(_stance_value - _target_stance) < 0.001:
@@ -311,7 +376,7 @@ func _handle_crouch_toggle() -> void:
 		_exit_prone(false)
 		return
 	if _target_stance <= STAND_POSE_THRESHOLD:
-		# 当前已是完全站立 → 直接蹲到最低
+		_automatic_stance_transition = true
 		_target_stance = 1.0
 		_input_cooldown = INPUT_COOLDOWN_TIME
 		# 蹲下时退出 Sprint
@@ -323,6 +388,7 @@ func _handle_crouch_toggle() -> void:
 		GlobalLogger.debug("StanceController", "C key: full crouch")
 	else:
 		# 非完全站立 → 起身
+		_automatic_stance_transition = true
 		_target_stance = 0.0
 		_input_cooldown = INPUT_COOLDOWN_TIME
 		GlobalLogger.debug("StanceController", "C key: stand up")

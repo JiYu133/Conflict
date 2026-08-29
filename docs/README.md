@@ -253,3 +253,9 @@ BaseWeapon
 | 类 | 文件 | 说明 |
 |---|---|---|
 | [GameLogger](utils/GameLogger.md) | `Classes/GameLogger/game_logger.gd` | 分级日志（DEBUG/INFO/WARN/ERROR） |
+
+## 调试
+
+| 文档 | 说明 |
+|---|---|
+| [DebugAPI](debug/DebugAPI.md) | 无头测试、AI 与控制台共用的进程内调试接口 |

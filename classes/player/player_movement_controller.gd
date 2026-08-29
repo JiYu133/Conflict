@@ -612,7 +612,10 @@ func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, 
 	_had_input = has_input
 	# Enter/exit clips own the skeleton until StanceController marks the
 	# transition complete. Locomotion must not replace them frame-by-frame.
-	if _player.animation_controller and not _prone_rolling and not _player.stance_controller.is_prone_transitioning():
+	var prone_turn_active := _player.turn_controller and _player.turn_controller.is_turning()
+	if _player.animation_controller and not _prone_rolling \
+			and not _player.stance_controller.is_prone_transitioning() \
+			and not prone_turn_active:
 		_player.animation_controller.update_prone_motion(input_dir, has_input)
 
 
