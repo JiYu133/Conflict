@@ -186,7 +186,7 @@ func _handle_listen_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if key_code in _listening_combo:
-			_finish_listen(_listening_combo.duplicate())
+			_finish_listen(_binding_from_tokens(_listening_combo))
 			get_viewport().set_input_as_handled()
 			return
 		return
@@ -196,7 +196,7 @@ func _handle_listen_input(event: InputEvent) -> void:
 			_add_listening_token("mouse:%d" % mouse_event.button_index)
 			get_viewport().set_input_as_handled()
 		elif ("mouse:%d" % mouse_event.button_index) in _listening_combo:
-			_finish_listen(_listening_combo.duplicate())
+			_finish_listen(_binding_from_tokens(_listening_combo))
 			get_viewport().set_input_as_handled()
 
 
@@ -206,6 +206,21 @@ func _add_listening_token(token) -> void:
 	_listening_combo.append(token)
 	if _listening_combo.size() > 2:
 		_listening_combo.pop_front()
+
+
+func _binding_from_tokens(tokens: Array):
+	# A single token must become an InputEvent; arrays are reserved for
+	# keyboard combinations and are interpreted by KeybindStore as combos.
+	if tokens.size() == 1:
+		var token = tokens[0]
+		if token is String and String(token).begins_with("mouse:"):
+			var mouse := InputEventMouseButton.new()
+			mouse.button_index = int(String(token).trim_prefix("mouse:"))
+			return mouse
+		var key := InputEventKey.new()
+		key.physical_keycode = int(token)
+		return key
+	return tokens.duplicate()
 
 
 func _finish_listen(input_binding) -> void:
@@ -222,7 +237,7 @@ func _finish_listen(input_binding) -> void:
 
 
 func _key_code(event: InputEventKey) -> int:
-	return event.keycode if event.keycode != 0 else event.physical_keycode
+	return event.physical_keycode if event.physical_keycode != 0 else event.keycode
 
 
 func _is_modifier_only_key(event: InputEventKey) -> bool:

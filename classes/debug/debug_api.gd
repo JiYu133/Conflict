@@ -8,6 +8,7 @@ const MAX_TIME_SCALE := 4.0
 
 var tree: SceneTree
 var _previous_time_scale := 1.0
+var _has_saved_time_scale := false
 var _assertions: Array[Dictionary] = []
 
 func _init(scene_tree: SceneTree = null) -> void:
@@ -49,7 +50,7 @@ func _collect_players(node: Node, output: Array[Node]) -> void:
 
 func get_player(target: Node = null) -> Node:
 	if is_instance_valid(target):
-		return target
+		return target if target is BasePlayer else null
 	var players := find_players()
 	return players[0] if not players.is_empty() else null
 
@@ -109,12 +110,15 @@ func await_seconds(seconds: float) -> void:
 func set_time_scale(scale: float) -> Dictionary:
 	if scale < MIN_TIME_SCALE or scale > MAX_TIME_SCALE:
 		return _fail("invalid_time_scale", "时间倍率必须在 0.05 到 4.00 之间。")
-	_previous_time_scale = Engine.time_scale
+	if not _has_saved_time_scale:
+		_previous_time_scale = Engine.time_scale
+		_has_saved_time_scale = true
 	Engine.time_scale = scale
 	return _result(true, "ok", "", {"time_scale": scale})
 
 func restore_time_scale() -> Dictionary:
 	Engine.time_scale = _previous_time_scale
+	_has_saved_time_scale = false
 	return _result(true, "ok", "", {"time_scale": Engine.time_scale})
 
 func inject_action(action: String, pressed: bool = true, strength: float = 1.0) -> Dictionary:
