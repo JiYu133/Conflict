@@ -477,6 +477,8 @@ func _is_medical_debug_mesh(mesh: MeshInstance3D, model: Node3D) -> bool:
 func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
 	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
 	hand_ik_controller.set_weapon(new_weapon, weight)
+	if camera_controller:
+		camera_controller.set_recoil_component(new_weapon.recoil_component if new_weapon else null)
 	_sync_weapon_weight_to_stamina()
 
 

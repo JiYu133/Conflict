@@ -71,6 +71,7 @@ var _stiffness_h: float = 500.0
 var _stiffness_v: float = 120.0
 
 var _sway_pivot: Node3D = null
+var _recoil_component: RecoilComponent = null
 
 # 蹲下眼部高度插值
 var _eye_height: float = 1.6
@@ -172,6 +173,10 @@ func _update_spring_params() -> void:
 	_spring_x.damping = _camera_config.spring_damping_h
 	_spring_z.damping = _camera_config.spring_damping_h
 	_spring_y.damping = _camera_config.spring_damping_v
+
+
+func set_recoil_component(component: RecoilComponent) -> void:
+	_recoil_component = component
 
 
 # ============================================================
@@ -544,13 +549,27 @@ func _process(delta: float) -> void:
 	# cosmetic bank, otherwise the camera can reverse or point at the ground.
 	_active_camera.global_position = _player.global_transform * filtered_local
 	_active_camera.global_rotation = Vector3(
-		get_vertical_angle() + _pain_pitch,
-		get_view_yaw() + _pain_yaw,
+		get_vertical_angle() + _pain_pitch + _get_recoil_pitch_feedback(),
+		get_view_yaw() + _pain_yaw + _get_recoil_yaw_feedback(),
 		_pain_roll
 	)
 
 	_update_ads(delta)
 	_update_weapon_spring(delta)
+
+
+func _get_recoil_pitch_feedback() -> float:
+	if not is_instance_valid(_recoil_component):
+		return 0.0
+	var scale := _recoil_component.get_camera_feedback_scale()
+	return clampf(deg_to_rad(_recoil_component.get_recoil_offset()) * scale, -0.08, 0.08)
+
+
+func _get_recoil_yaw_feedback() -> float:
+	if not is_instance_valid(_recoil_component):
+		return 0.0
+	var scale := _recoil_component.get_camera_feedback_scale()
+	return clampf(deg_to_rad(_recoil_component.get_recoil_horizontal_offset()) * scale, -0.05, 0.05)
 
 
 func _should_lock_turn_in_place_height() -> bool:

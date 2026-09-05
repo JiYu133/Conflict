@@ -96,6 +96,17 @@ extends Resource
 @export var recoil_control_damping: float = 18.0
 ## 射手扰动产生的随机冲量比例，用于每发横向/纵向噪声
 @export_range(0.0, 0.2, 0.001) var shooter_impulse_noise: float = 0.03
+## Physical weapon compliance. These values affect presentation only, not projectile input.
+@export var recoil_pose_translation_scale: float = 0.012
+@export var recoil_pose_rotation_scale: float = 1.0
+@export var recoil_pose_linear_stiffness: float = 85.0
+@export var recoil_pose_linear_damping: float = 20.0
+@export var recoil_pose_max_translation_m: float = 0.045
+@export var recoil_pose_max_pitch_rad: float = 0.45
+@export var recoil_pose_max_yaw_rad: float = 0.24
+@export var recoil_pose_camera_feedback_scale: float = 0.12
+## Local shoulder pivot fallback when a weapon scene has no RecoilPivot node.
+@export var recoil_pivot_local: Vector3 = Vector3(0.0, -0.04, 0.35)
 
 # 视觉效果 ────────────────────────────────────────────────
 @export_group("视觉效果")

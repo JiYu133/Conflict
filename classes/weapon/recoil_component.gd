@@ -15,6 +15,8 @@ var _pitch: float = 0.0
 var _pitch_velocity: float = 0.0
 var _yaw: float = 0.0
 var _yaw_velocity: float = 0.0
+var _rearward_position: float = 0.0
+var _rearward_velocity: float = 0.0
 var _control_multiplier: float = 1.0
 
 
@@ -40,6 +42,7 @@ func apply_recoil(control_multiplier: float = 1.0) -> void:
 	var angular_impulse := physics_model.get_shot_angular_impulse()
 	_pitch_velocity += angular_impulse.x
 	_yaw_velocity += angular_impulse.y
+	_rearward_velocity += physics_model.get_shot_linear_velocity().z * _translation_scale()
 
 
 func set_control_multiplier(value: float) -> void:
@@ -51,6 +54,8 @@ func reset() -> void:
 	_pitch_velocity = 0.0
 	_yaw = 0.0
 	_yaw_velocity = 0.0
+	_rearward_position = 0.0
+	_rearward_velocity = 0.0
 
 
 func _process(delta: float) -> void:
@@ -72,9 +77,14 @@ func _process(delta: float) -> void:
 	_yaw_velocity += yaw_accel * delta
 	_pitch += _pitch_velocity * delta
 	_yaw += _yaw_velocity * delta
+	var linear_stiffness := _linear_stiffness()
+	var linear_damping := _linear_damping()
+	_rearward_velocity += (-linear_stiffness * _rearward_position - linear_damping * _rearward_velocity) * delta
+	_rearward_position += _rearward_velocity * delta
 
-	_pitch = clampf(_pitch, -MAX_CAMERA_OFFSET_RAD, MAX_CAMERA_OFFSET_RAD)
-	_yaw = clampf(_yaw, -MAX_CAMERA_OFFSET_RAD, MAX_CAMERA_OFFSET_RAD)
+	_pitch = clampf(_pitch, -_max_pitch(), _max_pitch())
+	_yaw = clampf(_yaw, -_max_yaw(), _max_yaw())
+	_rearward_position = clampf(_rearward_position, 0.0, _max_translation())
 
 
 func get_physics_snapshot() -> Dictionary:
@@ -89,3 +99,53 @@ func get_recoil_offset() -> float:
 
 func get_recoil_horizontal_offset() -> float:
 	return rad_to_deg(_yaw)
+
+
+func get_camera_feedback_scale() -> float:
+	return config.recoil_pose_camera_feedback_scale if config else 0.12
+
+
+func get_pose_rotation() -> Basis:
+	var scale := _rotation_scale()
+	return Basis.from_euler(Vector3(_pitch * scale, _yaw * scale, 0.0))
+
+
+func get_pose_translation() -> Vector3:
+	return Vector3(0.0, 0.0, _rearward_position)
+
+
+func get_pose_snapshot() -> Dictionary:
+	return {
+		"pitch_rad": _pitch,
+		"yaw_rad": _yaw,
+		"rearward_position_m": _rearward_position,
+		"rearward_velocity_mps": _rearward_velocity,
+	}
+
+
+func _translation_scale() -> float:
+	return maxf(config.recoil_pose_translation_scale if config else 0.012, 0.0)
+
+
+func _rotation_scale() -> float:
+	return maxf(config.recoil_pose_rotation_scale if config else 1.0, 0.0)
+
+
+func _linear_stiffness() -> float:
+	return maxf(config.recoil_pose_linear_stiffness if config else 85.0, 1.0) * maxf(_control_multiplier, 0.05)
+
+
+func _linear_damping() -> float:
+	return maxf(config.recoil_pose_linear_damping if config else 20.0, 0.1) * maxf(_control_multiplier, 0.05)
+
+
+func _max_translation() -> float:
+	return maxf(config.recoil_pose_max_translation_m if config else 0.045, 0.001)
+
+
+func _max_pitch() -> float:
+	return minf(MAX_CAMERA_OFFSET_RAD, maxf(config.recoil_pose_max_pitch_rad if config else 0.45, 0.01))
+
+
+func _max_yaw() -> float:
+	return minf(MAX_CAMERA_OFFSET_RAD, maxf(config.recoil_pose_max_yaw_rad if config else 0.24, 0.01))

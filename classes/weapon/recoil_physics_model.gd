@@ -25,6 +25,8 @@ var shooter_impulse_noise: float = 0.03
 var attachment_control_stiffness: float = 0.0
 var attachment_control_damping: float = 0.0
 var impulse_magnitude: float = 0.0
+var shot_impulse_local: Vector3 = Vector3.ZERO
+var shot_linear_velocity_local: Vector3 = Vector3.ZERO
 var pitch_impulse_rad_s: float = 0.0
 var yaw_impulse_rad_s: float = 0.0
 
@@ -109,6 +111,10 @@ func get_shot_angular_impulse() -> Vector2:
 	)
 
 
+func get_shot_linear_velocity() -> Vector3:
+	return shot_linear_velocity_local
+
+
 func get_control() -> Vector2:
 	return Vector2(
 		base_control_stiffness + attachment_control_stiffness,
@@ -127,6 +133,8 @@ func get_snapshot() -> Dictionary:
 		"gas_impulse_vector": gas_impulse_vector,
 		"gas_impulse_fraction": gas_impulse_fraction,
 		"impulse_magnitude_ns": impulse_magnitude,
+		"shot_impulse_local": shot_impulse_local,
+		"shot_linear_velocity_local": shot_linear_velocity_local,
 		"pitch_impulse_rad_s": pitch_impulse_rad_s,
 		"yaw_impulse_rad_s": yaw_impulse_rad_s,
 		"control_stiffness": get_control().x,
@@ -218,6 +226,8 @@ func _compute_impulse() -> void:
 	var gas_vec := gas_impulse_vector.normalized() * gas_momentum * gas_impulse_fraction
 	var impulse := Vector3(gas_vec.x, gas_vec.y, bullet_momentum + gas_vec.z)
 	impulse_magnitude = impulse.length()
+	shot_impulse_local = impulse
+	shot_linear_velocity_local = impulse / maxf(total_mass, 0.1)
 
 	var r := bore_point - shoulder_contact
 	var torque := r.cross(impulse)

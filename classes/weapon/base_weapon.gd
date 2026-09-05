@@ -99,6 +99,7 @@ var fire_control: FireControlComponent
 var gas_component: GasComponent
 ## 导气组件：计算导气孔到枪机的延时
 var recoil_component: RecoilComponent
+var recoil_pose_controller: WeaponRecoilPoseController
 ## 后座组件：枪口上跳角度和回正
 var ejection_component: EjectionComponent
 ## 抛壳组件：弹壳抛出位置和速度
@@ -107,6 +108,8 @@ var fx_controller: WeaponFXController
 ## 开火表现控制器：抛壳刚体、枪口焰、枪口动态光照
 ## 故障/排障组件：聚合物理故障状态，协调排障流程
 var attachment_manager: AttachmentManager
+var _last_shot_origin: Vector3 = Vector3.ZERO
+var _last_shot_direction: Vector3 = Vector3.ZERO
 ## 配件管理器：负责挂载瞄具/握把/枪口等
 
 
@@ -139,6 +142,10 @@ func _initialize_components() -> void:
 	recoil_component.name = "RecoilComponent"
 	add_child(recoil_component)
 
+	recoil_pose_controller = WeaponRecoilPoseController.new()
+	recoil_pose_controller.name = "WeaponRecoilPoseController"
+	add_child(recoil_pose_controller)
+
 	ejection_component = EjectionComponent.new()
 	ejection_component.name = "EjectionComponent"
 	add_child(ejection_component)
@@ -165,6 +172,7 @@ func _setup_from_config() -> void:
 	fire_control.initialize(config)
 	gas_component.initialize(config)
 	recoil_component.initialize(config, attachment_manager)
+	recoil_pose_controller.initialize(self, recoil_component)
 	ejection_component.initialize(config)
 	malfunction_component.initialize(config, bolt_component, ejection_component, ammo_component)
 	fx_controller.initialize(self, config.fx_config)
@@ -534,6 +542,8 @@ func _apply_attachment_change(attachment_cfg: AttachmentConfig, equipped: bool) 
 		bolt_component.configure_cycle_rate(config.cycle_rate, gas_component.get_delay_time(), 0.005)
 	if recoil_component:
 		recoil_component.rebuild_physics()
+	if recoil_pose_controller:
+		recoil_pose_controller.reset_pose()
 
 ## 获取当前散布值
 ## 区分腰射和机瞄，返回武器基础散布 + 所有附件的散布修正
@@ -745,10 +755,11 @@ func _fire_one_round() -> void:
 	bolt_position = 0.0
 
 	# 发射弹丸（P1 hitscan）
-	_spawn_projectile()
+	var projectile_spawned := _spawn_projectile()
 
-	fired.emit()
-	recoil_component.apply_recoil(_get_control_multiplier())
+	if projectile_spawned:
+		fired.emit()
+		recoil_component.apply_recoil(_get_control_multiplier())
 
 
 ## 计算射手控枪系数；只改变弹簧刚度/阻尼，不改变单发冲量
@@ -776,11 +787,11 @@ func _get_control_multiplier() -> float:
 
 ## 发射弹丸
 ## 弹道模拟和 hitscan 都从枪口位置沿枪口轴线发射；摄像机不参与弹道计算。
-func _spawn_projectile() -> void:
+func _spawn_projectile() -> bool:
 	var world := get_world_3d()
 	if not world:
 		GlobalLogger.warn("BaseWeapon", "Cannot get World3D, projectile not fired")
-		return
+		return false
 
 	var exclusions := _collect_shooter_exclusions()
 
@@ -790,7 +801,7 @@ func _spawn_projectile() -> void:
 	var barrel := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
 	if not barrel:
 		GlobalLogger.warn("BaseWeapon", "[%s] 未装枪管，无法计算弹道" % config.weapon_name)
-		return
+		return false
 
 	var muzzle := _get_muzzle_position()
 	var shot_dir := _get_muzzle_direction()
@@ -801,6 +812,9 @@ func _spawn_projectile() -> void:
 		)
 	else:
 		Projectile.fire_hitscan(muzzle, shot_dir, barrel, self, world, exclusions)
+	_last_shot_origin = muzzle
+	_last_shot_direction = shot_dir
+	return true
 
 
 ## 枪口世界坐标（武器局部 -Z 方向延伸 weapon_length）
@@ -818,6 +832,18 @@ func _get_muzzle_direction() -> Vector3:
 	if muzzle_marker:
 		return (-muzzle_marker.global_basis.z).normalized()
 	return (-global_basis.z).normalized()
+
+
+func get_last_shot_origin() -> Vector3:
+	return _last_shot_origin
+
+
+func get_last_shot_direction() -> Vector3:
+	return _last_shot_direction
+
+
+func get_recoil_pose_snapshot() -> Dictionary:
+	return recoil_pose_controller.get_snapshot() if recoil_pose_controller else {}
 
 
 ## 收集射手自身的物理 RID（胶囊体 + 全部 BodyHitbox），
