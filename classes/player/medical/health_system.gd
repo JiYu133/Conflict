@@ -60,12 +60,14 @@ var _last_hit_damage_type: MedicalEnums.DamageType = MedicalEnums.DamageType.BUL
 var _anatomy: AnatomyConfig = null  # P2 解剖模型
 var _rng := RandomNumberGenerator.new()  # 解剖损伤概率判定
 var _lethal_organ_destroyed: bool = false  # 心/脑等关键器官被摧毁 → 直接死亡
+var _morphine_time_remaining: float = 0.0
 
 # 初始化 ────────────────────────────────────────────────────
 
 func initialize(player: BasePlayer, config: HealthConfig) -> void:
 	_player = player
 	_config = config if config else HealthConfig.new()
+	_morphine_time_remaining = 0.0
 	vitals = VitalsModel.new()
 	vitals.initialize(_config)
 	_anatomy = _config.anatomy_config if _config.anatomy_config else AnatomyConfig.create_default()
@@ -86,6 +88,11 @@ func initialize(player: BasePlayer, config: HealthConfig) -> void:
 func _physics_process(delta: float) -> void:
 	if _is_dead:
 		return
+	if _morphine_time_remaining > 0.0:
+		var was_active := _morphine_time_remaining > 0.0
+		_morphine_time_remaining = maxf(0.0, _morphine_time_remaining - delta)
+		if was_active and is_zero_approx(_morphine_time_remaining):
+			pain_changed.emit(get_effective_pain_level())
 	_tick_timer += delta
 	if _tick_timer >= _config.tick_interval:
 		_tick_timer = 0.0
@@ -115,24 +122,26 @@ func apply_damage(info: DamageInfo) -> void:
 	damage_taken.emit(info)
 	_evaluate_state(info.direction, true)
 
-## 应用治疗（P3 实现；P1 存根返回 false）
+## 应用治疗：按伤口和部位适用性管理具体医疗原因，不恢复通用生命值。
 func apply_treatment(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartId) -> bool:
 	if _is_dead or not vitals:
 		return false
 	var region := vitals.get_region(part)
 	if not region:
 		return false
+	if not _can_apply_treatment_to_region(t, part, region):
+		return false
 	var treated := false
 	match t:
 		MedicalEnums.TreatmentType.BANDAGE:
 			for wound in region.wounds:
-				if wound.bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_bandaged and wound.bleed_rate <= MedicalEnums.BleedRate.VENOUS:
+				if wound.get_bleed_ml_per_sec() > 0.0 and not wound.is_bandaged and wound.bleed_rate <= MedicalEnums.BleedRate.VENOUS:
 					wound.is_bandaged = true
 					treated = true
 		MedicalEnums.TreatmentType.TOURNIQUET:
 			if _is_limb_part(part):
 				for wound in region.wounds:
-					if wound.bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_tourniqueted:
+					if wound.get_bleed_ml_per_sec() > 0.0 and not wound.is_tourniqueted:
 						wound.is_tourniqueted = true
 						treated = true
 		MedicalEnums.TreatmentType.CHEST_SEAL:
@@ -143,7 +152,7 @@ func apply_treatment(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartI
 						treated = true
 		MedicalEnums.TreatmentType.WOUND_PACKING:
 			for wound in region.wounds:
-				if wound.is_packable and not wound.is_packed:
+				if wound.is_packable and not wound.is_packed and (wound.get_bleed_ml_per_sec() > 0.0 or wound.get_internal_bleed_ml_per_sec() > 0.0):
 					wound.is_packed = true
 					treated = true
 		MedicalEnums.TreatmentType.SPLINT:
@@ -152,16 +161,15 @@ func apply_treatment(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartI
 					region.splinted_bones.append(bone)
 					treated = true
 		MedicalEnums.TreatmentType.MORPHINE:
-			for wound in region.wounds:
-				if wound.pain_contribution > 0.0:
-					wound.pain_contribution *= 0.5
-					treated = true
+			if vitals.pain_level > 0.0 and _morphine_time_remaining <= 0.0:
+				_morphine_time_remaining = _config.morphine_duration
+				treated = true
 	if treated:
 		_recompute_respiration(0.0)
 		respiration_changed.emit(vitals.breathing_effectiveness, vitals.oxygenation)
 		vitals.recompute_pain()
 		bleeding_changed.emit(vitals.total_bleed_rate())
-		pain_changed.emit(vitals.pain_level)
+		pain_changed.emit(get_effective_pain_level())
 		_evaluate_state(Vector3.ZERO, false)
 	return treated
 
@@ -171,35 +179,37 @@ func get_first_treatable_part(t: MedicalEnums.TreatmentType) -> int:
 	for part_id in vitals.regions:
 		var part: MedicalEnums.BodyPartId = int(part_id)
 		var region := vitals.regions[part_id] as BodyRegion
-		match t:
-			MedicalEnums.TreatmentType.BANDAGE:
-				for wound in region.wounds:
-					if wound.bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_bandaged and wound.bleed_rate <= MedicalEnums.BleedRate.VENOUS:
-						return part
-			MedicalEnums.TreatmentType.TOURNIQUET:
-				if _is_limb_part(part):
-					for wound in region.wounds:
-						if wound.bleed_rate != MedicalEnums.BleedRate.NONE and not wound.is_tourniqueted:
-							return part
-			MedicalEnums.TreatmentType.CHEST_SEAL:
-				if part == MedicalEnums.BodyPartId.TORSO:
-					for wound in region.wounds:
-						if wound.is_open_chest_wound and not wound.is_chest_sealed:
-							return part
-			MedicalEnums.TreatmentType.WOUND_PACKING:
-				for wound in region.wounds:
-					if wound.is_packable and not wound.is_packed:
-						return part
-			MedicalEnums.TreatmentType.SPLINT:
-				if not region.fractured_bones.is_empty():
-					for bone in region.fractured_bones:
-						if not region.is_splinted(bone):
-							return part
-			MedicalEnums.TreatmentType.MORPHINE:
-				for wound in region.wounds:
-					if wound.pain_contribution > 0.0:
-						return part
+		if _can_apply_treatment_to_region(t, part, region):
+			return part
 	return -1
+
+func _can_apply_treatment_to_region(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartId, region: BodyRegion) -> bool:
+	match t:
+		MedicalEnums.TreatmentType.BANDAGE:
+			for wound in region.wounds:
+				if wound.get_bleed_ml_per_sec() > 0.0 and not wound.is_bandaged and wound.bleed_rate <= MedicalEnums.BleedRate.VENOUS:
+					return true
+		MedicalEnums.TreatmentType.TOURNIQUET:
+			if _is_limb_part(part):
+				for wound in region.wounds:
+					if wound.get_bleed_ml_per_sec() > 0.0 and not wound.is_tourniqueted:
+						return true
+		MedicalEnums.TreatmentType.CHEST_SEAL:
+			if part == MedicalEnums.BodyPartId.TORSO:
+				for wound in region.wounds:
+					if wound.is_open_chest_wound and not wound.is_chest_sealed:
+						return true
+		MedicalEnums.TreatmentType.WOUND_PACKING:
+			for wound in region.wounds:
+				if wound.is_packable and not wound.is_packed and (wound.get_bleed_ml_per_sec() > 0.0 or wound.get_internal_bleed_ml_per_sec() > 0.0):
+					return true
+		MedicalEnums.TreatmentType.SPLINT:
+			for bone in region.fractured_bones:
+				if not region.is_splinted(bone):
+					return true
+		MedicalEnums.TreatmentType.MORPHINE:
+			return vitals.pain_level > 0.0 and _morphine_time_remaining <= 0.0
+	return false
 
 func _is_limb_part(part: MedicalEnums.BodyPartId) -> bool:
 	return part in [
@@ -239,7 +249,10 @@ func notify_treatment_completed(target: BasePlayer, treatment: int) -> void:
 func get_effective_pain_level() -> float:
 	if not vitals:
 		return 0.0
-	return clampf(vitals.pain_level - vitals.adrenaline_level * _config.adrenaline_pain_tolerance, 0.0, 1.0)
+	var pain := vitals.pain_level
+	if _morphine_time_remaining > 0.0:
+		pain *= 1.0 - _config.morphine_pain_reduction
+	return clampf(pain - vitals.adrenaline_level * _config.adrenaline_pain_tolerance, 0.0, 1.0)
 
 func revive_from_unconscious() -> bool:
 	if _is_dead or current_state != MedicalEnums.HealthState.UNCONSCIOUS or not vitals:
@@ -263,6 +276,7 @@ func reset_for_spawn() -> void:
 	_last_hit_mass_kg = 0.0
 	_last_hit_damage_type = MedicalEnums.DamageType.BULLET
 	_lethal_organ_destroyed = false
+	_morphine_time_remaining = 0.0
 	_is_dead = false
 	_tick_timer = 0.0
 	current_state = MedicalEnums.HealthState.HEALTHY
@@ -406,8 +420,8 @@ func get_movement_speed_multiplier() -> float:
 	# 失血影响
 	if vitals.get_blood_pct() <= _config.critical_blood_threshold_pct:
 		mult *= 0.85
+	mult *= 1.0 - get_effective_pain_level() * _config.pain_movement_penalty
 	# 腿部骨折/出血
-	var leg_fracture := false
 	for part: int in [
 		MedicalEnums.BodyPartId.LEFT_THIGH,  MedicalEnums.BodyPartId.LEFT_CALF,
 		MedicalEnums.BodyPartId.RIGHT_THIGH, MedicalEnums.BodyPartId.RIGHT_CALF,
@@ -416,11 +430,8 @@ func get_movement_speed_multiplier() -> float:
 		if not region:
 			continue
 		if _region_has_fracture(region):
-			leg_fracture = true
-			break
+			mult *= _config.splinted_leg_multiplier if _region_fully_splinted(region) else _config.fractured_leg_multiplier
 		mult *= _limb_bleed_multiplier(region, 0.55, 0.80)
-	if leg_fracture:
-		mult *= 0.35
 	return maxf(mult, 0.0)
 
 
@@ -431,10 +442,10 @@ func get_aim_stability_multiplier() -> float:
 	# 失血影响
 	if vitals.get_blood_pct() <= _config.critical_blood_threshold_pct:
 		mult *= 0.80
+	mult *= 1.0 - get_effective_pain_level() * _config.pain_aim_penalty
 	# 呼吸受损
 	mult *= vitals.breathing_effectiveness
 	# 手臂骨折/出血
-	var arm_fracture := false
 	for part: int in [
 		MedicalEnums.BodyPartId.LEFT_UPPER_ARM,  MedicalEnums.BodyPartId.LEFT_FOREARM,
 		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM, MedicalEnums.BodyPartId.RIGHT_FOREARM,
@@ -443,11 +454,8 @@ func get_aim_stability_multiplier() -> float:
 		if not region:
 			continue
 		if _region_has_fracture(region):
-			arm_fracture = true
-			break
+			mult *= _config.splinted_arm_multiplier if _region_fully_splinted(region) else _config.fractured_arm_multiplier
 		mult *= _limb_bleed_multiplier(region, 0.55, 0.75)
-	if arm_fracture:
-		mult *= 0.30
 	# 体力耗尽
 	if _player.stamina_system:
 		mult *= _player.stamina_system.get_aim_stability_multiplier()
@@ -497,7 +505,7 @@ func can_sprint() -> bool:
 		if _region_has_fracture(region):
 			return false
 		for w in region.wounds:
-			if (w as Wound).bleed_rate == MedicalEnums.BleedRate.ARTERIAL:
+			if (w as Wound).get_bleed_ml_per_sec() > 0.0 and (w as Wound).bleed_rate == MedicalEnums.BleedRate.ARTERIAL:
 				return false
 	if _player.stamina_system and not _player.stamina_system.allows_sprint():
 		return false
@@ -507,12 +515,23 @@ func can_sprint() -> bool:
 func _region_has_fracture(region: BodyRegion) -> bool:
 	return region.fractured_bones.size() > 0
 
+func _region_fully_splinted(region: BodyRegion) -> bool:
+	if region.fractured_bones.is_empty():
+		return false
+	for bone in region.fractured_bones:
+		if not region.is_splinted(bone):
+			return false
+	return true
+
 
 ## arterial_mult: 动脉出血乘数, venous_mult: 静脉/毛细乘数
 func _limb_bleed_multiplier(region: BodyRegion, arterial_mult: float, venous_mult: float) -> float:
 	var highest := MedicalEnums.BleedRate.NONE
 	for w in region.wounds:
-		var rate: int = (w as Wound).bleed_rate
+		var wound := w as Wound
+		if wound.get_bleed_ml_per_sec() <= 0.0:
+			continue
+		var rate: int = wound.bleed_rate
 		if rate > highest:
 			highest = rate
 	match highest:
@@ -690,7 +709,7 @@ func _run_physiology_tick(dt: float) -> void:
 
 	# 疼痛等级：每 tick 由伤口 pain_contribution 汇总
 	vitals.recompute_pain()
-	pain_changed.emit(vitals.pain_level)
+	pain_changed.emit(get_effective_pain_level())
 
 	# 使用缓存的最后受击方向：失血死亡也能选择方向正确的死亡动画
 	# 失血/生理状态导致的死亡没有新的瞬时碰撞，不重复使用旧子弹的动能。
@@ -871,6 +890,7 @@ func _on_player_died() -> void:
 ## 复活将改为保留伤情的"抢救"流程，此处的完全重置仅供调试复活使用）。
 func _on_player_revived() -> void:
 	vitals.initialize(_config)
+	_morphine_time_remaining = 0.0
 	_last_hit_direction = Vector3.ZERO
 	_last_hit_energy_j = 0.0
 	_last_hit_mass_kg = 0.0

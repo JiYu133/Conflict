@@ -100,6 +100,13 @@ func _resolve_markers() -> void:
 		return
 	_muzzle_point = _find_forward_marker(MUZZLE_NODE_NAME)
 	_ejection_point = _weapon.find_child(EJECTION_NODE_NAME, true, false) as Node3D
+	if not _ejection_point:
+		# Support authored receiver naming used by older weapon scenes. Keeping
+		# the marker lookup here makes shell placement follow the live assembly.
+		for alias in ["EjectionWindow", "ShellEjection", "ShellPort"]:
+			_ejection_point = _weapon.find_child(alias, true, false) as Node3D
+			if _ejection_point:
+				break
 	var next_heat_marker := _weapon.find_child(HEAT_HAZE_MARKER_NAME, true, false) as Node3D
 	# 旧武器没有专用 Marker 时回退到 Muzzle，但新枪管应始终提供 HeatHaze Marker。
 	if not next_heat_marker:
@@ -312,6 +319,8 @@ func _muzzle_transform() -> Transform3D:
 
 func _spawn_flash(profile: Dictionary, xf: Transform3D) -> void:
 	var scene: PackedScene = profile.get("scene")
+	if not scene and _fx:
+		scene = _fx.flash_scene_standard
 	if not scene:
 		return  # 素材未就绪：静默跳过
 	var node := scene.instantiate() as Node3D

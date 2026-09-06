@@ -64,7 +64,8 @@ func spawn(
 	config: BarrelConfig,
 	source: Node,
 	exclude: Array[RID],
-	world: World3D
+	world: World3D,
+	spread_degrees: float = 0.0
 ) -> void:
 	if not config:
 		GlobalLogger.warn("Ballistics", "spawn() 缺少 BarrelConfig（未装枪管？），弹丸未生成")
@@ -79,7 +80,7 @@ func spawn(
 		_destroy_bullet_visual(_bullets.pop_front())
 		GlobalLogger.warn("Ballistics", "Active bullet cap reached, oldest bullet dropped")
 
-	var launch_direction := _apply_random_spread(muzzle_direction, config)
+	var launch_direction := _apply_random_spread(muzzle_direction, config, spread_degrees)
 	var launch_speed := maxf(config.muzzle_velocity, 0.0)
 	if config.charge_variation > 0.0:
 		launch_speed *= 1.0 + randf_range(-config.charge_variation, config.charge_variation)
@@ -317,12 +318,14 @@ func _get_drift_axis(direction: Vector3) -> Vector3:
 	return axis.normalized()
 
 
-func _apply_random_spread(direction: Vector3, config: BarrelConfig) -> Vector3:
-	if not config.enable_ballistic_random_spread or config.ballistic_spread_moa <= 0.0:
+func _apply_random_spread(direction: Vector3, config: BarrelConfig, weapon_spread_degrees: float = 0.0) -> Vector3:
+	var moa_spread := config.ballistic_spread_moa / 60.0 if config.enable_ballistic_random_spread else 0.0
+	var total_spread_degrees := maxf(weapon_spread_degrees, 0.0) + maxf(moa_spread, 0.0)
+	if total_spread_degrees <= 0.0:
 		return direction
 	var right := _get_drift_axis(direction)
 	var up := right.cross(direction).normalized()
-	var cone_angle := deg_to_rad(config.ballistic_spread_moa / 60.0) * randf()
+	var cone_angle := deg_to_rad(total_spread_degrees) * sqrt(randf())
 	var rotation := randf() * TAU
 	return (direction + right * cos(rotation) * cone_angle + up * sin(rotation) * cone_angle).normalized()
 

@@ -90,4 +90,14 @@ extends Resource
 @export_range(0.0, 1.0) var adrenaline_pain_tolerance: float = 0.2
 @export_range(0.0, 1.0) var adrenaline_respiratory_load: float = 0.1
 
+@export_group("Functional Impairment / P4")
+@export_range(0.0, 1.0) var pain_movement_penalty: float = 0.25
+@export_range(0.0, 1.0) var pain_aim_penalty: float = 0.35
+@export_range(0.0, 1.0) var fractured_leg_multiplier: float = 0.35
+@export_range(0.0, 1.0) var splinted_leg_multiplier: float = 0.75
+@export_range(0.0, 1.0) var fractured_arm_multiplier: float = 0.30
+@export_range(0.0, 1.0) var splinted_arm_multiplier: float = 0.65
+@export_range(0.0, 1.0) var morphine_pain_reduction: float = 0.5
+@export_range(0.0, 120.0) var morphine_duration: float = 20.0
+
 ## Neck, abdomen, pelvis, hands, and feet remain future BodyPartId/hitbox extensions.

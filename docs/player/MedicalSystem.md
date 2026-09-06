@@ -35,7 +35,13 @@ P2 已实现：
 - 内部出血参与生理 tick、HUD 和预计死亡时间。
 - `H` 键调试显示部位 hitbox 与内部结构。
 
-治疗、昏迷、氧合、完整呼吸生理、骨折对移动的影响仍属于后续阶段；当前数据和接口只为这些阶段预留。
+P3/P4 已实现：
+
+- 固定频率生理 tick、失血导致的灌注/氧合/意识变化，以及昏迷与死亡分离。
+- 绷带、止血带、填塞、胸封、夹板和吗啡治疗；治疗动作由遭遇组件计时且可中断。
+- 骨折、呼吸效率、疼痛、失血和夹板状态会影响移动、跳跃、冲刺和瞄准；吗啡为限时疼痛抑制。
+
+高级治疗（输血、肾上腺素、CPR）和扩展身体部位仍属于后续阶段；当前数据和接口为这些阶段预留。
 
 ---
 
@@ -272,7 +278,7 @@ channel_length = clamp(
 |------|------|------|
 | `initialize(player, config)` | `void` | 初始化 vitals、解剖模板、随机数及玩家信号 |
 | `apply_damage(info)` | `void` | 唯一正式伤害入口 |
-| `apply_treatment(type, part)` | `bool` | 后续阶段接口，当前返回 `false` |
+| `apply_treatment(type, part)` | `bool` | 按伤口和部位适用性执行治疗；成功返回 `true` |
 | `get_blood_pct()` | `float` | 当前血量百分比 |
 | `get_part_health(part)` | `float` | 按伤口累计严重度估算部位健康度 |
 | `get_state()` | `HealthState` | 当前整体状态 |
@@ -319,6 +325,7 @@ channel_length = clamp(
 | `wounds` | 该部位的 `Wound` 列表 |
 | `organ_damage` | `structure_id → 累计 float 损伤` |
 | `fractured_bones` | 已骨折结构 ID；不重复添加 |
+| `splinted_bones` | 已固定结构 ID；不重复添加 |
 
 `total_bleed_ml_per_sec()` 与 `total_internal_bleed_ml_per_sec()` 分别聚合该部位所有伤口的外部和内部出血。
 
@@ -345,7 +352,7 @@ channel_length = clamp(
 | `VENOUS` | `3.0 ml/s` |
 | `ARTERIAL` | `15.0 ml/s` |
 
-`get_bleed_ml_per_sec()` 在伤口已包扎或已上止血带时返回 0；`get_internal_bleed_ml_per_sec()` 在伤口已填塞时返回 0。P2 仅计算这些状态，正式治疗入口仍未实现。
+`get_bleed_ml_per_sec()` 在伤口已包扎或已上止血带时返回 0；`get_internal_bleed_ml_per_sec()` 在伤口已填塞且该伤口允许填塞止内出血时返回 0。治疗状态不会修改伤口的基础严重度。
 
 ---
 
@@ -466,4 +473,17 @@ HUD 每 `0.1 s` 更新一次，新增：
 - `organ_damaged` 在每次有效器官命中后发出，并非只在 `INTACT → DAMAGED` 或 `DAMAGED → DESTROYED` 状态切换时发出。
 - 解剖骨骼查询缓存首次建立后不会自动失效。若运行时修改 `AnatomyConfig.structures`，应重新创建配置/系统，而不是依赖现有缓存。
 - HUD 用固定 `1.0` 将器官损伤着色为“摧毁”，但各器官实际 `destroy_damage_threshold` 不同；HUD 颜色仅供调试，状态应以 `organ_damaged` 信号及结构配置为准。
-- `apply_treatment()`、`UNCONSCIOUS`、氧合、疼痛对操控的影响，以及骨折夹板处理尚未实现，不应在 P2 文档中视为可用玩法。
+- 当前仍未实现：输血、肾上腺素、CPR、颈部/手部/足部等新增身体部位，以及多人权威同步。
+- 吗啡只抑制一段时间内的有效疼痛，不会修复组织、止血或补充血量；夹板只降低骨折功能惩罚。
+
+### P4 功能伤情配置
+
+`HealthConfig` 提供以下可调参数：`pain_movement_penalty` 和 `pain_aim_penalty` 控制疼痛对移动与瞄准的惩罚；`fractured_leg_multiplier`、`splinted_leg_multiplier`、`fractured_arm_multiplier`、`splinted_arm_multiplier` 控制未固定/已夹板骨折的功能乘数；`morphine_pain_reduction` 与 `morphine_duration` 控制吗啡的限时效果。
+
+### 医疗功能状态矩阵
+
+| 状态 | 范围 |
+|------|------|
+| 已实现 | P2 解剖伤道、器官/骨骼/血管损伤、内外出血、P3 生理 tick、昏迷、基础治疗、P4 功能性伤情 |
+| 部分实现 | AI 医疗决策、队友检查与救援反馈、调试 HUD 的完整治疗提示 |
+| 仅设计 | 输血、肾上腺素、CPR、扩展身体部位、多人权威同步 |

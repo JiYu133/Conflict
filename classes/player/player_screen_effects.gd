@@ -80,6 +80,13 @@ func _ready() -> void:
 		GlobalLogger.warn("ScreenEffects", "UI CanvasLayer not found — screen effects disabled")
 
 
+func _exit_tree() -> void:
+	# Death/coma canvases live under the root so they can outlive the player
+	# ragdoll. Always remove them when the owning scene is unloaded; otherwise
+	# a title-screen transition can inherit the previous scene's black overlay.
+	_cleanup_partial_overlay_nodes()
+
+
 # ── 每帧更新 ────────────────────────────────────────────────
 func _process(delta: float) -> void:
 	_ensure_overlay_nodes()

@@ -550,8 +550,13 @@ func apply_stance_value(value: float) -> void:
 			stopped_running.emit()
 
 func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, ai_driving: bool) -> void:
-	_is_running = false
-	_is_sprinting = false
+	# Prone movement owns locomotion state. Emit the same transitions as the
+	# normal input path so stamina and animation consumers cannot remain stuck
+	# in Sprinting after an airborne prone transition.
+	if _is_sprinting:
+		_exit_sprint()
+	if _is_running:
+		_exit_run()
 	if _player.stance_controller.is_prone_transitioning():
 		input_dir = Vector2.ZERO
 		has_input = false

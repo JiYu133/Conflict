@@ -213,7 +213,10 @@ enum MuzzleKind { NONE, FLASH_HIDER, BRAKE, SUPPRESSOR }
 
 
 func _scene_for(profile: MuzzleProfile, barrel_length: float) -> PackedScene:
-	var variants := scenes_for_profile(profile, barrel_length)
+	var variants: Array[PackedScene] = []
+	for candidate in scenes_for_profile(profile, barrel_length):
+		if candidate:
+			variants.append(candidate)
 	if not variants.is_empty():
 		return variants.pick_random()
 	match profile:
