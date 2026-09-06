@@ -85,6 +85,7 @@ var _burst_remaining: int = 0
 ## 本轮换弹中已完成的阶段（被打断后保留，下次换弹跳过；完整走完后清空）
 var _reload_done_stages: Array = []
 var is_reloading: bool = false                 # 是否正在换弹
+var _reload_generation: int = 0
 
 
 # ============================================================
@@ -344,6 +345,8 @@ func reload() -> void:
 		return
 
 	is_reloading = true
+	_reload_generation += 1
+	var reload_generation := _reload_generation
 	reload_started.emit()
 
 	# 换弹时间从已装弹匣配件读取，未装弹匣时使用安全默认值
@@ -362,7 +365,7 @@ func reload() -> void:
 		var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
 		var whole_duration: float = reload_t if tactical else reload_et
 		reload_countdown_started.emit(whole_duration)
-		if not await _run_reload_stage(ReloadStage.WHOLE, whole_duration):
+		if not await _run_reload_stage(ReloadStage.WHOLE, whole_duration, reload_generation):
 			return
 	else:
 		reload_countdown_started.emit(_remaining_reload_duration(staged))
@@ -370,7 +373,7 @@ func reload() -> void:
 			var stage: ReloadStage = entry["stage"]
 			if _reload_done_stages.has(stage):
 				continue  # 该阶段此前已完成，跳过
-			if not await _run_reload_stage(stage, entry["time"]):
+			if not await _run_reload_stage(stage, entry["time"], reload_generation):
 				return
 
 	if ammo_component.has_chambered_round():
@@ -406,6 +409,7 @@ func interrupt_reload() -> void:
 	if not is_reloading:
 		return
 	is_reloading = false
+	_reload_generation += 1
 	reload_interrupted.emit(_reload_done_stages.duplicate())
 	GlobalLogger.debug("BaseWeapon", "换弹被打断，已完成阶段: %s" % str(_reload_done_stages))
 
@@ -445,14 +449,16 @@ func _remaining_reload_duration(stages: Array) -> float:
 
 
 ## 执行单个换弹阶段。返回 false 表示武器在等待期间失效，调用方应立即中止。
-func _run_reload_stage(stage: ReloadStage, duration: float) -> bool:
+func _run_reload_stage(stage: ReloadStage, duration: float, generation: int = -1) -> bool:
+	if generation >= 0 and generation != _reload_generation:
+		return false
 	reload_stage_started.emit(stage, duration)
 	await get_tree().create_timer(duration).timeout
 	# 武器可能在换弹计时期间被卸下/释放
 	if not is_instance_valid(self):
 		return false
 	# 中途被 interrupt_reload() 打断：不记录本阶段，也不继续后续阶段
-	if not is_reloading:
+	if not is_reloading or (generation >= 0 and generation != _reload_generation):
 		return false
 	_reload_done_stages.append(stage)
 	reload_stage_finished.emit(stage)
@@ -489,6 +495,9 @@ func set_fire_mode(mode: String) -> bool:
 	if not fire_control.set_fire_mode(mode):
 		return false
 	current_fire_mode = mode
+	# A mode switch must invalidate any pending burst continuation. Without this,
+	# switching while reloading can resume an old burst against the new ammo UI.
+	_burst_remaining = 0
 	var selector := attachment_manager.get_attachment_of_type(AttachmentConfig.AttachmentType.SELECTOR_SWITCH)
 	if selector and selector.has_method("on_fire_mode_changed"):
 		selector.on_fire_mode_changed(current_fire_mode)
@@ -805,13 +814,19 @@ func _spawn_projectile() -> bool:
 
 	var muzzle := _get_muzzle_position()
 	var shot_dir := _get_muzzle_direction()
+	var spread_degrees := 0.0
+	var shooter := get_parent()
+	while shooter and not shooter is BasePlayer:
+		shooter = shooter.get_parent()
+	if shooter is BasePlayer and (shooter as BasePlayer).weapon_manager:
+		spread_degrees = get_current_spread((shooter as BasePlayer).weapon_manager.is_aiming)
 
 	if config and config.use_ballistic_simulation:
 		BallisticProjectileSystem.get_or_create(get_tree()).spawn(
-			muzzle, shot_dir, barrel, self, exclusions, world
+			muzzle, shot_dir, barrel, self, exclusions, world, spread_degrees
 		)
 	else:
-		Projectile.fire_hitscan(muzzle, shot_dir, barrel, self, world, exclusions)
+		Projectile.fire_hitscan(muzzle, shot_dir, barrel, self, world, exclusions, spread_degrees)
 	_last_shot_origin = muzzle
 	_last_shot_direction = shot_dir
 	return true

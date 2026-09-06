@@ -45,7 +45,7 @@ BasePlayer (CharacterBody3D)
         ├── BoltComponent          枪机自动循环
         ├── FireControlComponent   扳机/保险/射击模式
         ├── GasComponent           导气延时
-        ├── RecoilComponent        后座（摄像机 kick）
+        ├── RecoilComponent        后座（六自由度武器姿态 + 少量镜头反馈）
         ├── EjectionComponent      抛壳位置/速度
         ├── MalfunctionComponent   故障与排障
         ├── WeaponAnimationController  信号驱动动画
@@ -226,7 +226,7 @@ BaseWeapon
 | [BoltComponent](weapon/BoltComponent.md) | `classes/weapon/bolt_component.gd` | 枪机自动循环仿真 |
 | [FireControlComponent](weapon/FireControlComponent.md) | `classes/weapon/fire_control_component.gd` | 扳机/保险/射击模式控制 |
 | [GasComponent](weapon/GasComponent.md) | `classes/weapon/gas_component.gd` | 导气延时计算 |
-| [RecoilComponent](weapon/RecoilComponent.md) | `classes/weapon/recoil_component.gd` | 摄像机 kick 冲量（pitch/yaw） |
+| [RecoilComponent](weapon/RecoilComponent.md) | `classes/weapon/recoil_component.gd` | 物理冲量驱动的六自由度武器姿态（pitch/yaw/roll + 线性后移） |
 | [EjectionComponent](weapon/EjectionComponent.md) | `classes/weapon/ejection_component.gd` | 抛壳位置与速度 |
 
 ---

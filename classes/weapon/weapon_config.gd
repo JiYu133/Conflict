@@ -104,6 +104,7 @@ extends Resource
 @export var recoil_pose_max_translation_m: float = 0.045
 @export var recoil_pose_max_pitch_rad: float = 0.45
 @export var recoil_pose_max_yaw_rad: float = 0.24
+@export var recoil_pose_max_roll_rad: float = 0.16
 @export var recoil_pose_camera_feedback_scale: float = 0.12
 ## Local shoulder pivot fallback when a weapon scene has no RecoilPivot node.
 @export var recoil_pivot_local: Vector3 = Vector3(0.0, -0.04, 0.35)

@@ -15,6 +15,7 @@ var total_mass: float = 3.5
 var center_of_mass: Vector3 = Vector3.ZERO
 var inertia_pitch: float = 0.4
 var inertia_yaw: float = 0.4
+var inertia_roll: float = 0.4
 var bore_point: Vector3 = Vector3(0, 0.06, -0.35)
 var shoulder_contact: Vector3 = Vector3(0, -0.04, 0.35)
 var gas_impulse_vector: Vector3 = Vector3(0, 0, 1)
@@ -29,15 +30,20 @@ var shot_impulse_local: Vector3 = Vector3.ZERO
 var shot_linear_velocity_local: Vector3 = Vector3.ZERO
 var pitch_impulse_rad_s: float = 0.0
 var yaw_impulse_rad_s: float = 0.0
+var roll_impulse_rad_s: float = 0.0
+var torque_local: Vector3 = Vector3.ZERO
+var mechanical_impulse_local: Vector3 = Vector3.ZERO
 
 var barrel_config: BarrelConfig = null
 var _weapon_config: WeaponConfig = null
 var _attachment_manager: AttachmentManager = null
+var _rng := RandomNumberGenerator.new()
 
 
 func rebuild(weapon_cfg: WeaponConfig, am: AttachmentManager) -> void:
 	_weapon_config = weapon_cfg
 	_attachment_manager = am
+	_rng.seed = hash(weapon_cfg.weapon_name if weapon_cfg else "default_recoil")
 	barrel_config = _find_barrel_config()
 
 	var mass_parts: Array[Dictionary] = []
@@ -48,6 +54,8 @@ func rebuild(weapon_cfg: WeaponConfig, am: AttachmentManager) -> void:
 	attachment_control_damping = 0.0
 	gas_impulse_vector = Vector3(0, 0, 1)
 	gas_impulse_fraction = 1.0
+	mechanical_impulse_local = Vector3.ZERO
+	torque_local = Vector3.ZERO
 
 	if _weapon_config:
 		var receiver_mass := maxf(_weapon_config.receiver_mass_kg, 0.1)
@@ -99,15 +107,21 @@ func rebuild(weapon_cfg: WeaponConfig, am: AttachmentManager) -> void:
 
 
 func get_shot_angular_impulse() -> Vector2:
+	var impulse: Vector3 = get_shot_angular_impulse_3d()
+	return Vector2(impulse.x, impulse.y)
+
+
+func get_shot_angular_impulse_3d() -> Vector3:
 	var variation := 0.02
 	if barrel_config:
 		variation = barrel_config.charge_variation
-	var charge_scale := 1.0 + randf_range(-variation, variation)
+	var charge_scale := 1.0 + _rng.randf_range(-variation, variation)
 	var noise_torque := impulse_magnitude * shooter_impulse_noise
-	var noise_angle := randf_range(-PI, PI)
-	return Vector2(
+	var noise_angle := _rng.randf_range(-PI, PI)
+	return Vector3(
 		pitch_impulse_rad_s * charge_scale + sin(noise_angle) * noise_torque / inertia_pitch,
-		yaw_impulse_rad_s * charge_scale + cos(noise_angle) * noise_torque / inertia_yaw
+		yaw_impulse_rad_s * charge_scale + cos(noise_angle) * noise_torque / inertia_yaw,
+		roll_impulse_rad_s * charge_scale
 	)
 
 
@@ -128,6 +142,7 @@ func get_snapshot() -> Dictionary:
 		"center_of_mass": center_of_mass,
 		"inertia_pitch": inertia_pitch,
 		"inertia_yaw": inertia_yaw,
+		"inertia_roll": inertia_roll,
 		"bore_point": bore_point,
 		"shoulder_contact": shoulder_contact,
 		"gas_impulse_vector": gas_impulse_vector,
@@ -137,6 +152,9 @@ func get_snapshot() -> Dictionary:
 		"shot_linear_velocity_local": shot_linear_velocity_local,
 		"pitch_impulse_rad_s": pitch_impulse_rad_s,
 		"yaw_impulse_rad_s": yaw_impulse_rad_s,
+		"roll_impulse_rad_s": roll_impulse_rad_s,
+		"torque_local": torque_local,
+		"mechanical_impulse_local": mechanical_impulse_local,
 		"control_stiffness": get_control().x,
 		"control_damping": get_control().y,
 		"shooter_impulse_noise": shooter_impulse_noise,
@@ -197,14 +215,17 @@ func _collect_special_attachment(att: BaseAttachment) -> void:
 func _compute_inertia(mass_parts: Array[Dictionary]) -> void:
 	inertia_pitch = 0.0
 	inertia_yaw = 0.0
+	inertia_roll = 0.0
 	for part in mass_parts:
 		var mass := float(part["mass"])
 		var pos := part["pos"] as Vector3
 		var r := pos - shoulder_contact
 		inertia_pitch += mass * (r.y * r.y + r.z * r.z)
 		inertia_yaw += mass * (r.x * r.x + r.z * r.z)
-		inertia_pitch = maxf(inertia_pitch, MIN_INERTIA)
-		inertia_yaw = maxf(inertia_yaw, MIN_INERTIA)
+		inertia_roll += mass * (r.x * r.x + r.y * r.y)
+	inertia_pitch = maxf(inertia_pitch, MIN_INERTIA)
+	inertia_yaw = maxf(inertia_yaw, MIN_INERTIA)
+	inertia_roll = maxf(inertia_roll, MIN_INERTIA)
 
 
 func _compute_impulse() -> void:
@@ -224,12 +245,30 @@ func _compute_impulse() -> void:
 	var bullet_momentum := bullet_mass_kg * muzzle_velocity
 	var gas_momentum := gas_mass_kg * gas_velocity * gas_factor
 	var gas_vec := gas_impulse_vector.normalized() * gas_momentum * gas_impulse_fraction
-	var impulse := Vector3(gas_vec.x, gas_vec.y, bullet_momentum + gas_vec.z)
+	var impulse: Vector3 = Vector3(gas_vec.x, gas_vec.y, bullet_momentum + gas_vec.z)
+	# A bolt carrier moving rearward applies a forward reaction to the receiver.
+	# Keep this small and deterministic; detailed travel timing remains owned by
+	# BoltComponent, while this term preserves the correct impulse direction.
+	var bolt_cfg: BoltCarrierConfig = _find_bolt_config()
+	if bolt_cfg:
+		var bolt_ratio := clampf(bolt_cfg.bolt_mass / maxf(total_mass, 0.1), 0.0, 0.35)
+		mechanical_impulse_local = Vector3(0.0, 0.0, -bullet_momentum * bolt_ratio * 0.15)
+		impulse += mechanical_impulse_local
 	impulse_magnitude = impulse.length()
 	shot_impulse_local = impulse
 	shot_linear_velocity_local = impulse / maxf(total_mass, 0.1)
 
-	var r := bore_point - shoulder_contact
-	var torque := r.cross(impulse)
-	pitch_impulse_rad_s = torque.x / inertia_pitch
-	yaw_impulse_rad_s = torque.y / inertia_yaw
+	var r: Vector3 = bore_point - shoulder_contact
+	torque_local = r.cross(impulse)
+	pitch_impulse_rad_s = torque_local.x / inertia_pitch
+	yaw_impulse_rad_s = torque_local.y / inertia_yaw
+	roll_impulse_rad_s = torque_local.z / inertia_roll
+
+
+func _find_bolt_config() -> BoltCarrierConfig:
+	if not _attachment_manager:
+		return null
+	for att in _attachment_manager.get_all_attachments():
+		if att.config is BoltCarrierConfig:
+			return att.config as BoltCarrierConfig
+	return null

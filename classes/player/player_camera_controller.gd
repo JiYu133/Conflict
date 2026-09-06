@@ -551,7 +551,7 @@ func _process(delta: float) -> void:
 	_active_camera.global_rotation = Vector3(
 		get_vertical_angle() + _pain_pitch + _get_recoil_pitch_feedback(),
 		get_view_yaw() + _pain_yaw + _get_recoil_yaw_feedback(),
-		_pain_roll
+		_pain_roll + _get_recoil_roll_feedback()
 	)
 
 	_update_ads(delta)
@@ -572,11 +572,19 @@ func _get_recoil_yaw_feedback() -> float:
 	return clampf(deg_to_rad(_recoil_component.get_recoil_horizontal_offset()) * scale, -0.05, 0.05)
 
 
+func _get_recoil_roll_feedback() -> float:
+	if not is_instance_valid(_recoil_component):
+		return 0.0
+	var pose: Dictionary = _recoil_component.get_pose_snapshot()
+	var scale: float = _recoil_component.get_camera_feedback_scale()
+	return clampf(float(pose.get("roll_rad", 0.0)) * scale * 0.5, -0.035, 0.035)
+
+
 func _should_lock_turn_in_place_height() -> bool:
-	if not is_instance_valid(_player) or not _player.turn_controller:
-		return false
-	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
-	return _player.turn_controller.is_turning() and horizontal_velocity.length_squared() < 0.0001
+	# Turn clips use the same head-following spring as every other locomotion
+	# state. Locking the height here makes stance changes visibly lag behind the
+	# authored animation.
+	return false
 
 
 # ============================================================
