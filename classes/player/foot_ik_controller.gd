@@ -24,7 +24,8 @@ const RAY_BELOW := 0.4
 const ANKLE_OFFSET := 0.05
 const ANKLE_BONE_LEFT := "mixamorig_LeftFoot"
 const ANKLE_BONE_RIGHT := "mixamorig_RightFoot"
-# Lift is measured against the rig's rest feet, not the ground beneath a step.
+# Lift is relative to the animated support foot. Imported crouch clips can
+# translate both ankles far above the standing rest pose.
 const PLANT_LIFT_START := 0.035
 const PLANT_LIFT_END := 0.12
 
@@ -187,9 +188,12 @@ func process_ik(delta: float, enabled: bool = true) -> void:
 
 
 func _plant_weight(bone_idx: int) -> float:
-	var animated := _skeleton.global_transform * _skeleton.get_bone_global_pose(bone_idx).origin
-	var resting := _skeleton.global_transform * _skeleton.get_bone_global_rest(bone_idx).origin
-	var lift := maxf(animated.y - resting.y, 0.0)
+	var animated := _bone_world_position(bone_idx)
+	var support_y := animated.y
+	for foot_idx in [_left_foot_idx, _right_foot_idx]:
+		if foot_idx >= 0:
+			support_y = minf(support_y, _bone_world_position(foot_idx).y)
+	var lift := maxf(animated.y - support_y, 0.0)
 	return 1.0 - smoothstep(PLANT_LIFT_START, PLANT_LIFT_END, lift)
 
 
