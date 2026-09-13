@@ -561,20 +561,23 @@ func _process(delta: float) -> void:
 func _get_recoil_pitch_feedback() -> float:
 	if not is_instance_valid(_recoil_component):
 		return 0.0
-	return deg_to_rad(_recoil_component.get_recoil_offset())
+	var scale := _recoil_component.get_camera_feedback_scale()
+	return clampf(deg_to_rad(_recoil_component.get_recoil_offset()) * scale, -0.08, 0.08)
 
 
 func _get_recoil_yaw_feedback() -> float:
 	if not is_instance_valid(_recoil_component):
 		return 0.0
-	return deg_to_rad(_recoil_component.get_recoil_horizontal_offset())
+	var scale := _recoil_component.get_camera_feedback_scale()
+	return clampf(deg_to_rad(_recoil_component.get_recoil_horizontal_offset()) * scale, -0.05, 0.05)
 
 
 func _get_recoil_roll_feedback() -> float:
 	if not is_instance_valid(_recoil_component):
 		return 0.0
 	var pose: Dictionary = _recoil_component.get_pose_snapshot()
-	return float(pose.get("roll_rad", 0.0))
+	var scale: float = _recoil_component.get_camera_feedback_scale()
+	return clampf(float(pose.get("roll_rad", 0.0)) * scale * 0.5, -0.035, 0.035)
 
 
 func _should_lock_turn_in_place_height() -> bool:

@@ -49,9 +49,6 @@ extends Resource
 ## 脊柱随视角旋转参数
 @export var spine_aim_config: SpineAimConfig
 
-## 摄像机与右臂后坐表现参数
-@export var player_recoil_config: PlayerRecoilConfig
-
 # 武器配置 ─────────────────────────────────────────────────
 @export_group("武器配置")
 ## 初始武器

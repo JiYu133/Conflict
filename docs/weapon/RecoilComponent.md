@@ -18,11 +18,6 @@ The model uses a seeded random generator per weapon name for charge variation an
 
 `apply_recoil(control_multiplier)` adds angular and linear shot velocities to damped springs. `get_pose_rotation()` returns local pitch/yaw/roll and `get_pose_translation()` returns three-axis local displacement. Grip and stock support constrain lateral and vertical motion more strongly than rearward compression.
 
-The pose spring uses the physical impulse velocity directly. The legacy
-`recoil_pose_translation_scale` and `recoil_pose_rotation_scale` fields remain
-loadable for old resources but are intentionally ignored; metres and radians
-are not artistically scaled.
-
 Configuration fields on `WeaponConfig`:
 
 ```gdscript

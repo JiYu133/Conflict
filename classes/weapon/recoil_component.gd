@@ -1,8 +1,6 @@
 class_name RecoilComponent
 extends Node
 
-signal recoil_applied(snapshot: Dictionary)
-
 # Physics-driven recoil component.
 # Each shot adds angular velocity from RecoilPhysicsModel; a damped spring
 # then returns the camera offset to zero.
@@ -36,6 +34,8 @@ func rebuild_physics() -> void:
 	if not physics_model:
 		physics_model = RecoilPhysicsModel.new()
 	physics_model.rebuild(config, attachment_manager)
+	else:
+		physics_model.rebuild(config, attachment_manager)
 	reset()
 
 
@@ -48,7 +48,6 @@ func apply_recoil(control_multiplier: float = 1.0) -> void:
 	_yaw_velocity += angular_impulse.y
 	_roll_velocity += angular_impulse.z
 	_velocity_local += physics_model.get_shot_linear_velocity() * _translation_scale()
-	recoil_applied.emit(get_pose_snapshot())
 
 
 func set_control_multiplier(value: float) -> void:
@@ -105,12 +104,9 @@ func _process(delta: float) -> void:
 	_pitch = clampf(_pitch, -_max_pitch(), _max_pitch())
 	_yaw = clampf(_yaw, -_max_yaw(), _max_yaw())
 	_roll = clampf(_roll, -_max_roll(), _max_roll())
-	# The spring is the physical limiter. Do not clamp the result to a
-	# presentation distance: the shoulder/elbow displacement must remain the
-	# value produced by the impulse, mass, stiffness, and damping.
-	if not _position_local.is_finite():
-		_position_local = Vector3.ZERO
-		_velocity_local = Vector3.ZERO
+	_position_local.z = clampf(_position_local.z, 0.0, _max_translation())
+	_position_local.x = clampf(_position_local.x, -_max_lateral_translation(), _max_lateral_translation())
+	_position_local.y = clampf(_position_local.y, -_max_vertical_translation(), _max_vertical_translation())
 
 
 func get_physics_snapshot() -> Dictionary:
@@ -152,15 +148,11 @@ func get_pose_snapshot() -> Dictionary:
 
 
 func _translation_scale() -> float:
-	# Linear recoil is already expressed in metres after impulse/mass integration.
-	# Keep the legacy resource field loadable, but never apply it as a visual scale.
-	return 1.0
+	return maxf(config.recoil_pose_translation_scale if config else 0.012, 0.0)
 
 
 func _rotation_scale() -> float:
-	# Angular recoil is already computed in radians from torque/inertia.
-	# Keep the legacy resource field loadable, but do not artistically scale it.
-	return 1.0
+	return maxf(config.recoil_pose_rotation_scale if config else 1.0, 0.0)
 
 
 func _linear_stiffness() -> float:

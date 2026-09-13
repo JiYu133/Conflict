@@ -11,7 +11,6 @@
 [ext_resource type="Resource" uid="uid://0vt73yplssq8" path="res://assets/config/player/movement_config_default.tres" id="9_movcfg"]
 [ext_resource type="Resource" path="res://assets/config/medic/blood_effect_config_default.tres" id="10_bloodfx"]
 [ext_resource type="Resource" path="res://assets/config/player/spine_aim_config_default.tres" id="11_spine"]
-[ext_resource type="Resource" path="res://assets/config/player/player_recoil_config_default.tres" id="12_recoil"]
 
 [resource]
 script = ExtResource("1_vyh63")
@@ -24,7 +23,6 @@ camera_crouch_eye_height = 0.6
 ragdoll_config = ExtResource("6_ragdoll")
 hand_ik_config = ExtResource("8_handik")
 spine_aim_config = ExtResource("11_spine")
-player_recoil_config = ExtResource("12_recoil")
 starting_weapon = ExtResource("4_f37k6")
 health_config = ExtResource("7_healthcfg")
 blood_effect_config = ExtResource("10_bloodfx")

@@ -86,7 +86,6 @@ var collision_controller: PlayerCollisionController
 var foot_ik_controller: FootIKController
 var hand_ik_controller: HandIKController
 var spine_aim_controller: SpineAimController
-var player_recoil_controller: PlayerRecoilController
 var weapon_manager: WeaponManager
 var weapon_drop_system: WeaponDropSystem
 var animation_controller: PlayerAnimationController
@@ -179,7 +178,6 @@ func _initialize_subsystems() -> void:
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
 	spine_aim_controller = _create_subsystem(SpineAimController.new(), "SpineAimController")
-	player_recoil_controller = _create_subsystem(PlayerRecoilController.new(), "PlayerRecoilController")
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
 	weapon_drop_system = _create_subsystem(WEAPON_DROP_SYSTEM_SCRIPT.new(), "WeaponDropSystem") as WeaponDropSystem
 	animation_controller = _create_subsystem(PlayerAnimationController.new(), "AnimationController")
@@ -222,10 +220,6 @@ func _initialize_subsystems() -> void:
 		model_manager,
 		player_config.model_config if player_config else null
 		)
-	player_recoil_controller.initialize(
-		self,
-		player_config.player_recoil_config if player_config else null
-	)
 
 
 	weapon_manager.set_camera_controller(camera_controller)
@@ -393,7 +387,6 @@ func _on_model_loaded(_model: Node3D) -> void:
 		player_config.spine_aim_config if player_config else null
 	)
 	hand_ik_controller.setup(model_manager.skeleton, player_config.hand_ik_config if player_config else null)
-	player_recoil_controller.setup(model_manager.skeleton)
 	if not is_ai_player:
 		camera_controller._find_camera_nodes()
 		camera_controller.enable_camera()
@@ -484,7 +477,6 @@ func _is_medical_debug_mesh(mesh: MeshInstance3D, model: Node3D) -> bool:
 func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
 	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
 	hand_ik_controller.set_weapon(new_weapon, weight)
-	player_recoil_controller.set_weapon(new_weapon)
 	if camera_controller:
 		camera_controller.set_recoil_component(new_weapon.recoil_component if new_weapon else null)
 	_sync_weapon_weight_to_stamina()
@@ -518,7 +510,6 @@ func _process(delta: float) -> void:
 	# Prone clips own the spine and lower body, but the left hand must continue
 	# following the weapon grip or the full-body clip lets it release the rifle.
 	spine_aim_controller.process_aim(delta, procedural_animation_active and not prone)
-	player_recoil_controller.process_recoil(procedural_animation_active)
 	hand_ik_controller.set_prone_state(prone)
 	hand_ik_controller.process_ik(delta, procedural_animation_active)
 	foot_ik_controller.process_ik(delta, procedural_animation_active and not prone)
