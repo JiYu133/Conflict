@@ -13,6 +13,7 @@ var _fallback_visual_nodes: Array[Node3D] = []
 var _last_delta := Transform3D.IDENTITY
 var _using_authored_pivot := false
 var _initialized := false
+var _pose_suppressed := false
 
 func initialize(owner: BaseWeapon, recoil: RecoilComponent) -> void:
 	weapon = owner
@@ -66,23 +67,24 @@ func _setup_pivot() -> void:
 func _process(_delta: float) -> void:
 	if not _initialized or not is_instance_valid(recoil_component):
 		return
-	var pose := Transform3D(
-		recoil_component.get_pose_rotation(),
-		recoil_component.get_pose_translation()
-	)
+	var mounted_on_skeleton := _is_mounted_on_player_skeleton()
+	if mounted_on_skeleton:
+		# The right-arm recoil modifier moves the weapon through its hand mount.
+		# Applying the same transform here would double the physical displacement.
+		if not _pose_suppressed:
+			_reset_visual_delta()
+		_pose_suppressed = true
+		return
+	_pose_suppressed = false
+	var pose := Transform3D(recoil_component.get_pose_rotation(), recoil_component.get_pose_translation())
 	if _using_authored_pivot:
 		if is_instance_valid(recoil_pivot):
-			recoil_pivot.transform = Transform3D(
-				pose.basis,
-				_pivot_local_origin + recoil_component.get_pose_translation()
-			)
+			recoil_pivot.transform = Transform3D(pose.basis, _pivot_local_origin + recoil_component.get_pose_translation())
 		return
-
 	var inverse_pivot := Transform3D(Basis.IDENTITY, -_pivot_local_origin)
 	var delta := Transform3D(Basis.IDENTITY, _pivot_local_origin) * pose * inverse_pivot
 	for node in _fallback_visual_nodes:
 		if is_instance_valid(node):
-			# Remove only our previous delta, leaving animation/attachment edits intact.
 			node.transform = _last_delta.affine_inverse() * node.transform
 			node.transform = delta * node.transform
 	_last_delta = delta
@@ -91,6 +93,11 @@ func _process(_delta: float) -> void:
 func reset_pose() -> void:
 	if is_instance_valid(recoil_component):
 		recoil_component.reset()
+	_pose_suppressed = false
+	_reset_visual_delta()
+
+
+func _reset_visual_delta() -> void:
 	if _using_authored_pivot and is_instance_valid(recoil_pivot):
 		recoil_pivot.transform = Transform3D(Basis.IDENTITY, _pivot_local_origin)
 	else:
@@ -98,6 +105,15 @@ func reset_pose() -> void:
 			if is_instance_valid(node):
 				node.transform = _last_delta.affine_inverse() * node.transform
 		_last_delta = Transform3D.IDENTITY
+
+
+func _is_mounted_on_player_skeleton() -> bool:
+	var node := get_parent() as Node
+	while is_instance_valid(node):
+		if node is Skeleton3D:
+			return true
+		node = node.get_parent()
+	return false
 
 
 func get_snapshot() -> Dictionary:
