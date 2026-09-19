@@ -25,6 +25,7 @@ func setup(
 	_current_pitch = 0.0
 	_current_free_pitch = 0.0
 	_current_free_yaw = 0.0
+	_current_yaw = 0.0
 	if is_instance_valid(_modifier):
 		_modifier.queue_free()
 	_modifier = null
@@ -183,8 +184,7 @@ class SpineAimModifier extends SkeletonModifier3D:
 		if parent_idx != -1:
 			parent_basis = skeleton.get_bone_global_pose(parent_idx).basis.orthonormalized()
 
-		var rest_basis := skeleton.get_bone_rest(bone_idx).basis.orthonormalized()
 		var parent_extra := Quaternion(parent_basis).inverse() * global_extra * Quaternion(parent_basis)
-		var local_extra := Quaternion(rest_basis).inverse() * parent_extra * Quaternion(rest_basis)
 		var current_rotation := skeleton.get_bone_pose_rotation(bone_idx)
-		skeleton.set_bone_pose_rotation(bone_idx, (local_extra * current_rotation).normalized())
+		# Godot 4 bone poses already include the rest orientation and are parent-relative.
+		skeleton.set_bone_pose_rotation(bone_idx, (parent_extra * current_rotation).normalized())

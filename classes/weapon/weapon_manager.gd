@@ -3,6 +3,7 @@ extends Node
 
 signal weapon_changed(new_weapon: BaseWeapon)
 signal weapon_fired(weapon: BaseWeapon)
+signal aiming_changed(aiming: bool)
 
 ## 配件装备/卸载后由此信号通知 UI 更新
 signal attachment_equipped(slot_name: String, attachment_name: String)
@@ -163,6 +164,7 @@ func attempt_malfunction_clearance() -> void:
 
 func set_aiming(aiming: bool) -> void:
 	is_aiming = aiming
+	aiming_changed.emit(is_aiming)
 	if _weapon_anim_controller:
 		if aiming:
 			_weapon_anim_controller.play_ads_in()

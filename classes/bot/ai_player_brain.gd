@@ -311,13 +311,12 @@ func _move_to(destination: Vector3, profile: AIProfile, delta: float) -> void:
 	var running := profile.run_to_objective and state in [State.MOVE_TO_OBJECTIVE, State.MOVE_UNDER_COVER, State.RETREAT]
 	var sprinting := profile.sprint_when_retreating and state == State.RETREAT
 	bot.set_ai_input(direction, running, sprinting)
-	_face(bot.global_position + direction)
+	# Navigation commands a level heading; terrain height must not pitch the weapon.
+	_face(bot.global_position + Vector3(direction.x, 0.0, direction.z))
 
 
 func _face(position: Vector3) -> void:
-	var flat := Vector3(position.x, bot.global_position.y, position.z)
-	if flat.distance_to(bot.global_position) > 0.05:
-		bot.look_at(flat, Vector3.UP)
+	bot.set_ai_aim_direction(position - bot.global_position)
 
 
 func _stop() -> void:
@@ -381,7 +380,10 @@ func _apply_aim_error(profile: AIProfile) -> void:
 		return
 	# The weapon remains authoritative for projectile creation and damage. This
 	# only changes the AIPlayer's commanded aim by a configurable small yaw error.
-	bot.rotate_y(deg_to_rad(randf_range(-profile.aim_error_degrees, profile.aim_error_degrees)))
+	var pitch := bot.camera_controller.get_vertical_angle()
+	var direction := -bot.global_basis.z * cos(pitch) + Vector3.UP * sin(pitch)
+	var yaw_error := deg_to_rad(randf_range(-profile.aim_error_degrees, profile.aim_error_degrees))
+	bot.set_ai_aim_direction(direction.rotated(Vector3.UP, yaw_error))
 
 
 func _get_known_actors() -> Array[BasePlayer]:

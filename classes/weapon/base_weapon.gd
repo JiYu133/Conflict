@@ -997,17 +997,17 @@ func _grip_node_score(node: Node3D) -> float:
 		if parent is AttachmentSlot:
 			var slot := parent as AttachmentSlot
 			if slot.slot_name == "PistolGrip":
-				priority = 100.0
+				priority = maxf(priority, 100.0)
 			elif slot.slot_type == AttachmentSlot.SlotType.PISTOL_GRIP:
-				priority = 100.0
+				priority = maxf(priority, 100.0)
 			elif slot.slot_name == "Underbarrel":
-				priority = 90.0
+				priority = maxf(priority, 90.0)
 			elif slot.slot_type == AttachmentSlot.SlotType.UNDERBARREL:
-				priority = 90.0
+				priority = maxf(priority, 90.0)
 			elif slot.slot_name == "Handguard":
-				priority = 80.0
+				priority = maxf(priority, 80.0)
 			elif slot.slot_type == AttachmentSlot.SlotType.HANDGUARD:
-				priority = 80.0
+				priority = maxf(priority, 80.0)
 		parent = parent.get_parent()
 
 	var local_z := node.position.z

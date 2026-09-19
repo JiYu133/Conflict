@@ -773,21 +773,41 @@ func get_free_yaw_offset() -> float:
 
 
 func get_view_yaw() -> float:
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return _player.rotation.y
 	return _look_controller.get_view_yaw() if is_instance_valid(_look_controller) else 0.0
 
 
 func get_base_view_yaw() -> float:
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return _player.rotation.y
 	return _look_controller.get_base_yaw() if is_instance_valid(_look_controller) else _view_yaw
 
 func get_body_yaw_offset() -> float:
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return 0.0
 	return _look_controller.get_body_yaw_offset() if is_instance_valid(_look_controller) else 0.0
 
 
 func get_visual_body_yaw_offset() -> float:
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return 0.0
 	return _look_controller.get_visual_body_yaw_offset() if is_instance_valid(_look_controller) else get_body_yaw_offset()
 
 func get_view_basis() -> Basis:
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return Basis(Vector3.UP, _player.rotation.y)
 	return _look_controller.get_movement_basis() if is_instance_valid(_look_controller) else Basis(Vector3.UP, _view_yaw)
+
+
+## AI has no active camera, but its procedural skeleton still consumes view state.
+func set_ai_view_angles(yaw: float, pitch: float) -> void:
+	if not is_instance_valid(_player) or not _player.is_ai_player:
+		return
+	_view_yaw = yaw
+	var pitch_limit := _camera_config.max_vertical_angle if _camera_config else 1.4
+	_vertical_angle = clampf(pitch, -pitch_limit, pitch_limit)
+	_body_yaw_blend_remaining = 0.0
 
 
 func _sync_moving_body_yaw(delta: float) -> void:
