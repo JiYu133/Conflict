@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="ForceConfig" format=3 uid="uid://c1fx0rcem1ld8"]
+
+[ext_resource type="Script" uid="uid://bf16oki4ogm2r" path="res://classes/player/force/force_config.gd" id="1_force"]
+
+[resource]
+script = ExtResource("1_force")
+impact_energy_transfer = 1.0

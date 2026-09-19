@@ -495,7 +495,7 @@ func _process(delta: float) -> void:
 	if controllable and (
 		not is_instance_valid(_look_controller) or not _look_controller.is_free_look_active()
 	):
-		_sync_moving_body_yaw()
+		_sync_moving_body_yaw(delta)
 
 	# 1. 读取头部在玩家局部空间的位置（弹簧不感知玩家旋转，只过滤动画位移）
 	var head_local := _get_head_local_position()
@@ -790,11 +790,13 @@ func get_view_basis() -> Basis:
 	return _look_controller.get_movement_basis() if is_instance_valid(_look_controller) else Basis(Vector3.UP, _view_yaw)
 
 
-func _sync_moving_body_yaw() -> void:
+func _sync_moving_body_yaw(delta: float) -> void:
 	if not is_instance_valid(_player) or not _player.is_on_floor() or not _is_moving():
 		return
-	# Standing/crouched locomotion can follow the view directly. Prone locomotion
-	# must pass through the authored turn clip, including while crawling.
+	# Standing/crouched locomotion follows actual horizontal velocity. The spine
+	# aim modifier then carries the remaining view offset into the upper body.
+	# Prone locomotion must pass through the authored turn clip, including while
+	# crawling.
 	if _player.stance_controller and (
 			_player.stance_controller.is_prone()
 			or _player.stance_controller.is_prone_transitioning()
@@ -809,9 +811,38 @@ func _sync_moving_body_yaw() -> void:
 		return
 	if is_instance_valid(_look_controller) and _look_controller.is_free_look_active():
 		return
-	if is_instance_valid(_player):
-		if _body_yaw_blend_remaining <= 0.0:
-			_player.rotation.y = get_base_view_yaw()
+	if _body_yaw_blend_remaining > 0.0:
+		return
+
+	var movement_config := _player.player_config.movement_config if _player.player_config else null
+	var target_yaw := _get_moving_body_target_yaw(movement_config)
+	var turn_speed_degrees := movement_config.moving_body_turn_speed_degrees \
+		if movement_config else 360.0
+	var max_step := deg_to_rad(maxf(turn_speed_degrees, 0.0)) * maxf(delta, 0.0)
+	var yaw_delta := angle_difference(_player.rotation.y, target_yaw)
+	_player.rotation.y += clampf(yaw_delta, -max_step, max_step)
+
+
+func _get_horizontal_velocity_yaw() -> float:
+	if not is_instance_valid(_player):
+		return _view_yaw
+	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+	if horizontal_velocity.length_squared() <= 0.0001:
+		return get_base_view_yaw()
+	# Godot's forward axis is -Z. Convert the world-space velocity vector into
+	# the yaw whose forward direction points along that velocity.
+	return atan2(-horizontal_velocity.x, -horizontal_velocity.y)
+
+
+func _get_moving_body_target_yaw(movement_config: MovementConfig = null) -> float:
+	var view_yaw := get_base_view_yaw()
+	var velocity_yaw := _get_horizontal_velocity_yaw()
+	var threshold_degrees := movement_config.moving_body_velocity_yaw_threshold_degrees \
+		if movement_config else 120.0
+	var velocity_view_offset := absf(angle_difference(view_yaw, velocity_yaw))
+	if velocity_view_offset > deg_to_rad(clampf(threshold_degrees, 0.0, 180.0)):
+		return view_yaw
+	return velocity_yaw
 
 
 var _body_yaw_blend_remaining: float = 0.0
@@ -824,7 +855,9 @@ func begin_moving_body_yaw_blend(duration: float) -> void:
 	_body_yaw_blend_duration = maxf(duration, 0.001)
 	_body_yaw_blend_remaining = _body_yaw_blend_duration
 	_body_yaw_blend_start = _player.rotation.y if is_instance_valid(_player) else _view_yaw
-	_body_yaw_blend_target = get_base_view_yaw()
+	var movement_config := _player.player_config.movement_config \
+		if is_instance_valid(_player) and _player.player_config else null
+	_body_yaw_blend_target = _get_moving_body_target_yaw(movement_config)
 
 
 func process_moving_body_yaw_blend(delta: float) -> void:

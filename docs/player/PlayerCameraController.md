@@ -98,6 +98,12 @@ func initialize(
 
 起跳回调，由 `PlayerMovementController.jumped` 信号触发。向位置弹簧施加向上轻推冲量，向 pitch 弹簧施加轻微后仰冲量。
 
+### 移动时的身体朝向
+
+站立或蹲走时，`_sync_moving_body_yaw()` 根据实际水平速度计算目标 yaw，并以 `MovementConfig.moving_body_turn_speed_degrees` 限制每秒最大转角。当速度方向相对视角的夹角不超过 `moving_body_velocity_yaw_threshold_degrees` 时，下半身朝速度方向转动；超过阈值的后方移动则保持身体面向视角，让移动混合树正常使用后退动画。视角与身体之间的剩余 yaw 由 `SpineAimController` 叠加到脊柱、颈部和头部，保持上半身/武器指向瞄准方向。
+
+俯卧移动继续由俯卧移动与原地转身动画控制，不走站立/蹲走的身体朝向同步路径。
+
 ---
 
 ## 程序化摄像机效果层

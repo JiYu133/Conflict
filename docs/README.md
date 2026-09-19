@@ -32,6 +32,8 @@ BasePlayer (CharacterBody3D)
 ├── PlayerCameraController     摄像机效果（5层叠加）
 ├── PlayerAnimationController  动画状态机
 ├── PlayerRagdollSystem        死亡布娃娃
+├── ForceReceiver              通用力反馈（受击姿态偏移 + 冲量缓存）
+│   └── ForceBodyModifier      SkeletonModifier3D：还原基准姿态后叠加力偏移
 ├── FootIKController           脚部 IK（预留）
 ├── HealthSystem               伤害、生理状态与医疗死亡
 │   ├── VitalsModel            血量、呼吸与身体部位状态
@@ -126,8 +128,10 @@ BaseWeapon
 | [PlayerMovementController](player/PlayerMovementController.md) | `Classes/Player/player_movement_controller.gd` | 移动物理与信号发射 |
 | [PlayerCollisionController](player/PlayerCollisionController.md) | `classes/player/player_collision_controller.gd` | 主碰撞体唯一所有者、3D hitbox 包络动态拟合 |
 | [PlayerCameraController](player/PlayerCameraController.md) | `Classes/Player/player_camera_controller.gd` | 摄像机挂载与5层程序化效果 |
+| [ScreenPostProcess](player/ScreenPostProcess.md) | `classes/player/screen_post_process.gd` | 可独立挂载到 Camera3D 的多效果屏幕后处理模块 |
 | [PlayerAnimationController](player/PlayerAnimationController.md) | `Classes/Player/player_animation_controller.gd` | 信号驱动的动画状态机 |
 | [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `Classes/Player/player_ragdoll_system.gd` | 死亡布娃娃开关 |
+| [ForceSystem](player/ForceSystem.md) | `classes/player/force/` | 通用力反馈：骨骼链衰减传播、姿态偏移与冲量缓存 |
 | [FootIKController](player/FootIKController.md) | `Classes/Player/foot_ik_controller.gd` | 脚部 IK（存根，未实现） |
 | [WeaponObstructionDetector](player/WeaponObstructionDetector.md) | `Classes/Weapon/Weapon/weapon_obstruction_detector.gd` | 顶墙收枪射线检测 |
 

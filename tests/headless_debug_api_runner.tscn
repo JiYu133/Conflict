@@ -1,6 +1,6 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://cb11xoby4j2oe"]
 
-[ext_resource path="res://tests/headless_debug_api_runner.gd" type="Script" id="1"]
+[ext_resource type="Script" uid="uid://d0vvwtf0r6lu5" path="res://tests/headless_debug_api_runner.gd" id="1"]
 
-[node name="HeadlessDebugAPIRunner" type="Node"]
+[node name="HeadlessDebugAPIRunner" type="Node" unique_id=1630797712]
 script = ExtResource("1")

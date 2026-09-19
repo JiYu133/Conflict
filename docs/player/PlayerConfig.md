@@ -26,6 +26,8 @@
 | `lateral_dot_threshold` | `float` | `0.7` | 横移判定 dot product 阈值，高于此值视为纯侧移，乘以 `lateral_speed_ratio` 限速 |
 | `turn_decel_min_speed` | `float` | `0.01` | 启用转向减速的最低速度（m/s）；**注意**：代码中比较的是 `length_squared() > value²`，因此此字段的语义是速度（m/s），不是 length_squared |
 | `air_input_threshold` | `float` | `0.1` | 空中加速/减速切换的目标速度阈值（m/s）；低于此值使用 `air_deceleration`，高于则用 `air_acceleration` |
+| `moving_body_turn_speed_degrees` | `float` | `360.0` | 移动时下半身/玩家根节点追随实际水平速度方向的最大转向速度（度/秒）；上半身瞄准由脊柱修正独立完成 |
+| `moving_body_velocity_yaw_threshold_degrees` | `float` | `120.0` | 速度与视角夹角不超过此值时身体才转向速度；超过阈值的后方移动保持身体朝向视角，以播放后退动画 |
 
 ### 运动手感
 
@@ -67,9 +69,21 @@
 |------|------|--------|------|
 | `starting_weapon` | `WeaponConfig` | `null` | 初始武器配置资源 |
 
+### 子系统配置
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `ragdoll_config` | `RagdollConfig` | `null` | 死亡布娃娃物理配置 |
+| `force_config` | `ForceConfig` | `null` | 通用力系统配置；为空时使用代码默认值。详见 [ForceSystem](ForceSystem.md) |
+| `hand_ik_config` | `HandIKConfig` | `null` | 左手 IK 参数 |
+| `spine_aim_config` | `SpineAimConfig` | `null` | 脊柱视角旋转参数 |
+| `health_config` | `HealthConfig` | `null` | 医疗系统参数 |
+| `blood_effect_config` | `BloodEffectConfig` | `null` | 死亡渗血表现参数 |
+| `stamina_config` | `StaminaConfig` | `null` | 体力系统参数 |
+
 ## 依赖关系
 
-- **依赖：** `ModelLookupConfig`、`CameraConfig`、`WeaponConfig`
+- **依赖：** `ModelLookupConfig`、`CameraConfig`、`WeaponConfig`、`MovementConfig`、`RagdollConfig`、`ForceConfig`
 - **被依赖：** `BasePlayer`、`PlayerMovementController`、`PlayerCameraController`、`FootIKController`
 
 ## 注意事项

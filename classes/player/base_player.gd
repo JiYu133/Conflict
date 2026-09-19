@@ -94,6 +94,8 @@ var health_system: HealthSystem
 var death_blood_effect: DeathBloodEffect
 var combat_effects: CombatEffects
 var stamina_system: StaminaSystem
+var audio_controller: PlayerAudioController
+var force_receiver: ForceReceiver
 var screen_effects
 var settings_service
 var settings_menu
@@ -109,6 +111,7 @@ var medical_treatment_component: MedicalTreatmentComponent
 var defer_ai_model_load: bool = false
 var _ai_model_load_started: bool = false
 var _ai_runtime_ready: bool = false
+var _ai_test_fire_override: int = -1 # -1=AI control, 0=forced release, 1=forced press
 
 # 信号
 
@@ -184,6 +187,8 @@ func _initialize_subsystems() -> void:
 	turn_controller = _create_subsystem(PlayerTurnController.new(), "TurnController")
 	health_system = _create_subsystem(HealthSystem.new(), "HealthSystem")
 	stamina_system = _create_subsystem(StaminaSystem.new(), "StaminaSystem")
+	audio_controller = _create_subsystem(PlayerAudioController.new(), "PlayerAudioController") as PlayerAudioController
+	force_receiver = _create_subsystem(ForceReceiver.new(), "ForceReceiver") as ForceReceiver
 
 	# 初始化子系统
 	settings_service.initialize()
@@ -230,6 +235,11 @@ func _initialize_subsystems() -> void:
 		self,
 		player_config.health_config if player_config else null
 		)
+	# 力系统只做姿态叠加与冲量缓存，不参与伤害判定。
+	force_receiver.initialize(
+		self,
+		player_config.force_config if player_config else null
+		)
 	var movement_config := (
 		player_config.movement_config
 		if player_config and player_config.movement_config
@@ -255,6 +265,7 @@ func _initialize_subsystems() -> void:
 	combat_effects.initialize(self)
 
 	stamina_system.initialize(self, player_config.stamina_config if player_config else null)
+	audio_controller.initialize(self, settings_service)
 
 	if not is_ai_player:
 		screen_effects = _create_subsystem(PlayerScreenEffects.new(), "ScreenEffects")
@@ -347,6 +358,9 @@ func _connect_signals() -> void:
 		health_system.damage_taken.connect(screen_effects._on_damage_taken)
 		health_system.pain_changed.connect(screen_effects._on_pain_changed)
 		stamina_system.stamina_changed.connect(screen_effects._on_stamina_changed)
+	# 受击反馈：本期唯一接入点。力系统消费 damage_taken，
+	# 姿态偏移由 ForceBodyModifier 叠加，冲量缓存供布娃娃消费。
+	health_system.damage_taken.connect(force_receiver.apply_impact)
 	GlobalLogger.debug("Player", "Signals have been connected. ")
 
 
@@ -386,6 +400,11 @@ func _on_model_loaded(_model: Node3D) -> void:
 		camera_controller,
 		player_config.spine_aim_config if player_config else null
 	)
+	# 力系统在骨骼就绪后接管姿态叠加，并成为布娃娃的力提供者。
+	# 顺序：SpineAim → Force → HandIK/FootIK，保证 IK 拥有最终发言权。
+	force_receiver.set_skeleton(model_manager.skeleton)
+	_setup_force_modifier(model_manager.skeleton)
+	ragdoll_system.set_force_provider(force_receiver)
 	hand_ik_controller.setup(model_manager.skeleton, player_config.hand_ik_config if player_config else null)
 	if not is_ai_player:
 		camera_controller._find_camera_nodes()
@@ -428,6 +447,22 @@ func _on_model_loaded(_model: Node3D) -> void:
 
 	if OS.is_debug_build() and free_camera_controller:
 		free_camera_controller.initialize(self, camera_controller)
+
+
+## 创建力姿态修饰器，并插到 SpineAimModifier 之后、第一个 TwoBoneIK3D 之前。
+## SkeletonModifier3D 的兄弟顺序即执行顺序，因此 IK 会在力偏移之上求解，
+## 把被推开的左手拉回武器握把；摄像机不参与本期力系统。
+func _setup_force_modifier(skeleton: Skeleton3D) -> void:
+	if not is_instance_valid(skeleton) or not force_receiver:
+		return
+	var modifier := ForceBodyModifier.new()
+	modifier.name = "ForceBodyModifier"
+	skeleton.add_child(modifier)
+	modifier.setup(force_receiver)
+	for child in skeleton.get_children():
+		if child is TwoBoneIK3D:
+			skeleton.move_child(modifier, child.get_index())
+			break
 
 
 func _load_ai_starting_weapon(config: WeaponConfig) -> void:
@@ -837,6 +872,7 @@ func _activate_ragdoll(
 		camera_controller.set_ragdoll_camera_shake(false)
 	is_ragdolled = true
 	velocity = Vector3.ZERO
+	clear_ai_player_test_fire()
 	_set_collision_enabled(false)
 	# 轻微上移玩家原点，给物理骨骼初始位置留出与地面的间隙，
 	# 防止 Jolt 检测到初始穿插后将骨骼向下弹出
@@ -877,6 +913,10 @@ func revive() -> void:
 
 	# 清理仅属于昏迷生命周期的锁；菜单等外部组件的锁由其自身释放。
 	release_control_lock(CONTROL_LOCK_UNCONSCIOUS)
+	# 复活后不保留旧受力与旧冲量，避免下一帧姿态突变或误用死亡前的动量。
+	if force_receiver:
+		force_receiver.clear_forces()
+		force_receiver.clear_pending_impulse()
 	is_alive = true
 
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
@@ -892,6 +932,10 @@ func prepare_for_encounter_spawn(spawn_transform: Transform3D) -> void:
 	if ragdoll_system and is_ragdolled:
 		ragdoll_system.disable()
 	is_ragdolled = false
+	# 重生同样不继承上一局的受力与冲量。
+	if force_receiver:
+		force_receiver.clear_forces()
+		force_receiver.clear_pending_impulse()
 	velocity = Vector3.ZERO
 	clear_ai_motion()
 	clear_ai_input()
@@ -959,6 +1003,51 @@ func clear_ai_input() -> void:
 func set_ai_fire_input(pressed: bool) -> void:
 	if not is_ai_player or not weapon_manager:
 		return
+	if _ai_test_fire_override != -1:
+		return
+	_apply_ai_fire_input(pressed)
+
+
+## Debug-only trigger override used by console commands. "auto" returns
+## ownership to the tactical brain; the other actions keep it overridden.
+func set_ai_player_test_fire(action: String) -> bool:
+	if not is_ai_player or not is_alive or not weapon_manager \
+			or not weapon_manager.current_weapon:
+		return false
+	match action.to_lower():
+		"press":
+			if _ai_test_fire_override != 1:
+				_apply_ai_fire_input(false)
+			_ai_test_fire_override = 1
+			_apply_ai_fire_input(true)
+		"release":
+			_ai_test_fire_override = 0
+			_apply_ai_fire_input(false)
+		"tap":
+			_ai_test_fire_override = 0
+			_apply_ai_fire_input(false)
+			_apply_ai_fire_input(true)
+			_finish_ai_test_fire_tap.call_deferred()
+		"auto":
+			_apply_ai_fire_input(false)
+			_ai_test_fire_override = -1
+		_:
+			return false
+	return true
+
+
+func clear_ai_player_test_fire() -> void:
+	if weapon_manager:
+		weapon_manager.release_trigger()
+	_ai_test_fire_override = -1
+
+
+func _finish_ai_test_fire_tap() -> void:
+	if _ai_test_fire_override == 0:
+		_apply_ai_fire_input(false)
+
+
+func _apply_ai_fire_input(pressed: bool) -> void:
 	if pressed:
 		weapon_manager.press_trigger()
 	else:

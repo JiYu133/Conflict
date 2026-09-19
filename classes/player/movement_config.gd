@@ -83,6 +83,12 @@ extends Resource
 @export_range(0.0, 1.0, 0.01) var turn_constrained_acceleration_ratio: float = 0.25
 ## 原地转身动画切换和身体 yaw 过渡的混合时长（秒）。
 @export_range(0.0, 1.0, 0.01) var turn_transition_time: float = 0.12
+## 移动时身体追随实际水平速度方向的最大转向速度（度/秒）。
+## 上半身瞄准由 SpineAimController 独立叠加，因此移动时根节点不再直接跟随视角。
+@export_range(30.0, 1440.0, 10.0) var moving_body_turn_speed_degrees: float = 360.0
+## 速度方向相对视角不超过此角度时，身体才转向速度方向。
+## 超过阈值（后方扇区）时身体保持面向视角，让局部负向速度驱动后退动画。
+@export_range(0.0, 180.0, 1.0) var moving_body_velocity_yaw_threshold_degrees: float = 120.0
 
 # 运动手感 ────────────────────────────────────────────────────
 @export_group("运动手感")

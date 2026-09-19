@@ -34,6 +34,12 @@ const COMMANDS := {
 	"clear_blood": {"usage": "clear_blood", "help": "清除场景中所有死亡后留下的血迹。仅 Debug 构建可用。", "debug_only": true},
 	"medical_wound": {"usage": "medical_wound <part> <severity> [bleed]", "help": "向指定部位注入伤口。仅 Debug 构建可用。", "debug_only": true},
 	"medical_kill": {"usage": "medical_kill <front|front_headshot|explosion>", "help": "按指定类型触发医疗死亡测试。仅 Debug 构建可用。", "debug_only": true},
+	"screen_hit": {"usage": "screen_hit <left|right|top|bottom|front|back|all> [severity]", "help": "测试方向性受击与全屏轻模糊，severity 范围 0.05 - 1.00。仅 Debug 构建可用。", "debug_only": true},
+	"screen_stamina": {"usage": "screen_stamina <0-1>", "help": "按剩余体力比例测试暗角与模糊。仅 Debug 构建可用。", "debug_only": true},
+	"screen_pain": {"usage": "screen_pain <0-1>", "help": "按疼痛等级测试持续模糊。仅 Debug 构建可用。", "debug_only": true},
+	"screen_coma": {"usage": "screen_coma <on|off>", "help": "开启或关闭昏迷视觉。仅 Debug 构建可用。", "debug_only": true},
+	"screen_death": {"usage": "screen_death", "help": "测试死亡模糊和渐黑，不改变医疗状态。仅 Debug 构建可用。", "debug_only": true},
+	"screen_clear": {"usage": "screen_clear", "help": "清除所有屏幕效果测试状态。仅 Debug 构建可用。", "debug_only": true},
 	"give_ammo": {"usage": "give_ammo <current_mag> <reserve_rounds> [chambered=1] [release_bolt=1]", "help": "按弹匣状态重建当前武器弹药。仅 Debug 构建可用。", "debug_only": true},
 	"press_trigger": {"usage": "press_trigger", "help": "模拟按下扳机。仅 Debug 构建可用。", "debug_only": true},
 	"release_trigger": {"usage": "release_trigger", "help": "模拟松开扳机。仅 Debug 构建可用。", "debug_only": true},
@@ -43,13 +49,14 @@ const COMMANDS := {
 	"set_aiming": {"usage": "set_aiming <0|1>", "help": "切换武器举枪状态。仅 Debug 构建可用。", "debug_only": true},
 	"reload": {"usage": "reload", "help": "调用当前武器换弹流程。", "safe": true},
 	"teleport": {"usage": "teleport <x> <y> <z>", "help": "将玩家移动到当前世界坐标。仅 Debug 构建可用。", "debug_only": true},
-	"bot": {"usage": "bot add|list|config|move|velocity|stop|kill|remove ...", "help": "创建、配置、查询、移动、击杀或删除地图内 Bot。", "safe": true},
+	"bot": {"usage": "bot add|list|config|move|velocity|stop|fire|kill|remove ...", "help": "创建、配置、查询、移动、开火、击杀或删除地图内 Bot。", "safe": true},
 	"encounter_start": {"usage": "encounter_start", "help": "进入 4v4 对称遭遇战原型。", "safe": true},
 }
 const COMMAND_ORDER := [
 	"help", "clear", "fps", "status", "timescale", "freecam", "revive", "kill",
 	"health", "clear_wounds", "clear_blood", "give_ammo", "press_trigger", "release_trigger",
 	"medical_wound", "medical_kill", "cycle_fire_mode", "bolt_release", "clear_malfunction",
+	"screen_hit", "screen_stamina", "screen_pain", "screen_coma", "screen_death", "screen_clear",
 	"set_aiming", "reload", "teleport", "bot", "encounter_start",
 ]
 
@@ -319,6 +326,30 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 			return _run_medical_wound(args)
 		"medical_kill":
 			return _run_medical_kill(args)
+		"screen_hit":
+			return _run_screen_hit(args)
+		"screen_stamina":
+			return _run_screen_scalar(args, "stamina")
+		"screen_pain":
+			return _run_screen_scalar(args, "pain")
+		"screen_coma":
+			return _run_screen_coma(args)
+		"screen_death":
+			if not args.is_empty():
+				return _error_result("参数数量错误：screen_death 不接受参数。")
+			if not _get_screen_effects():
+				return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
+			_player.screen_effects.trigger_death_blur()
+			return _ok_result("已触发死亡屏幕效果；输入 screen_clear 清除。")
+		"screen_clear":
+			if not args.is_empty():
+				return _error_result("参数数量错误：screen_clear 不接受参数。")
+			if not _get_screen_effects():
+				return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
+			_player.screen_effects.clear_debug_effects()
+			if _player.camera_controller:
+				_player.camera_controller.clear_pain_impulse()
+			return _ok_result("已清除全部屏幕效果测试状态。")
 		"give_ammo":
 			return _run_give_ammo(args)
 		"giveammo":
@@ -399,7 +430,7 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 
 func _run_bot_command(args: Array[String]) -> Dictionary:
 	if args.is_empty():
-		return _error_result("参数错误：bot 子命令只能是 add、list、config、move、velocity、stop、kill 或 remove。")
+		return _error_result("参数错误：bot 子命令只能是 add、list、config、move、velocity、stop、fire、kill 或 remove。")
 	var manager := _get_bot_manager()
 	if not manager:
 		return _error_result("当前系统不可用：AIPlayerManager 未初始化。")
@@ -466,6 +497,8 @@ func _run_bot_command(args: Array[String]) -> Dictionary:
 			if not manager.stop_ai_player_test_motion(int(args[1])):
 				return _error_result(manager.last_error)
 			return _ok_result("Bot ID=%d 已停止测试移动。" % int(args[1]))
+		"fire":
+			return _run_bot_fire_command(manager, args)
 		"kill", "remove":
 			if args.size() != 2:
 				return _error_result("参数数量错误：bot %s 用法为 bot %s <id|all>。" % [subcommand, subcommand])
@@ -480,7 +513,7 @@ func _run_bot_command(args: Array[String]) -> Dictionary:
 				return _error_result(manager.last_error)
 			return _ok_result("Bot ID=%d 已%s。" % [bot_id, "击杀" if subcommand == "kill" else "删除"])
 		_:
-			return _error_result("参数错误：未知 bot 子命令 %s，可用 add、list、config、move、velocity、stop、kill、remove。" % args[0])
+			return _error_result("参数错误：未知 bot 子命令 %s，可用 add、list、config、move、velocity、stop、fire、kill、remove。" % args[0])
 
 
 func _run_bot_config_command(manager: AIPlayerManager, args: Array[String]) -> Dictionary:
@@ -525,6 +558,32 @@ func _run_bot_velocity_command(manager: AIPlayerManager, args: Array[String]) ->
 	if velocity.length() > 50.0:
 		return _error_result("范围错误：速度向量长度不能超过 50 m/s。")
 	return _set_bot_test_velocity(manager, args[1], velocity)
+
+
+func _run_bot_fire_command(manager: AIPlayerManager, args: Array[String]) -> Dictionary:
+	if args.size() != 3:
+		return _error_result("参数数量错误：用法为 bot fire <id|all> <press|release|tap|auto>。")
+	var target := args[1].to_lower()
+	var action := args[2].to_lower()
+	if action not in ["press", "release", "tap", "auto"]:
+		return _error_result("参数错误：开火动作只能是 press、release、tap 或 auto。")
+	var action_text: String = {
+		"press": "持续按下扳机",
+		"release": "强制松开扳机",
+		"tap": "单次扣动扳机",
+		"auto": "归还 AI 开火控制",
+	}[action]
+	if target == "all":
+		var count := manager.set_all_ai_player_test_fire(action)
+		if not manager.last_error.is_empty():
+			return _error_result(manager.last_error)
+		return _ok_result("已对 %d 个 Bot 执行：%s。" % [count, action_text])
+	if not target.is_valid_int() or int(target) <= 0:
+		return _error_result("参数错误：Bot ID 必须是正整数或 all。")
+	var bot_id := int(target)
+	if not manager.set_ai_player_test_fire(bot_id, action):
+		return _error_result(manager.last_error)
+	return _ok_result("Bot ID=%d：%s。" % [bot_id, action_text])
 
 
 func _set_bot_test_velocity(manager: AIPlayerManager, target: String, velocity: Vector3) -> Dictionary:
@@ -667,6 +726,79 @@ func _run_medical_kill(args: Array[String]) -> Dictionary:
 	return _ok_result("已触发医疗死亡测试：%s。" % args[0])
 
 
+func _run_screen_hit(args: Array[String]) -> Dictionary:
+	if args.size() < 1 or args.size() > 2:
+		return _error_result("参数数量错误：用法为 screen_hit <left|right|top|bottom|front|back|all> [severity]。")
+	if not _get_screen_effects():
+		return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
+	var direction_name := args[0].to_lower()
+	var valid_directions := ["left", "right", "top", "bottom", "front", "back", "all"]
+	if direction_name not in valid_directions:
+		return _error_result("参数错误：方向只能是 left、right、top、bottom、front、back 或 all。")
+	var severity := 0.65
+	if args.size() == 2:
+		if not args[1].is_valid_float():
+			return _error_result("参数错误：severity 必须是数字。")
+		severity = float(args[1])
+	if severity < 0.05 or severity > 1.0:
+		return _error_result("范围错误：severity 必须在 0.05 到 1.00 之间。")
+	var world_direction := _screen_hit_world_direction(direction_name)
+	_player.screen_effects.trigger_directional_hit(world_direction, severity)
+	return _ok_result("已触发 %s 方向受击反馈，严重度 %.2f。" % [direction_name, severity])
+
+
+func _run_screen_scalar(args: Array[String], effect: String) -> Dictionary:
+	if args.size() != 1:
+		return _error_result("参数数量错误：用法为 screen_%s <0-1>。" % effect)
+	if not args[0].is_valid_float():
+		return _error_result("参数错误：效果值必须是数字。")
+	var value := float(args[0])
+	if value < 0.0 or value > 1.0:
+		return _error_result("范围错误：效果值必须在 0.00 到 1.00 之间。")
+	if not _get_screen_effects():
+		return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
+	if effect == "stamina":
+		_player.screen_effects._on_stamina_changed(value)
+	else:
+		_player.screen_effects._on_pain_changed(value)
+	return _ok_result("屏幕%s测试值已设置为 %.2f。" % ["体力" if effect == "stamina" else "疼痛", value])
+
+
+func _run_screen_coma(args: Array[String]) -> Dictionary:
+	if args.size() != 1:
+		return _error_result("参数数量错误：用法为 screen_coma <on|off>。")
+	var enabled: Variant = _parse_bool_arg(args[0])
+	if enabled == null:
+		return _error_result("参数错误：screen_coma 只能是 on/off、1/0 或 true/false。")
+	if not _get_screen_effects():
+		return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
+	_player.screen_effects.set_debug_coma_effect(bool(enabled))
+	return _ok_result("昏迷屏幕效果已%s。" % ("开启" if bool(enabled) else "关闭"))
+
+
+func _screen_hit_world_direction(direction_name: String) -> Vector3:
+	if direction_name == "all":
+		return Vector3.ZERO
+	var source_local := Vector3.ZERO
+	match direction_name:
+		"left": source_local = Vector3.LEFT
+		"right": source_local = Vector3.RIGHT
+		"top": source_local = Vector3.UP
+		"bottom": source_local = Vector3.DOWN
+		"front": source_local = Vector3.FORWARD
+		"back": source_local = Vector3.BACK
+	var camera: Camera3D = null
+	if _player and _player.camera_controller:
+		camera = _player.camera_controller.get_active_camera()
+	var world_source: Vector3 = camera.global_basis.orthonormalized() * source_local \
+		if is_instance_valid(camera) else _player.global_basis.orthonormalized() * source_local
+	return -world_source.normalized()
+
+
+func _get_screen_effects():
+	return _player.screen_effects if _player and _player.screen_effects else null
+
+
 func _parse_medical_part(value: String):
 	match value.to_lower():
 		"head": return MedicalEnums.BodyPartId.HEAD
@@ -749,7 +881,7 @@ func _get_bot_parameter_hint(value: String) -> String:
 	var coords := str(_player.global_position) if _player else "(0, 0, 0)"
 	var tokens := value.strip_edges().split(" ", false)
 	if tokens.size() <= 1:
-		return "bot add|list|config|move|velocity|stop|kill|remove"
+		return "bot add|list|config|move|velocity|stop|fire|kill|remove"
 	match String(tokens[1]).to_lower():
 		"add":
 			return "bot add [name] [faction] [x] [y] [z]  | 默认坐标：%s" % coords
@@ -763,11 +895,13 @@ func _get_bot_parameter_hint(value: String) -> String:
 			return "bot velocity <id|all> <x> <y> <z>"
 		"stop":
 			return "bot stop <id|all>"
+		"fire":
+			return "bot fire <id|all> <press|release|tap|auto>"
 		"kill":
 			return "bot kill <id|all>"
 		"remove":
 			return "bot remove <id|all>"
-	return "未知 bot 子命令；可用 add、list、config、move、velocity、stop、kill、remove"
+	return "未知 bot 子命令；可用 add、list、config、move、velocity、stop、fire、kill、remove"
 
 
 func _open_completion() -> void:
@@ -782,6 +916,16 @@ func _update_completion(value: String, include_all_when_empty: bool = false) -> 
 	var value_tokens := trimmed.split(" ", false)
 	if not value_tokens.is_empty() and String(value_tokens[0]).to_lower() == "bot":
 		_completion_items = _get_bot_completion_items(value)
+		if _completion_items.is_empty():
+			_completion_panel.visible = false
+			return
+		_completion_index = 0
+		_refresh_completion_list()
+		_completion_panel.visible = false
+		return
+	if not value_tokens.is_empty() and String(value_tokens[0]).to_lower().begins_with("screen_") \
+			and (value.contains(" ") or value.contains("\t")):
+		_completion_items = _get_screen_completion_items(value)
 		if _completion_items.is_empty():
 			_completion_panel.visible = false
 			return
@@ -825,12 +969,31 @@ func _get_bot_completion_items(value: String) -> Array[String]:
 		return candidates
 	if tokens.size() <= 1 or (tokens.size() == 2 and not trailing_space):
 		var prefix := String(tokens[1]).to_lower() if tokens.size() > 1 else ""
-		for subcommand in ["add", "list", "config", "move", "velocity", "stop", "kill", "remove"]:
+		for subcommand in ["add", "list", "config", "move", "velocity", "stop", "fire", "kill", "remove"]:
 			if prefix.is_empty() or subcommand.begins_with(prefix):
 				candidates.append("bot " + subcommand)
 		return candidates
 
 	var subcommand := String(tokens[1]).to_lower()
+	if subcommand == "fire":
+		var prefix := value.to_lower()
+		if tokens.size() <= 3 and not (tokens.size() == 3 and trailing_space):
+			var targets: Array[String] = ["all"]
+			var manager := _get_bot_manager()
+			if manager:
+				for bot in manager.get_ai_players():
+					targets.append(str(bot.ai_player_id))
+			for target in targets:
+				var candidate: String = "bot fire " + target
+				if candidate.begins_with(prefix):
+					candidates.append(candidate)
+		else:
+			var base := "bot fire %s " % String(tokens[2])
+			for action in ["press", "release", "tap", "auto"]:
+				var candidate: String = base + action
+				if candidate.begins_with(prefix):
+					candidates.append(candidate)
+		return candidates
 	if subcommand != "add":
 		return []
 	# The coordinate-bearing candidates are intentionally full commands: Tab
@@ -848,6 +1011,39 @@ func _get_bot_completion_items(value: String) -> Array[String]:
 	var position_candidate := "bot add %s %s" % [bot_name, coords]
 	if position_candidate.to_lower().begins_with(prefix):
 		candidates.append(position_candidate)
+	return candidates
+
+
+func _get_screen_completion_items(value: String) -> Array[String]:
+	var tokens := value.strip_edges().split(" ", false)
+	if tokens.is_empty():
+		return []
+	var command := String(tokens[0]).to_lower()
+	var candidates: Array[String] = []
+	match command:
+		"screen_hit":
+			if tokens.size() <= 2 and not (tokens.size() == 2 and value.ends_with(" ")):
+				var prefix := value.to_lower()
+				for direction in ["left", "right", "top", "bottom", "front", "back", "all"]:
+					var candidate: String = "screen_hit " + direction
+					if candidate.begins_with(prefix):
+						candidates.append(candidate)
+			else:
+				var base := "screen_hit %s " % String(tokens[1])
+				for severity in ["0.25", "0.50", "0.75", "1.00"]:
+					var candidate: String = base + severity
+					if candidate.begins_with(value.to_lower()):
+						candidates.append(candidate)
+		"screen_coma":
+			for state in ["on", "off"]:
+				var candidate: String = "screen_coma " + state
+				if candidate.begins_with(value.to_lower()):
+					candidates.append(candidate)
+		"screen_stamina", "screen_pain":
+			for scalar in ["0.00", "0.25", "0.50", "0.75", "1.00"]:
+				var candidate: String = command + " " + scalar
+				if candidate.begins_with(value.to_lower()):
+					candidates.append(candidate)
 	return candidates
 
 
