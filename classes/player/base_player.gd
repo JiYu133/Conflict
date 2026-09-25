@@ -509,10 +509,103 @@ func _is_medical_debug_mesh(mesh: MeshInstance3D, model: Node3D) -> bool:
 
 # 公共API
 
+## Distribute one weapon recoil wrench over the active stock and hand contacts.
+func apply_weapon_recoil(weapon: BaseWeapon, recoil_data: Dictionary) -> void:
+	if not is_instance_valid(weapon) or not force_receiver or is_ragdolled:
+		return
+	var model: RecoilPhysicsModel = weapon.recoil_component.physics_model if weapon.recoil_component else null
+	if not model:
+		return
+	var local_linear: Vector3 = recoil_data.get("linear_impulse_local", Vector3.ZERO)
+	var local_angular: Vector3 = recoil_data.get("angular_impulse_local", Vector3.ZERO)
+	if not local_linear.is_finite() or not local_angular.is_finite():
+		return
+	var config := force_receiver.get_config()
+	var skeleton := force_receiver.get_skeleton()
+	if not is_instance_valid(skeleton):
+		return
+	var contacts: Array[Dictionary] = []
+	var shoulder_bone := "mixamorig_RightShoulder"
+	if model.shoulder_contact.is_finite() and config.recoil_shoulder_stiffness > 0.0 \
+			and skeleton.find_bone(shoulder_bone) >= 0:
+		contacts.append({
+			"name": "shoulder",
+			"bone": shoulder_bone,
+			"point_local": model.shoulder_contact,
+			"stiffness": config.recoil_shoulder_stiffness,
+		})
+	_add_recoil_hand_contact(
+		weapon, contacts, "RightHandGrip", "mixamorig_RightHand",
+		config.recoil_primary_hand_stiffness
+	)
+	_add_recoil_hand_contact(
+		weapon, contacts, "LeftHandGrip", "mixamorig_LeftHand",
+		config.recoil_support_hand_stiffness
+	)
+	if contacts.is_empty():
+		return
+
+	var weapon_basis := weapon.global_basis.orthonormalized()
+	var impulse_world := weapon_basis * local_linear
+	var target_angular_world := weapon_basis * local_angular
+	var shoulder_world := weapon.global_transform * model.shoulder_contact
+	var recoil_duration := model.get_recoil_response_duration_s(config.decay_floor)
+	var total_stiffness := 0.0
+	for contact in contacts:
+		total_stiffness += float(contact["stiffness"])
+	if total_stiffness <= 0.0:
+		return
+
+	var contact_moments := Vector3.ZERO
+	for contact in contacts:
+		var share := float(contact["stiffness"]) / total_stiffness
+		var contact_impulse := impulse_world * share
+		var point_world: Vector3 = weapon.global_transform * (contact["point_local"] as Vector3)
+		contact_moments += (point_world - shoulder_world).cross(contact_impulse)
+	var residual_angular := target_angular_world - contact_moments
+	for contact in contacts:
+		var share := float(contact["stiffness"]) / total_stiffness
+		var contact_impulse := impulse_world * share
+		var point_world: Vector3 = weapon.global_transform * (contact["point_local"] as Vector3)
+		force_receiver.apply_recoil_impulse(
+			contact_impulse,
+			(point_world - shoulder_world).cross(contact_impulse) + residual_angular * share,
+			String(contact["bone"]),
+			recoil_duration
+		)
+
+
+func _add_recoil_hand_contact(
+	weapon: BaseWeapon,
+	contacts: Array[Dictionary],
+	marker_name: String,
+	bone_name: String,
+	stiffness: float
+) -> void:
+	var skeleton := force_receiver.get_skeleton()
+	if stiffness <= 0.0 or not is_instance_valid(skeleton):
+		return
+	if skeleton.find_bone(bone_name) < 0:
+		return
+	var marker := weapon.find_grip_node(marker_name)
+	if not is_instance_valid(marker):
+		return
+	var point_local := weapon.to_local(marker.global_position) if weapon.is_inside_tree() else marker.position
+	contacts.append({
+		"name": marker_name,
+		"bone": bone_name,
+		"point_local": point_local,
+		"stiffness": stiffness,
+	})
+
 
 func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
 	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
 	hand_ik_controller.set_weapon(new_weapon, weight)
+	if camera_controller:
+		camera_controller.set_recoil_component(
+			new_weapon.recoil_component if new_weapon else null
+		)
 	_sync_weapon_weight_to_stamina()
 
 

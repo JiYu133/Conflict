@@ -46,6 +46,8 @@ signal bone_fractured(part: MedicalEnums.BodyPartId, structure_id: StringName)
 # 公开属性 ────────────────────────────────────────────────────
 var vitals: VitalsModel = null
 var current_state: MedicalEnums.HealthState = MedicalEnums.HealthState.HEALTHY
+## Runtime debug switch for structural/medical damage. Hit feedback signals remain active.
+var physical_damage_enabled: bool = true
 
 # 私有 ─────────────────────────────────────────────────────
 var _player: BasePlayer = null
@@ -118,9 +120,18 @@ func apply_damage(info: DamageInfo) -> void:
 		_last_hit_energy_j = 0.0
 		_last_hit_mass_kg = 0.0
 		_last_hit_damage_type = info.type
-	_apply_structural_damage(info)
+	if physical_damage_enabled:
+		_apply_structural_damage(info)
 	damage_taken.emit(info)
-	_evaluate_state(info.direction, true)
+	if physical_damage_enabled:
+		_evaluate_state(info.direction, true)
+
+## Toggle medical damage without disabling hit feedback (screen, impact, audio, etc.).
+func set_physical_damage_enabled(enabled: bool) -> void:
+	physical_damage_enabled = enabled
+
+func is_physical_damage_enabled() -> bool:
+	return physical_damage_enabled
 
 ## 应用治疗：按伤口和部位适用性管理具体医疗原因，不恢复通用生命值。
 func apply_treatment(t: MedicalEnums.TreatmentType, part: MedicalEnums.BodyPartId) -> bool:

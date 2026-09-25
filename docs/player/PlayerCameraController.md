@@ -82,7 +82,7 @@ func initialize(
 
 ### `set_recoil_component(rc: RecoilComponent) -> void`
 
-注入 `RecoilComponent` 引用，后座层将在每帧从中读取累积偏移。在武器装备后由 `BasePlayer` 调用；传入 `null` 可清除后座效果。
+注入当前武器的 `RecoilComponent`。控制器监听每发物理后坐事件，将 pitch/yaw 角速度送入独立的视觉弹簧。传入 `null` 会断开旧武器并清零后坐状态。
 
 ### `get_active_camera() -> Camera3D`
 
@@ -150,10 +150,11 @@ func initialize(
 
 **依赖：** 外部通过 `set_recoil_component()` 注入 `RecoilComponent`
 
-从 `RecoilComponent` 读取已累积的后座偏移，叠加到摄像机旋转：
+从 `RecoilComponent` 接收角速度冲量，经过 `CameraConfig` 中的镜头弹簧参数后叠加到摄像机旋转：
 
-- **垂直后座（pitch）：** 调用 `_recoil_component.get_recoil_offset()`，直接加到 `_active_camera.rotation.x`，不修改 `_vertical_angle`，确保后座视觉效果与玩家准星控制解耦——松开扳机后准星回正不影响后座动画。
-- **水平后座（yaw）：** 调用 `_recoil_component.get_recoil_horizontal_offset()`，乘以 `delta` 后通过 `_player.rotate_y()` 应用，保持水平视角与角色朝向一致。
+- **垂直后座（pitch）：** 叠加视觉弹簧角度，不修改 `_vertical_angle`。
+- **水平后座（yaw）：** 叠加视觉弹簧角度，不修改 `_view_yaw`、玩家 yaw 或弹道方向。
+- **ADS：** 使用 `recoil_ads_stiffness_multiplier` 提高镜头回正刚度；不改变武器物理冲量。
 
 ### 层 5：速度倾斜（Tilt）
 
@@ -218,7 +219,7 @@ Z 轴（`position.z`）保留给 `WeaponObstructionDetector` 控制收枪偏移�
 | `CameraConfig` | Resource | 配置所有摄像机效果的开关与参数（灵敏度、FOV、各层幅度/频率等） |
 | `CharacterBody3D`（`_player`） | 节点引用 | 提供 `rotate_y()`（水平视角）、`velocity`（速度驱动效果）、`is_on_floor()`（步态/呼吸判断） |
 | `PlayerMovementController` | 节点引用 | 通过信号 `landed` / `jumped` 触发落地冲击效果，由 `connect_movement_signals()` 接入 |
-| `RecoilComponent` | 节点引用 | 提供 `get_recoil_offset()` 和 `get_recoil_horizontal_offset()`，由 `set_recoil_component()` 注入 |
+| `RecoilComponent` | 节点引用 | 通过 `physical_recoil_applied` 提供每发角速度冲量，由 `set_recoil_component()` 注入 |
 
 ---
 
@@ -226,7 +227,7 @@ Z 轴（`position.z`）保留给 `WeaponObstructionDetector` 控制收枪偏移�
 
 - **武器晃动只修改 `_sway_pivot` 的 X/Y 轴，Z 轴保留给外部系统。** `WeaponObstructionDetector` 等组件通过修改 `_sway_pivot.position.z` 实现收枪偏移，若此控制器也写入 Z 轴将产生冲突。见代码注释：`# 只插值 X/Y，Z 轴留给 WeaponObstructionDetector 控制收枪偏移`。
 
-- **后座不修改 `_vertical_angle`。** `_get_recoil_pitch()` 的返回值仅在写入 `_active_camera.rotation.x` 时临时叠加，`_vertical_angle` 始终只反映鼠标输入，保证后座恢复后准星位置不漂移。
+- **后座不修改 `_vertical_angle`、`_view_yaw` 或玩家 yaw。** 后座角度仅在写入 `_active_camera.global_rotation` 时临时叠加，保证恢复后鼠标视角、准星基准和枪口瞄准状态不漂移。
 
 - **摄像机查找需要外部连接信号。** `initialize()` 不会自动查找模型节点，必须在外部将 `model_manager.model_loaded` 连接到 `_on_model_loaded()`，否则摄像机挂载不会执行。
 

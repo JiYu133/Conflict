@@ -30,6 +30,7 @@ const COMMANDS := {
 	"revive": {"usage": "revive", "help": "复活当前玩家。仅 Debug 构建可用。", "debug_only": true},
 	"kill": {"usage": "kill", "help": "杀死当前玩家。仅 Debug 构建可用。", "debug_only": true},
 	"health": {"usage": "health <0-100>", "help": "设置玩家血量百分比。仅 Debug 构建可用。", "debug_only": true},
+	"physical_damage": {"usage": "physical_damage <1|0>", "help": "开启或关闭物理伤害数值；受击反馈仍会生效。仅 Debug 构建可用。", "debug_only": true},
 	"clear_wounds": {"usage": "clear_wounds", "help": "清除当前玩家全部伤口。仅 Debug 构建可用。", "debug_only": true},
 	"clear_blood": {"usage": "clear_blood", "help": "清除场景中所有死亡后留下的血迹。仅 Debug 构建可用。", "debug_only": true},
 	"medical_wound": {"usage": "medical_wound <part> <severity> [bleed]", "help": "向指定部位注入伤口。仅 Debug 构建可用。", "debug_only": true},
@@ -37,7 +38,7 @@ const COMMANDS := {
 	"screen_hit": {"usage": "screen_hit <left|right|top|bottom|front|back|all> [severity]", "help": "测试方向性受击与全屏轻模糊，severity 范围 0.05 - 1.00。仅 Debug 构建可用。", "debug_only": true},
 	"screen_stamina": {"usage": "screen_stamina <0-1>", "help": "按剩余体力比例测试暗角与模糊。仅 Debug 构建可用。", "debug_only": true},
 	"screen_pain": {"usage": "screen_pain <0-1>", "help": "按疼痛等级测试持续模糊。仅 Debug 构建可用。", "debug_only": true},
-	"screen_coma": {"usage": "screen_coma <on|off>", "help": "开启或关闭昏迷视觉。仅 Debug 构建可用。", "debug_only": true},
+	"screen_coma": {"usage": "screen_coma <1|0>", "help": "开启或关闭昏迷视觉。仅 Debug 构建可用。", "debug_only": true},
 	"screen_death": {"usage": "screen_death", "help": "测试死亡模糊和渐黑，不改变医疗状态。仅 Debug 构建可用。", "debug_only": true},
 	"screen_clear": {"usage": "screen_clear", "help": "清除所有屏幕效果测试状态。仅 Debug 构建可用。", "debug_only": true},
 	"give_ammo": {"usage": "give_ammo <current_mag> <reserve_rounds> [chambered=1] [release_bolt=1]", "help": "按弹匣状态重建当前武器弹药。仅 Debug 构建可用。", "debug_only": true},
@@ -54,7 +55,7 @@ const COMMANDS := {
 }
 const COMMAND_ORDER := [
 	"help", "clear", "fps", "status", "timescale", "freecam", "revive", "kill",
-	"health", "clear_wounds", "clear_blood", "give_ammo", "press_trigger", "release_trigger",
+	"health", "physical_damage", "clear_wounds", "clear_blood", "give_ammo", "press_trigger", "release_trigger",
 	"medical_wound", "medical_kill", "cycle_fire_mode", "bolt_release", "clear_malfunction",
 	"screen_hit", "screen_stamina", "screen_pain", "screen_coma", "screen_death", "screen_clear",
 	"set_aiming", "reload", "teleport", "bot", "encounter_start",
@@ -308,6 +309,17 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 			if not _player.health_system:
 				return _error_result("当前系统不可用：医疗系统未初始化。")
 			return _api_result(_debug_api.set_player_health(health, _player), "血量已设置为 %.1f%%。" % health)
+		"physical_damage":
+			if args.size() != 1:
+				return _error_result("参数数量错误：用法为 physical_damage <1|0>。")
+			var physical_damage_value: Variant = _parse_bool_arg(args[0])
+			if physical_damage_value == null or args[0].to_lower() not in ["0", "1"]:
+				return _error_result("参数错误：physical_damage 只能是 1 或 0。")
+			var physical_damage_enabled := bool(physical_damage_value)
+			return _api_result(
+				_debug_api.set_physical_damage(physical_damage_enabled, _player),
+				"物理伤害%s。" % ("已开启" if physical_damage_enabled else "已关闭")
+			)
 		"clear_wounds":
 			if not args.is_empty():
 				return _error_result("参数数量错误：clear_wounds 不接受参数。")
@@ -396,7 +408,7 @@ func _run_command(command: String, args: Array[String]) -> Dictionary:
 				return _error_result("参数数量错误：用法为 set_aiming <0|1>。")
 			var aiming_parse: Variant = _parse_bool_arg(args[0])
 			if aiming_parse == null:
-				return _error_result("参数错误：set_aiming 只能是 0/1、true/false、on/off。")
+				return _error_result("参数错误：set_aiming 只能是 0 或 1。")
 			if not _get_current_weapon():
 				return _error_result("当前系统不可用：没有已装备武器。")
 			_player.weapon_manager.set_aiming(bool(aiming_parse))
@@ -499,6 +511,12 @@ func _run_bot_command(args: Array[String]) -> Dictionary:
 			return _ok_result("Bot ID=%d 已停止测试移动。" % int(args[1]))
 		"fire":
 			return _run_bot_fire_command(manager, args)
+		"reload":
+			if args.size() != 2 or not args[1].is_valid_int() or int(args[1]) <= 0:
+				return _error_result("Usage: bot reload <id>")
+			if not manager.reload_ai_player(int(args[1])):
+				return _error_result(manager.last_error)
+			return _ok_result("Bot ID=%d reload started." % int(args[1]))
 		"kill", "remove":
 			if args.size() != 2:
 				return _error_result("参数数量错误：bot %s 用法为 bot %s <id|all>。" % [subcommand, subcommand])
@@ -669,12 +687,12 @@ func _run_give_ammo(args: Array[String]) -> Dictionary:
 	if args.size() >= 3:
 		var chambered_value: Variant = _parse_bool_arg(args[2])
 		if chambered_value == null:
-			return _error_result("参数错误：chambered 只能是 0/1、true/false、on/off。")
+			return _error_result("参数错误：chambered 只能是 0 或 1。")
 		chambered = bool(chambered_value)
 	if args.size() == 4:
 		var release_bolt_value: Variant = _parse_bool_arg(args[3])
 		if release_bolt_value == null:
-			return _error_result("参数错误：release_bolt 只能是 0/1、true/false、on/off。")
+			return _error_result("参数错误：release_bolt 只能是 0 或 1。")
 		release_bolt = bool(release_bolt_value)
 
 	var current_mag := maxi(int(args[0]), 0)
@@ -766,10 +784,10 @@ func _run_screen_scalar(args: Array[String], effect: String) -> Dictionary:
 
 func _run_screen_coma(args: Array[String]) -> Dictionary:
 	if args.size() != 1:
-		return _error_result("参数数量错误：用法为 screen_coma <on|off>。")
+		return _error_result("参数数量错误：用法为 screen_coma <1|0>。")
 	var enabled: Variant = _parse_bool_arg(args[0])
 	if enabled == null:
-		return _error_result("参数错误：screen_coma 只能是 on/off、1/0 或 true/false。")
+		return _error_result("参数错误：screen_coma 只能是 0 或 1。")
 	if not _get_screen_effects():
 		return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
 	_player.screen_effects.set_debug_coma_effect(bool(enabled))
@@ -840,9 +858,9 @@ func _get_current_weapon():
 
 func _parse_bool_arg(value: String):
 	match value.to_lower():
-		"1", "true", "on", "yes":
+		"1":
 			return true
-		"0", "false", "off", "no":
+		"0":
 			return false
 	return null
 
@@ -856,9 +874,10 @@ func _status_text() -> String:
 	var weapon_data: Dictionary = snapshot_data.get("weapon", {})
 	var health_text := "未知" if player_data.health_pct == null else "%.1f%%" % float(player_data.health_pct * 100.0)
 	var state_text : String = "未知" if player_data.medical_state == null else MedicalEnums.HealthState.keys()[int(player_data.medical_state)]
+	var physical_damage_text := "开启" if player_data.get("physical_damage_enabled", true) else "关闭"
 	var weapon_text : String = "无" if weapon_data.is_empty() else "%d / %d%s" % [weapon_data.magazine, weapon_data.reserve, "（膛内）" if weapon_data.chambered else ""]
-	return "存活：%s\n血量：%s\n医疗状态：%s\n位置：%s\n弹药：%s\n时间倍率：%.2f" % [
-		"是" if player_data.alive else "否", health_text, state_text, str(_player.global_position), weapon_text, Engine.time_scale
+	return "存活：%s\n血量：%s\n医疗状态：%s\n物理伤害：%s\n位置：%s\n弹药：%s\n时间倍率：%.2f" % [
+		"是" if player_data.alive else "否", health_text, state_text, physical_damage_text, str(_player.global_position), weapon_text, Engine.time_scale
 	]
 
 
@@ -881,7 +900,7 @@ func _get_bot_parameter_hint(value: String) -> String:
 	var coords := str(_player.global_position) if _player else "(0, 0, 0)"
 	var tokens := value.strip_edges().split(" ", false)
 	if tokens.size() <= 1:
-		return "bot add|list|config|move|velocity|stop|fire|kill|remove"
+		return "bot add|list|config|move|velocity|stop|fire|reload|kill|remove"
 	match String(tokens[1]).to_lower():
 		"add":
 			return "bot add [name] [faction] [x] [y] [z]  | 默认坐标：%s" % coords
@@ -897,6 +916,8 @@ func _get_bot_parameter_hint(value: String) -> String:
 			return "bot stop <id|all>"
 		"fire":
 			return "bot fire <id|all> <press|release|tap|auto>"
+		"reload":
+			return "bot reload <id>"
 		"kill":
 			return "bot kill <id|all>"
 		"remove":
@@ -1035,7 +1056,7 @@ func _get_screen_completion_items(value: String) -> Array[String]:
 					if candidate.begins_with(value.to_lower()):
 						candidates.append(candidate)
 		"screen_coma":
-			for state in ["on", "off"]:
+			for state in ["1", "0"]:
 				var candidate: String = "screen_coma " + state
 				if candidate.begins_with(value.to_lower()):
 					candidates.append(candidate)

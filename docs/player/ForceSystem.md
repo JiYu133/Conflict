@@ -140,6 +140,12 @@ apply_force(
 
 ## 与布娃娃的衔接
 
+### 武器后坐力接触
+
+`BasePlayer.apply_weapon_recoil()` 将 `RecoilPhysicsModel` 的冲量转换到玩家世界空间，并按 `ForceConfig` 中的肩部、主手和辅手接触刚度分配。每个有效接触点通过 `ForceReceiver.apply_recoil_impulse()` 写入对应骨骼；接触点力矩与剩余纯角冲量共同形成骨骼角位移。后坐力持续时间由武器的转动惯量、控制刚度、阻尼和 `ForceConfig.decay_floor` 推导，不使用固定秒数。后坐力不改变角色根节点速度，也不复用受击的经验性平移/旋转增益。
+
+可校准参数：`recoil_shoulder_stiffness`、`recoil_primary_hand_stiffness`、`recoil_support_hand_stiffness`、`recoil_bone_inertia_kg_m2` 和 `decay_floor`。武器端的弹头/装药/燃气/质心/惯量、控制刚度与阻尼仍由 `WeaponConfig`、`BarrelConfig` 和附件配置提供。
+
 `PlayerRagdollSystem.set_force_provider(receiver)` 接入后，`_apply_impact_impulse()`
 在 `impact_energy_j > 0` 时优先使用 `consume_pending_impulse()` 的方向与总冲量，
 其余逻辑（按骨骼质量分配、爆头额外冲量）保持不变。

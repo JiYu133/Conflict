@@ -70,6 +70,12 @@ var _spring_z: CameraSpring1D
 var _stiffness_h: float = 500.0
 var _stiffness_v: float = 120.0
 
+# Visual-only weapon recoil. It receives angular velocity impulses from the
+# weapon but never writes back to PlayerLookController or player rotation.
+var _recoil_component: RecoilComponent = null
+var _recoil_pitch_spring := CameraSpring1D.new()
+var _recoil_yaw_spring := CameraSpring1D.new()
+
 var _sway_pivot: Node3D = null
 
 # 蹲下眼部高度插值
@@ -152,6 +158,7 @@ func initialize(
 	_spring_z = CameraSpring1D.new()
 	_update_spring_params()
 	_pain_rng.randomize()
+	_reset_recoil_camera()
 
 	_hip_fov = _camera_config.fov
 	# 眼部高度从 camera_config 头部偏移 Y 初始化（fallback 用）
@@ -183,6 +190,7 @@ func enable_camera() -> void:
 	_head_spring_enabled = true
 	_ragdoll_physics_active = false
 	set_ragdoll_camera_shake(false)
+	_reset_recoil_camera()
 
 	if _ragdoll_skeleton:
 		_ragdoll_skeleton = null
@@ -230,6 +238,7 @@ func enable_camera() -> void:
 
 
 func disable_camera(skeleton: Skeleton3D = null) -> void:
+	_reset_recoil_camera()
 	if not skeleton:
 		return
 	var head_idx: int = _find_head_bone_index(skeleton)
@@ -456,6 +465,7 @@ func _process(delta: float) -> void:
 	# 即使暂时失去输入控制，也让受击镜头继续回正，避免打开菜单后
 	# 冲击被冻结，关闭菜单时突然恢复一个过期的歪斜角度。
 	_update_pain_impulse(delta)
+	_update_recoil_camera(delta)
 
 	# 眼部高度平滑插值（蹲下/起立时移动摄像机 fallback 高度）
 	if _eye_height != _target_eye_height:
@@ -544,8 +554,8 @@ func _process(delta: float) -> void:
 	# cosmetic bank, otherwise the camera can reverse or point at the ground.
 	_active_camera.global_position = _player.global_transform * filtered_local
 	_active_camera.global_rotation = Vector3(
-		get_vertical_angle() + _pain_pitch,
-		get_view_yaw() + _pain_yaw,
+		get_vertical_angle() + _pain_pitch + _recoil_pitch_spring.position,
+		get_view_yaw() + _recoil_yaw_spring.position,
 		_pain_roll
 	)
 
@@ -610,6 +620,67 @@ func _update_weapon_spring(_delta: float) -> void:
 	var pos_target := _ads_center_offset * _ads_progress
 	_sway_pivot.position.x = pos_target.x
 	_sway_pivot.position.y = pos_target.y
+
+
+func set_recoil_component(component: RecoilComponent) -> void:
+	if _recoil_component and is_instance_valid(_recoil_component):
+		if _recoil_component.physical_recoil_applied.is_connected(_on_physical_recoil_applied):
+			_recoil_component.physical_recoil_applied.disconnect(_on_physical_recoil_applied)
+	_recoil_component = component if is_instance_valid(component) else null
+	_reset_recoil_camera()
+	if _recoil_component:
+		_recoil_component.physical_recoil_applied.connect(_on_physical_recoil_applied)
+
+
+func clear_recoil_component() -> void:
+	set_recoil_component(null)
+
+
+func get_recoil_component() -> RecoilComponent:
+	return _recoil_component
+
+
+func _on_physical_recoil_applied(recoil_data: Dictionary) -> void:
+	if not recoil_data.has("angular_velocity"):
+		return
+	var angular_velocity: Vector2 = recoil_data["angular_velocity"]
+	if not angular_velocity.is_finite():
+		return
+	_recoil_pitch_spring.velocity += angular_velocity.x
+	_recoil_yaw_spring.velocity += angular_velocity.y
+
+
+func _update_recoil_camera(delta: float) -> void:
+	if not _camera_config:
+		return
+	var ads_multiplier := lerpf(
+		1.0,
+		maxf(_camera_config.recoil_ads_stiffness_multiplier, 0.01),
+		_ads_progress
+	)
+	_recoil_pitch_spring.stiffness = _camera_config.recoil_pitch_stiffness * ads_multiplier
+	_recoil_pitch_spring.damping = _camera_config.recoil_pitch_damping
+	_recoil_yaw_spring.stiffness = _camera_config.recoil_yaw_stiffness * ads_multiplier
+	_recoil_yaw_spring.damping = _camera_config.recoil_yaw_damping
+	_recoil_pitch_spring.update(delta, 0.0)
+	_recoil_yaw_spring.update(delta, 0.0)
+	_recoil_pitch_spring.position = clampf(
+		_recoil_pitch_spring.position,
+		-_camera_config.recoil_max_pitch_rad,
+		_camera_config.recoil_max_pitch_rad
+	)
+	_recoil_yaw_spring.position = clampf(
+		_recoil_yaw_spring.position,
+		-_camera_config.recoil_max_yaw_rad,
+		_camera_config.recoil_max_yaw_rad
+	)
+
+
+func _reset_recoil_camera() -> void:
+	_recoil_pitch_spring.position = 0.0
+	_recoil_pitch_spring.velocity = 0.0
+	_recoil_yaw_spring.position = 0.0
+	_recoil_yaw_spring.velocity = 0.0
 
 
 # ============================================================

@@ -40,6 +40,8 @@ class ForcePayload:
 	var mass_kg: float = 0.0
 	var speed_mps: float = 0.0
 	var impulse_ns: float = 0.0
+	var angular_impulse_world: Vector3 = Vector3.ZERO
+	var physical_recoil: bool = false
 	var source: Node = null
 
 	## 复用一个载荷对象；避免每次受力都分配新对象。
@@ -56,6 +58,8 @@ class ForcePayload:
 		mass_kg = 0.0
 		speed_mps = 0.0
 		impulse_ns = 0.0
+		angular_impulse_world = Vector3.ZERO
+		physical_recoil = false
 		source = null
 
 	## 从另一个载荷拷贝全部字段。
@@ -72,6 +76,8 @@ class ForcePayload:
 		mass_kg = other.mass_kg
 		speed_mps = other.speed_mps
 		impulse_ns = other.impulse_ns
+		angular_impulse_world = other.angular_impulse_world
+		physical_recoil = other.physical_recoil
 		source = other.source
 
 	## 当前时刻的衰减系数（0–1）。

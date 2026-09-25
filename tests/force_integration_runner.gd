@@ -101,6 +101,38 @@ func _run() -> void:
 	player.revive()
 	results["revive_clears_pending_impulse"] = receiver.consume_pending_impulse().is_empty()
 	results["revive_clears_pose"] = receiver.get_pose_offsets().is_empty()
+	results["camera_recoil_interface_present"] = player.camera_controller != null \
+		and player.camera_controller.has_method("set_recoil_component")
+	var weapon = player.weapon_manager.current_weapon if player.weapon_manager else null
+	results["weapon_available_for_recoil_test"] = weapon != null and weapon.recoil_component != null
+	results["camera_recoil_component_bound"] = results["weapon_available_for_recoil_test"] \
+		and player.camera_controller.get_recoil_component() == weapon.recoil_component
+	if results["weapon_available_for_recoil_test"]:
+		var captured_shot := [{}]
+		var received_linear := [Vector3.ZERO]
+		var received_angular := [Vector3.ZERO]
+		weapon.recoil_component.physical_recoil_applied.connect(
+			func(data: Dictionary): captured_shot[0] = data
+		)
+		receiver.force_applied.connect(func(payload):
+			received_linear[0] += payload.direction_world * payload.impulse_ns
+			received_angular[0] += payload.angular_impulse_world
+		)
+		weapon.recoil_component.apply_recoil(1.0)
+		receiver.update_pose_offsets(0.0)
+		results["weapon_recoil_reaches_bones"] = not receiver.get_pose_offsets().is_empty()
+		var shot: Dictionary = captured_shot[0]
+		var basis := weapon.global_basis.orthonormalized()
+		results["recoil_linear_impulse_conserved"] = received_linear[0].is_equal_approx(
+			basis * (shot.get("linear_impulse_local", Vector3.ZERO) as Vector3)
+		)
+		results["recoil_angular_impulse_conserved"] = received_angular[0].is_equal_approx(
+			basis * (shot.get("angular_impulse_local", Vector3.ZERO) as Vector3)
+		)
+	else:
+		results["weapon_recoil_reaches_bones"] = false
+		results["recoil_linear_impulse_conserved"] = false
+		results["recoil_angular_impulse_conserved"] = false
 
 	map.queue_free()
 	_finish(results)

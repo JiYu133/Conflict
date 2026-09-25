@@ -1,6 +1,8 @@
 class_name ForceReceiver
 extends Node
 
+const RECOIL_SETTLED_ANGLE_RAD := 0.0001
+
 # ============================================================
 # 通用力接收器
 # 功能：与来源解耦的受力入口。任何系统（本期为受击反馈）把力交给它，
@@ -95,14 +97,16 @@ func apply_force(
 	space: ForceTypes.Space = ForceTypes.Space.WORLD,
 	mass_kg: float = 0.0,
 	speed_mps: float = 0.0,
-	impulse_ns: float = -1.0
+	impulse_ns: float = -1.0,
+	angular_impulse: Vector3 = Vector3.ZERO
 ) -> void:
-	if not is_finite(magnitude) or magnitude <= 0.0:
+	if not is_finite(magnitude) or magnitude < 0.0:
 		return
 	if not direction.is_finite():
 		return
 	var has_origin := origin.is_finite() and origin.length_squared() > 0.000001
-	if direction.length_squared() <= 0.000001 and not has_origin:
+	var has_angular_impulse := angular_impulse.is_finite() and angular_impulse.length_squared() > 0.000001
+	if direction.length_squared() <= 0.000001 and not has_origin and not has_angular_impulse:
 		return
 	var direction_world := direction
 	var origin_world := origin
@@ -110,7 +114,7 @@ func apply_force(
 		var basis := _player_basis()
 		direction_world = basis * direction
 		origin_world = _player_to_world(origin)
-	if _resolve_bone_index(hit_bone) < 0:
+	if _resolve_bone_index(hit_bone) < 0 or (magnitude <= 0.0 and not has_angular_impulse):
 		return
 
 	var payload: ForceTypes.ForcePayload = _acquire_payload()
@@ -129,11 +133,45 @@ func apply_force(
 	payload.mass_kg = maxf(mass_kg, 0.0) if is_finite(mass_kg) else 0.0
 	payload.speed_mps = maxf(speed_mps, 0.0) if is_finite(speed_mps) else 0.0
 	payload.impulse_ns = impulse_ns if is_finite(impulse_ns) else 0.0
+	payload.angular_impulse_world = angular_impulse if angular_impulse.is_finite() else Vector3.ZERO
+	payload.physical_recoil = false
 	payload.source = null
 
 	_active.append(payload)
 	_trim_active()
 	force_applied.emit(payload)
+
+
+## Apply a physical recoil impulse and its independently computed angular impulse.
+func apply_recoil_impulse(
+	linear_impulse: Vector3,
+	angular_impulse: Vector3,
+	hit_bone: String,
+	duration: float = 0.12
+) -> void:
+	if not linear_impulse.is_finite() or not angular_impulse.is_finite():
+		return
+	var impulse_ns := linear_impulse.length()
+	if impulse_ns <= 0.000001 and angular_impulse.length_squared() <= 0.000001:
+		return
+	var direction := linear_impulse.normalized()
+	if direction.is_zero_approx():
+		direction = Vector3.ZERO
+	apply_force(
+		direction,
+		0.0,
+		hit_bone,
+		duration,
+		"exponential",
+		Vector3.ZERO,
+		ForceTypes.Space.WORLD,
+		0.0,
+		0.0,
+		impulse_ns,
+		angular_impulse
+	)
+	if not _active.is_empty():
+		(_active.back() as ForceTypes.ForcePayload).physical_recoil = true
 
 
 ## 从伤害事件推导力与待用冲量。本期唯一接入点（HealthSystem.damage_taken）。
@@ -273,7 +311,8 @@ func update_pose_offsets(delta: float) -> void:
 	while index >= 0:
 		var payload: ForceTypes.ForcePayload = _active[index]
 		payload.elapsed += step
-		if payload.is_expired():
+		var expired := _is_recoil_settled(payload) if payload.physical_recoil else payload.is_expired()
+		if expired:
 			_active.remove_at(index)
 			_release_payload(payload)
 		index -= 1
@@ -293,7 +332,8 @@ func _rebuild_pose_offsets() -> void:
 		var bone_idx := _skeleton.find_bone(payload.hit_bone)
 		if bone_idx < 0:
 			continue
-		var curve: float = payload.curve_weight()
+		var curve: float = _recoil_decay_weight(payload.elapsed, payload.duration) \
+			if payload.physical_recoil else payload.curve_weight()
 		if curve <= 0.0:
 			continue
 		var weights := _propagation.weights_for(bone_idx)
@@ -303,29 +343,44 @@ func _rebuild_pose_offsets() -> void:
 			if weight <= 0.0:
 				continue
 			var direction: Vector3 = _direction_for_bone(payload, int(affected_idx))
-			if direction.length_squared() <= 0.0:
-				continue
 			var scalar: float = payload.magnitude * curve * weight
-			if scalar <= 0.0:
+			# A firearm's torque is already computed about the shoulder pivot. It
+			# must be resolved once at the contact bone; propagating it to every
+			# ancestor/child would apply the same angular momentum repeatedly.
+			var angular_contribution := Vector3.ZERO
+			if int(affected_idx) == bone_idx:
+				# The shot changes angular velocity first; angle builds over time.
+				var response := _recoil_impulse_response(payload.elapsed, payload.duration)
+				angular_contribution = payload.angular_impulse_world * response
+			if scalar <= 0.0 and angular_contribution.length_squared() <= 0.000001:
 				continue
 			if not _pose_offsets.has(affected_idx):
 				_pose_offsets[affected_idx] = {
 					"push": Vector3.ZERO,
+					"angular_impulse": Vector3.ZERO,
+					"physical_recoil": false,
 					"depth": int(info["depth"]),
 					"raw_strength": 0.0,
 				}
 			var accumulated: Dictionary = _pose_offsets[affected_idx]
 			accumulated["push"] = accumulated["push"] + direction * scalar
+			accumulated["angular_impulse"] = (
+				accumulated["angular_impulse"]
+				+ angular_contribution
+			)
 			accumulated["raw_strength"] = float(accumulated["raw_strength"]) + scalar
 			accumulated["depth"] = mini(int(accumulated["depth"]), int(info["depth"]))
+			accumulated["physical_recoil"] = bool(accumulated["physical_recoil"]) or payload.physical_recoil
 
 	for bone_idx in _pose_offsets.keys():
 		var raw: Dictionary = _pose_offsets[bone_idx]
 		var resolved := _resolve_offset(
 			int(bone_idx),
 			raw["push"],
+			raw["angular_impulse"],
 			float(raw["raw_strength"]),
-			int(raw["depth"])
+			int(raw["depth"]),
+			bool(raw["physical_recoil"])
 		)
 		_peak_strength = maxf(_peak_strength, float(raw["raw_strength"]))
 		if resolved.is_empty():
@@ -336,28 +391,39 @@ func _rebuild_pose_offsets() -> void:
 
 ## 把“合力向量”转成旋转轴/角度与位移。
 ## push 的长度承载强度；超过 pose_cap 后不再增加偏移量。
-func _resolve_offset(bone_idx: int, push: Vector3, strength: float, depth: int) -> Dictionary:
-	if not push.is_finite() or push.length_squared() <= 0.0:
+func _resolve_offset(
+	bone_idx: int,
+	push: Vector3,
+	angular_impulse: Vector3,
+	strength: float,
+	depth: int,
+	physical_recoil: bool
+) -> Dictionary:
+	if not push.is_finite() or not angular_impulse.is_finite():
 		return {}
 	var push_length := push.length()
-	var direction := push / push_length
+	var direction := push / push_length if push_length > 0.000001 else Vector3.ZERO
 	var effective := minf(push_length, maxf(_config.pose_cap, 0.0))
 	var translation := Vector3.ZERO
-	if depth <= _config.translation_max_depth:
+	if not physical_recoil and depth <= _config.translation_max_depth:
 		var distance := clampf(
 			_config.translation_gain * effective,
 			0.0,
 			maxf(_config.max_translation_m, 0.0)
 		)
 		translation = direction * distance
-	var axis := Vector3.ZERO
-	var angle := 0.0
+	var rotation_vector := Vector3.ZERO
 	var bone_direction := _bone_direction_world(bone_idx)
-	if bone_direction.length_squared() > 0.0:
+	if not physical_recoil and push_length > 0.000001 and bone_direction.length_squared() > 0.0:
 		var candidate := bone_direction.cross(direction)
 		if candidate.length_squared() > 0.0000001:
-			axis = candidate.normalized()
-			angle = _config.rotation_gain * effective
+			rotation_vector = candidate.normalized() * (_config.rotation_gain * effective)
+	if angular_impulse.length_squared() > 0.000001:
+		var inertia := _recoil_inertia_for_bone(bone_idx)
+		rotation_vector += angular_impulse / inertia
+	var angle := rotation_vector.length()
+	var axis := rotation_vector / angle if angle > 0.000001 else Vector3.ZERO
+	angle = minf(angle, maxf(_config.recoil_max_bone_angle_rad, 0.0))
 	if not is_finite(angle) or not axis.is_finite() or not translation.is_finite():
 		return {}
 	return {
@@ -367,6 +433,44 @@ func _resolve_offset(bone_idx: int, push: Vector3, strength: float, depth: int) 
 		"depth": depth,
 		"raw_strength": strength,
 	}
+
+
+func _recoil_inertia_for_bone(bone_idx: int) -> float:
+	var bone_name := _skeleton.get_bone_name(bone_idx)
+	return maxf(float(_config.recoil_bone_inertia_kg_m2.get(bone_name, 0.08)), 0.0001)
+
+
+## Critically-damped impulse response: zero at impact, rises, then decays
+## asymptotically. Duration is a dynamics time scale, never a cutoff time.
+func _recoil_impulse_response(elapsed: float, duration: float) -> float:
+	if not is_finite(elapsed) or not is_finite(duration) or duration <= 0.0 or elapsed <= 0.0:
+		return 0.0
+	var progress := elapsed / duration
+	const SETTLING_POLE := 4.7439
+	return duration * progress * exp(1.0 - SETTLING_POLE * progress)
+
+
+func _recoil_decay_weight(elapsed: float, duration: float) -> float:
+	if not is_finite(elapsed) or not is_finite(duration) or duration <= 0.0:
+		return 0.0
+	return exp(-4.7439 * maxf(elapsed, 0.0) / duration)
+
+
+func _is_recoil_settled(payload: ForceTypes.ForcePayload) -> bool:
+	if payload.duration <= 0.0 or not is_finite(payload.elapsed):
+		return true
+	# Do not clear before the response has passed its natural peak.
+	const SETTLING_POLE := 4.7439
+	if payload.elapsed <= payload.duration / SETTLING_POLE:
+		return false
+	var bone_idx := _resolve_bone_index(payload.hit_bone)
+	if bone_idx < 0:
+		return true
+	var response := _recoil_impulse_response(payload.elapsed, payload.duration)
+	var remaining_angle := payload.angular_impulse_world.length() * response \
+		/ _recoil_inertia_for_bone(bone_idx)
+	var remaining_linear := payload.magnitude * _recoil_decay_weight(payload.elapsed, payload.duration)
+	return remaining_angle <= RECOIL_SETTLED_ANGLE_RAD and remaining_linear <= 0.0001
 
 
 ## 点源（爆炸）按径向取方向；其余情况使用统一方向。

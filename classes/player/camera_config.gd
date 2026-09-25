@@ -18,6 +18,17 @@ extends Resource
 ## 垂直视角最大角度（弧度），1.4 ≈ 80° / Max vertical look angle in radians
 @export var max_vertical_angle: float = 1.4
 
+@export_group("武器后坐镜头")
+## Visual-only pitch recoil spring. This does not modify the look controller.
+@export var recoil_pitch_stiffness: float = 180.0
+@export var recoil_pitch_damping: float = 24.0
+@export var recoil_yaw_stiffness: float = 220.0
+@export var recoil_yaw_damping: float = 28.0
+@export_range(0.0, 1.5, 0.001) var recoil_max_pitch_rad: float = 0.18
+@export_range(0.0, 1.5, 0.001) var recoil_max_yaw_rad: float = 0.10
+## ADS increases spring stiffness, reducing visible displacement while aiming.
+@export var recoil_ads_stiffness_multiplier: float = 2.0
+
 # 弹簧稳定器 ─────────────────────────────────────────────
 @export_group("弹簧稳定器")
 

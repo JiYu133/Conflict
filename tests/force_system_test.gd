@@ -17,6 +17,7 @@ static func run_all() -> Dictionary:
 		"regression_no_per_frame_drift": _regression_no_per_frame_drift(),
 		"robustness_rejects_non_finite_input": _robustness_rejects_non_finite_input(),
 		"impulse_matches_ragdoll_formula": _impulse_matches_ragdoll_formula(),
+		"physical_recoil_angular_impulse_moves_bone": _physical_recoil_angular_impulse_moves_bone(),
 		"pending_impulse_is_one_shot": _pending_impulse_is_one_shot(),
 		"clearing_resets_pose_and_pending": _clearing_resets_pose_and_pending(),
 		"bone_for_body_part_covers_all_parts": _bone_for_body_part_covers_all_parts(),
@@ -30,6 +31,39 @@ static func run_all() -> Dictionary:
 		"console_death_produces_no_impulse": _console_death_produces_no_impulse(),
 	}
 	return results
+
+
+static func _physical_recoil_angular_impulse_moves_bone() -> bool:
+	var skeleton := _build_skeleton()
+	var config := _make_config()
+	config.recoil_bone_inertia_kg_m2["mixamorig_RightHand"] = 0.01
+	var receiver := _make_receiver(skeleton, config)
+	receiver.apply_recoil_impulse(
+		Vector3.ZERO,
+		Vector3.RIGHT * 0.1,
+		"mixamorig_RightHand",
+		0.1
+	)
+	# The impulse changes angular velocity at impact; pose angle builds on the next frame.
+	receiver.update_pose_offsets(0.016)
+	var offsets := receiver.get_pose_offsets()
+	var hand_idx := skeleton.find_bone("mixamorig_RightHand")
+	if not offsets.has(hand_idx):
+		return false
+	var hand_offset: Dictionary = offsets[hand_idx]
+	var initial_response_ok := (
+		float(hand_offset["angle"]) > 0.0
+		and float(hand_offset["angle"]) <= config.recoil_max_bone_angle_rad
+		and (hand_offset["axis"] as Vector3).is_finite()
+	)
+	# Passing the dynamics time scale must not hard-cut the response.
+	receiver.update_pose_offsets(0.1)
+	var continues_past_time_scale := receiver.get_active_force_count() == 1 \
+		and _angle_of(receiver, "mixamorig_RightHand") > 0.0
+	# It is eventually reclaimed only after naturally decaying below visibility.
+	receiver.update_pose_offsets(1.0)
+	return initial_response_ok and continues_past_time_scale \
+		and receiver.get_active_force_count() == 0
 
 
 # ── 骨架构建 ────────────────────────────────────────────────

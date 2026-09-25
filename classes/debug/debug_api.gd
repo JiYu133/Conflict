@@ -162,7 +162,7 @@ func get_player_snapshot(target: Node = null) -> Dictionary:
 	var weapon = weapon_manager.get("current_weapon") if weapon_manager else null
 	var stance = player.get("stance_controller")
 	var stamina = player.get("stamina_system")
-	return _result(true, "ok", "", {"player": {"position": _vector(player.global_position), "velocity": _vector(player.velocity), "alive": bool(player.get("is_alive")), "health_pct": vitals.get_blood_pct() if vitals else null, "medical_state": int(health.get("current_state")) if health else null, "stance": stance.get_stance_value() if stance else null, "stamina": stamina.get("stamina") if stamina else null}, "posture": get_posture_snapshot(player).get("data", {}), "weapon": get_weapon_snapshot(player)})
+	return _result(true, "ok", "", {"player": {"position": _vector(player.global_position), "velocity": _vector(player.velocity), "alive": bool(player.get("is_alive")), "health_pct": vitals.get_blood_pct() if vitals else null, "medical_state": int(health.get("current_state")) if health else null, "physical_damage_enabled": health.is_physical_damage_enabled() if health and health.has_method("is_physical_damage_enabled") else true, "stance": stance.get_stance_value() if stance else null, "stamina": stamina.get("stamina") if stamina else null}, "posture": get_posture_snapshot(player).get("data", {}), "weapon": get_weapon_snapshot(player)})
 
 func get_posture_snapshot(target: Node = null) -> Dictionary:
 	var player := get_player(target)
@@ -233,6 +233,16 @@ func set_player_health(percent: float, target: Node = null) -> Dictionary:
 	health.debug_set_blood_pct(percent / 100.0)
 	return _result(true, "ok", "", {"health_pct": percent})
 
+func set_physical_damage(enabled: bool, target: Node = null) -> Dictionary:
+	var player := get_player(target)
+	var health = player.get("health_system") if player else null
+	if not player: return _fail("player_not_found", "当前场景不存在可用玩家。")
+	if not health: return _fail("health_not_initialized", "医疗系统尚未初始化。")
+	health.set_physical_damage_enabled(enabled)
+	var manager := _get_bot_manager()
+	var bot_count : int = manager.set_physical_damage_enabled(enabled) if manager and manager.has_method("set_physical_damage_enabled") else 0
+	return _result(true, "ok", "", {"physical_damage": enabled, "bots_updated": bot_count})
+
 func clear_wounds(target: Node = null) -> Dictionary:
 	var player := get_player(target)
 	var health = player.get("health_system") if player else null
@@ -276,6 +286,14 @@ func set_ammo(current_mag: int, reserve: int, chambered: bool = true, release_bo
 func press_trigger(target: Node = null) -> Dictionary: return _weapon_call("press_trigger", target)
 func release_trigger(target: Node = null) -> Dictionary: return _weapon_call("release_trigger", target)
 func reload(target: Node = null) -> Dictionary: return _weapon_call("reload", target)
+
+func reload_bot(bot_id: int) -> Dictionary:
+	var manager := _get_bot_manager()
+	if not manager:
+		return _fail("bot_manager_not_found", "AIPlayerManager not found.")
+	if not manager.reload_ai_player(bot_id):
+		return _fail("bot_reload_failed", String(manager.last_error))
+	return _result(true, "ok", "", {"id": bot_id})
 func cycle_fire_mode(target: Node = null) -> Dictionary: return _weapon_call("cycle_fire_mode", target)
 func set_aiming(aiming: bool, target: Node = null) -> Dictionary: return _weapon_call("set_aiming", target, [aiming])
 

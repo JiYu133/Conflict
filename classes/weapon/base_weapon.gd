@@ -165,9 +165,18 @@ func _setup_from_config() -> void:
 	fire_control.initialize(config)
 	gas_component.initialize(config)
 	recoil_component.initialize(config, attachment_manager)
+	recoil_component.physical_recoil_applied.connect(_on_physical_recoil_applied)
 	ejection_component.initialize(config)
 	malfunction_component.initialize(config, bolt_component, ejection_component, ammo_component)
 	fx_controller.initialize(self, config.fx_config)
+
+
+func _on_physical_recoil_applied(recoil_data: Dictionary) -> void:
+	var node: Node = self
+	while node and not (node is BasePlayer):
+		node = node.get_parent()
+	if node and (node as BasePlayer).force_receiver:
+		(node as BasePlayer).apply_weapon_recoil(self, recoil_data)
 
 ## 连接子组件的信号到本类的回调
 ## 这样 BaseWeapon 成为信号总线的中心控制器

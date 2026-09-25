@@ -29,6 +29,6 @@
 | `screen_hit <left\|right\|top\|bottom\|front\|back\|all> [severity]` | 测试方向性边缘和全屏受击模糊；严重性为 `0.05-1.0` |
 | `screen_stamina <0-1>` | 设置用于屏幕反馈的剩余体力比例 |
 | `screen_pain <0-1>` | 设置用于屏幕反馈的疼痛等级 |
-| `screen_coma <on\|off>` | 开关昏迷视觉 |
+| `screen_coma <1\|0>` | 开关昏迷视觉 |
 | `screen_death` | 触发死亡模糊与渐黑 |
 | `screen_clear` | 清除上述全部测试状态 |

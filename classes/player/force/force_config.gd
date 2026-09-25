@@ -56,6 +56,27 @@ extends Resource
 	"Spine", "Neck", "Head", "Shoulder", "Arm"
 ]
 
+@export_group("后坐接触物理")
+## Relative contact stiffnesses used to distribute the firearm's linear impulse.
+@export_range(0.0, 50000.0, 1.0) var recoil_shoulder_stiffness: float = 12000.0
+@export_range(0.0, 50000.0, 1.0) var recoil_primary_hand_stiffness: float = 3000.0
+@export_range(0.0, 50000.0, 1.0) var recoil_support_hand_stiffness: float = 1500.0
+## Segment rotational inertias (kg*m^2) used to convert angular impulse to angular velocity.
+@export var recoil_bone_inertia_kg_m2: Dictionary = {
+	"mixamorig_RightHand": 0.045,
+	"mixamorig_RightForeArm": 0.09,
+	"mixamorig_RightArm": 0.25,
+	"mixamorig_RightShoulder": 0.45,
+	"mixamorig_LeftHand": 0.045,
+	"mixamorig_LeftForeArm": 0.09,
+	"mixamorig_LeftArm": 0.25,
+	"mixamorig_LeftShoulder": 0.45,
+	"mixamorig_Spine1": 0.80,
+	"mixamorig_Spine2": 0.80,
+}
+## Prevents a single shot from visibly dislocating a held weapon pose.
+@export_range(0.0, 1.0, 0.01) var recoil_max_bone_angle_rad: float = 0.16
+
 
 ## 按衰减曲线返回某个层级距离处的传播权重。
 func propagation_weight(depth: int) -> float:

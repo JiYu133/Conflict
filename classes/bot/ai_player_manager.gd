@@ -17,6 +17,7 @@ var _next_id: int = 1
 var _spawn_captured := false
 var _pending_model_loads: Array[WeakRef] = []
 var _model_load_worker_active := false
+var physical_damage_enabled: bool = true
 
 
 func _ready() -> void:
@@ -105,6 +106,8 @@ func add_ai_player(
 	ai_player.player_config = config
 	ai_player.defer_ai_model_load = true
 	add_child(ai_player)
+	if ai_player.health_system:
+		ai_player.health_system.set_physical_damage_enabled(physical_damage_enabled)
 	if use_spawn_position:
 		ai_player.global_position = spawn_position
 	else:
@@ -135,6 +138,8 @@ func _drain_model_load_queue() -> void:
 				and not ai_player.is_ai_runtime_ready():
 			await get_tree().process_frame
 		if is_instance_valid(ai_player) and not ai_player.is_queued_for_deletion():
+			if ai_player.health_system:
+				ai_player.health_system.set_physical_damage_enabled(physical_damage_enabled)
 			ai_player_ready.emit(ai_player)
 	_model_load_worker_active = false
 
@@ -275,6 +280,32 @@ func set_all_ai_player_test_fire(action: String) -> int:
 		if ai_player.is_alive and ai_player.weapon_manager \
 				and ai_player.weapon_manager.current_weapon \
 				and ai_player.set_ai_player_test_fire(normalized_action):
+			count += 1
+	return count
+
+
+func reload_ai_player(ai_player_id: int) -> bool:
+	last_error = ""
+	var ai_player := get_ai_player_by_id(ai_player_id)
+	if not ai_player:
+		last_error = "AIPlayer not found: %d" % ai_player_id
+		return false
+	if not ai_player.is_alive:
+		last_error = "AIPlayer %d is dead." % ai_player_id
+		return false
+	if not ai_player.weapon_manager or not ai_player.weapon_manager.current_weapon:
+		last_error = "AIPlayer %d weapon is not initialized." % ai_player_id
+		return false
+	ai_player.weapon_manager.reload()
+	return true
+
+
+func set_physical_damage_enabled(enabled: bool) -> int:
+	physical_damage_enabled = enabled
+	var count := 0
+	for ai_player in get_ai_players():
+		if ai_player.health_system:
+			ai_player.health_system.set_physical_damage_enabled(enabled)
 			count += 1
 	return count
 
