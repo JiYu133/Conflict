@@ -71,6 +71,14 @@
 
 更新需要在物理阶段隐藏的武器挂载点。模型加载时可能先初始化布娃娃、后找到挂载点，因此提供独立设置入口。
 
+### `set_force_provider(provider: ForceReceiver) -> void`
+
+接入可选的力提供者。命中致死时 `_apply_impact_impulse()` 会优先消费力系统缓存的冲量
+（`consume_pending_impulse()`），使死亡倒下方向与生前受击反馈同源。
+
+未接入提供者或无待用冲量时**完全回退**到原有的 energy→impulse 路径，因此控制台
+`die()` 与失血死亡行为不变。详见 [ForceSystem](ForceSystem.md)。
+
 ## 运行时物理骨骼生成
 
 - 排除名称命中 `RagdollConfig.exclude_bone_keywords`、没有有效子段或段长小于 `0.001 m` 的骨骼。

@@ -85,7 +85,6 @@ var _burst_remaining: int = 0
 ## 本轮换弹中已完成的阶段（被打断后保留，下次换弹跳过；完整走完后清空）
 var _reload_done_stages: Array = []
 var is_reloading: bool = false                 # 是否正在换弹
-var _reload_generation: int = 0
 
 
 # ============================================================
@@ -100,7 +99,6 @@ var fire_control: FireControlComponent
 var gas_component: GasComponent
 ## 导气组件：计算导气孔到枪机的延时
 var recoil_component: RecoilComponent
-var recoil_pose_controller: WeaponRecoilPoseController
 ## 后座组件：枪口上跳角度和回正
 var ejection_component: EjectionComponent
 ## 抛壳组件：弹壳抛出位置和速度
@@ -109,8 +107,6 @@ var fx_controller: WeaponFXController
 ## 开火表现控制器：抛壳刚体、枪口焰、枪口动态光照
 ## 故障/排障组件：聚合物理故障状态，协调排障流程
 var attachment_manager: AttachmentManager
-var _last_shot_origin: Vector3 = Vector3.ZERO
-var _last_shot_direction: Vector3 = Vector3.ZERO
 ## 配件管理器：负责挂载瞄具/握把/枪口等
 
 
@@ -143,10 +139,6 @@ func _initialize_components() -> void:
 	recoil_component.name = "RecoilComponent"
 	add_child(recoil_component)
 
-	recoil_pose_controller = WeaponRecoilPoseController.new()
-	recoil_pose_controller.name = "WeaponRecoilPoseController"
-	add_child(recoil_pose_controller)
-
 	ejection_component = EjectionComponent.new()
 	ejection_component.name = "EjectionComponent"
 	add_child(ejection_component)
@@ -173,7 +165,6 @@ func _setup_from_config() -> void:
 	fire_control.initialize(config)
 	gas_component.initialize(config)
 	recoil_component.initialize(config, attachment_manager)
-	recoil_pose_controller.initialize(self, recoil_component)
 	ejection_component.initialize(config)
 	malfunction_component.initialize(config, bolt_component, ejection_component, ammo_component)
 	fx_controller.initialize(self, config.fx_config)
@@ -345,8 +336,6 @@ func reload() -> void:
 		return
 
 	is_reloading = true
-	_reload_generation += 1
-	var reload_generation := _reload_generation
 	reload_started.emit()
 
 	# 换弹时间从已装弹匣配件读取，未装弹匣时使用安全默认值
@@ -365,7 +354,7 @@ func reload() -> void:
 		var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
 		var whole_duration: float = reload_t if tactical else reload_et
 		reload_countdown_started.emit(whole_duration)
-		if not await _run_reload_stage(ReloadStage.WHOLE, whole_duration, reload_generation):
+		if not await _run_reload_stage(ReloadStage.WHOLE, whole_duration):
 			return
 	else:
 		reload_countdown_started.emit(_remaining_reload_duration(staged))
@@ -373,7 +362,7 @@ func reload() -> void:
 			var stage: ReloadStage = entry["stage"]
 			if _reload_done_stages.has(stage):
 				continue  # 该阶段此前已完成，跳过
-			if not await _run_reload_stage(stage, entry["time"], reload_generation):
+			if not await _run_reload_stage(stage, entry["time"]):
 				return
 
 	if ammo_component.has_chambered_round():
@@ -409,7 +398,6 @@ func interrupt_reload() -> void:
 	if not is_reloading:
 		return
 	is_reloading = false
-	_reload_generation += 1
 	reload_interrupted.emit(_reload_done_stages.duplicate())
 	GlobalLogger.debug("BaseWeapon", "换弹被打断，已完成阶段: %s" % str(_reload_done_stages))
 
@@ -449,16 +437,14 @@ func _remaining_reload_duration(stages: Array) -> float:
 
 
 ## 执行单个换弹阶段。返回 false 表示武器在等待期间失效，调用方应立即中止。
-func _run_reload_stage(stage: ReloadStage, duration: float, generation: int = -1) -> bool:
-	if generation >= 0 and generation != _reload_generation:
-		return false
+func _run_reload_stage(stage: ReloadStage, duration: float) -> bool:
 	reload_stage_started.emit(stage, duration)
 	await get_tree().create_timer(duration).timeout
 	# 武器可能在换弹计时期间被卸下/释放
 	if not is_instance_valid(self):
 		return false
 	# 中途被 interrupt_reload() 打断：不记录本阶段，也不继续后续阶段
-	if not is_reloading or (generation >= 0 and generation != _reload_generation):
+	if not is_reloading:
 		return false
 	_reload_done_stages.append(stage)
 	reload_stage_finished.emit(stage)
@@ -495,9 +481,6 @@ func set_fire_mode(mode: String) -> bool:
 	if not fire_control.set_fire_mode(mode):
 		return false
 	current_fire_mode = mode
-	# A mode switch must invalidate any pending burst continuation. Without this,
-	# switching while reloading can resume an old burst against the new ammo UI.
-	_burst_remaining = 0
 	var selector := attachment_manager.get_attachment_of_type(AttachmentConfig.AttachmentType.SELECTOR_SWITCH)
 	if selector and selector.has_method("on_fire_mode_changed"):
 		selector.on_fire_mode_changed(current_fire_mode)
@@ -551,8 +534,6 @@ func _apply_attachment_change(attachment_cfg: AttachmentConfig, equipped: bool) 
 		bolt_component.configure_cycle_rate(config.cycle_rate, gas_component.get_delay_time(), 0.005)
 	if recoil_component:
 		recoil_component.rebuild_physics()
-	if recoil_pose_controller:
-		recoil_pose_controller.reset_pose()
 
 ## 获取当前散布值
 ## 区分腰射和机瞄，返回武器基础散布 + 所有附件的散布修正
@@ -764,11 +745,10 @@ func _fire_one_round() -> void:
 	bolt_position = 0.0
 
 	# 发射弹丸（P1 hitscan）
-	var projectile_spawned := _spawn_projectile()
+	_spawn_projectile()
 
-	if projectile_spawned:
-		fired.emit()
-		recoil_component.apply_recoil(_get_control_multiplier())
+	fired.emit()
+	recoil_component.apply_recoil(_get_control_multiplier())
 
 
 ## 计算射手控枪系数；只改变弹簧刚度/阻尼，不改变单发冲量
@@ -796,11 +776,11 @@ func _get_control_multiplier() -> float:
 
 ## 发射弹丸
 ## 弹道模拟和 hitscan 都从枪口位置沿枪口轴线发射；摄像机不参与弹道计算。
-func _spawn_projectile() -> bool:
+func _spawn_projectile() -> void:
 	var world := get_world_3d()
 	if not world:
 		GlobalLogger.warn("BaseWeapon", "Cannot get World3D, projectile not fired")
-		return false
+		return
 
 	var exclusions := _collect_shooter_exclusions()
 
@@ -810,26 +790,17 @@ func _spawn_projectile() -> bool:
 	var barrel := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
 	if not barrel:
 		GlobalLogger.warn("BaseWeapon", "[%s] 未装枪管，无法计算弹道" % config.weapon_name)
-		return false
+		return
 
 	var muzzle := _get_muzzle_position()
 	var shot_dir := _get_muzzle_direction()
-	var spread_degrees := 0.0
-	var shooter := get_parent()
-	while shooter and not shooter is BasePlayer:
-		shooter = shooter.get_parent()
-	if shooter is BasePlayer and (shooter as BasePlayer).weapon_manager:
-		spread_degrees = get_current_spread((shooter as BasePlayer).weapon_manager.is_aiming)
 
 	if config and config.use_ballistic_simulation:
 		BallisticProjectileSystem.get_or_create(get_tree()).spawn(
-			muzzle, shot_dir, barrel, self, exclusions, world, spread_degrees
+			muzzle, shot_dir, barrel, self, exclusions, world
 		)
 	else:
-		Projectile.fire_hitscan(muzzle, shot_dir, barrel, self, world, exclusions, spread_degrees)
-	_last_shot_origin = muzzle
-	_last_shot_direction = shot_dir
-	return true
+		Projectile.fire_hitscan(muzzle, shot_dir, barrel, self, world, exclusions)
 
 
 ## 枪口世界坐标（武器局部 -Z 方向延伸 weapon_length）
@@ -847,18 +818,6 @@ func _get_muzzle_direction() -> Vector3:
 	if muzzle_marker:
 		return (-muzzle_marker.global_basis.z).normalized()
 	return (-global_basis.z).normalized()
-
-
-func get_last_shot_origin() -> Vector3:
-	return _last_shot_origin
-
-
-func get_last_shot_direction() -> Vector3:
-	return _last_shot_direction
-
-
-func get_recoil_pose_snapshot() -> Dictionary:
-	return recoil_pose_controller.get_snapshot() if recoil_pose_controller else {}
 
 
 ## 收集射手自身的物理 RID（胶囊体 + 全部 BodyHitbox），

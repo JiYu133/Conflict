@@ -242,6 +242,43 @@ func stop_all_ai_player_test_motion() -> int:
 	return count
 
 
+func set_ai_player_test_fire(ai_player_id: int, action: String) -> bool:
+	last_error = ""
+	var normalized_action := action.to_lower()
+	if normalized_action not in ["press", "release", "tap", "auto"]:
+		last_error = "开火动作只能是 press、release、tap 或 auto。"
+		return false
+	var ai_player := get_ai_player_by_id(ai_player_id)
+	if not ai_player:
+		last_error = "找不到 AIPlayer ID：%d。" % ai_player_id
+		return false
+	if not ai_player.is_alive:
+		last_error = "AIPlayer ID=%d 已死亡，无法控制开火。" % ai_player_id
+		return false
+	if not ai_player.weapon_manager or not ai_player.weapon_manager.current_weapon:
+		last_error = "AIPlayer ID=%d 的武器尚未初始化。" % ai_player_id
+		return false
+	if not ai_player.set_ai_player_test_fire(normalized_action):
+		last_error = "AIPlayer ID=%d 无法执行开火动作。" % ai_player_id
+		return false
+	return true
+
+
+func set_all_ai_player_test_fire(action: String) -> int:
+	last_error = ""
+	var normalized_action := action.to_lower()
+	if normalized_action not in ["press", "release", "tap", "auto"]:
+		last_error = "开火动作只能是 press、release、tap 或 auto。"
+		return 0
+	var count := 0
+	for ai_player in get_ai_players():
+		if ai_player.is_alive and ai_player.weapon_manager \
+				and ai_player.weapon_manager.current_weapon \
+				and ai_player.set_ai_player_test_fire(normalized_action):
+			count += 1
+	return count
+
+
 func kill_ai_player(ai_player_id: int) -> bool:
 	var ai_player := get_ai_player_by_id(ai_player_id)
 	if not ai_player:

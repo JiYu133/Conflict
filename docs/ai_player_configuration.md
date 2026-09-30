@@ -80,6 +80,20 @@ bot config 3 res://assets/config/ai/ai_veteran.tres
 bot config all res://assets/config/ai/ai_recruit.tres
 ```
 
+可以通过正式武器输入链控制单个或全部 Bot 的扳机：
+
+```text
+bot fire 3 tap
+bot fire 3 press
+bot fire 3 release
+bot fire 3 auto
+bot fire all tap
+```
+
+`press` 持续按下扳机，`release` 强制保持松开，`tap` 完成一次松开-扣动-松开，
+`auto` 清除调试接管并把开火控制归还行为树。命令不会直接生成弹丸或伤害，仍遵守当前
+射击模式、射速、弹药、膛内状态、枪机循环和故障逻辑。
+
 该命令会替换 AIProfile 和 LimboAI BehaviorTree，并保留当前的生命状态、
 弹药、已装备武器和世界位置。`player_config`、`model_scene`、
 `starting_weapon` 是 AIPlayer 创建时的实体配置；如需让这些覆盖生效，使用

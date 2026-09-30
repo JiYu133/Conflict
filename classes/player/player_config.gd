@@ -41,6 +41,11 @@ extends Resource
 ## 布娃娃物理配置
 @export var ragdoll_config: RagdollConfig
 
+# 力系统配置 ────────────────────────────────────────────────
+@export_group("力系统配置")
+## 通用力系统配置（受击反馈的传播/衰减/上限；不挂载时使用默认值）
+@export var force_config: ForceConfig
+
 # 手部 IK 配置 ──────────────────────────────────────────────
 @export_group("手部 IK 配置")
 ## 左手 IK 参数
@@ -111,6 +116,10 @@ var stop_brake_strength: float:
 	get: return movement_config.stop_brake_strength if movement_config else 5.0
 var turn_decel_factor: float:
 	get: return movement_config.turn_decel_factor if movement_config else 0.85
+var moving_body_turn_speed_degrees: float:
+	get: return movement_config.moving_body_turn_speed_degrees if movement_config else 360.0
+var moving_body_velocity_yaw_threshold_degrees: float:
+	get: return movement_config.moving_body_velocity_yaw_threshold_degrees if movement_config else 120.0
 var burst_strength: float:
 	get: return movement_config.burst_strength if movement_config else 1.2
 var burst_duration: float:

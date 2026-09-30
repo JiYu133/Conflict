@@ -71,7 +71,6 @@ var _stiffness_h: float = 500.0
 var _stiffness_v: float = 120.0
 
 var _sway_pivot: Node3D = null
-var _recoil_component: RecoilComponent = null
 
 # 蹲下眼部高度插值
 var _eye_height: float = 1.6
@@ -173,10 +172,6 @@ func _update_spring_params() -> void:
 	_spring_x.damping = _camera_config.spring_damping_h
 	_spring_z.damping = _camera_config.spring_damping_h
 	_spring_y.damping = _camera_config.spring_damping_v
-
-
-func set_recoil_component(component: RecoilComponent) -> void:
-	_recoil_component = component
 
 
 # ============================================================
@@ -500,7 +495,7 @@ func _process(delta: float) -> void:
 	if controllable and (
 		not is_instance_valid(_look_controller) or not _look_controller.is_free_look_active()
 	):
-		_sync_moving_body_yaw()
+		_sync_moving_body_yaw(delta)
 
 	# 1. 读取头部在玩家局部空间的位置（弹簧不感知玩家旋转，只过滤动画位移）
 	var head_local := _get_head_local_position()
@@ -549,42 +544,20 @@ func _process(delta: float) -> void:
 	# cosmetic bank, otherwise the camera can reverse or point at the ground.
 	_active_camera.global_position = _player.global_transform * filtered_local
 	_active_camera.global_rotation = Vector3(
-		get_vertical_angle() + _pain_pitch + _get_recoil_pitch_feedback(),
-		get_view_yaw() + _pain_yaw + _get_recoil_yaw_feedback(),
-		_pain_roll + _get_recoil_roll_feedback()
+		get_vertical_angle() + _pain_pitch,
+		get_view_yaw() + _pain_yaw,
+		_pain_roll
 	)
 
 	_update_ads(delta)
 	_update_weapon_spring(delta)
 
 
-func _get_recoil_pitch_feedback() -> float:
-	if not is_instance_valid(_recoil_component):
-		return 0.0
-	var scale := _recoil_component.get_camera_feedback_scale()
-	return clampf(deg_to_rad(_recoil_component.get_recoil_offset()) * scale, -0.08, 0.08)
-
-
-func _get_recoil_yaw_feedback() -> float:
-	if not is_instance_valid(_recoil_component):
-		return 0.0
-	var scale := _recoil_component.get_camera_feedback_scale()
-	return clampf(deg_to_rad(_recoil_component.get_recoil_horizontal_offset()) * scale, -0.05, 0.05)
-
-
-func _get_recoil_roll_feedback() -> float:
-	if not is_instance_valid(_recoil_component):
-		return 0.0
-	var pose: Dictionary = _recoil_component.get_pose_snapshot()
-	var scale: float = _recoil_component.get_camera_feedback_scale()
-	return clampf(float(pose.get("roll_rad", 0.0)) * scale * 0.5, -0.035, 0.035)
-
-
 func _should_lock_turn_in_place_height() -> bool:
-	# Turn clips use the same head-following spring as every other locomotion
-	# state. Locking the height here makes stance changes visibly lag behind the
-	# authored animation.
-	return false
+	if not is_instance_valid(_player) or not _player.turn_controller:
+		return false
+	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+	return _player.turn_controller.is_turning() and horizontal_velocity.length_squared() < 0.0001
 
 
 # ============================================================
@@ -837,11 +810,13 @@ func set_ai_view_angles(yaw: float, pitch: float) -> void:
 	_body_yaw_blend_remaining = 0.0
 
 
-func _sync_moving_body_yaw() -> void:
+func _sync_moving_body_yaw(delta: float) -> void:
 	if not is_instance_valid(_player) or not _player.is_on_floor() or not _is_moving():
 		return
-	# Standing/crouched locomotion can follow the view directly. Prone locomotion
-	# must pass through the authored turn clip, including while crawling.
+	# Standing/crouched locomotion follows actual horizontal velocity. The spine
+	# aim modifier then carries the remaining view offset into the upper body.
+	# Prone locomotion must pass through the authored turn clip, including while
+	# crawling.
 	if _player.stance_controller and (
 			_player.stance_controller.is_prone()
 			or _player.stance_controller.is_prone_transitioning()
@@ -856,9 +831,38 @@ func _sync_moving_body_yaw() -> void:
 		return
 	if is_instance_valid(_look_controller) and _look_controller.is_free_look_active():
 		return
-	if is_instance_valid(_player):
-		if _body_yaw_blend_remaining <= 0.0:
-			_player.rotation.y = get_base_view_yaw()
+	if _body_yaw_blend_remaining > 0.0:
+		return
+
+	var movement_config := _player.player_config.movement_config if _player.player_config else null
+	var target_yaw := _get_moving_body_target_yaw(movement_config)
+	var turn_speed_degrees := movement_config.moving_body_turn_speed_degrees \
+		if movement_config else 360.0
+	var max_step := deg_to_rad(maxf(turn_speed_degrees, 0.0)) * maxf(delta, 0.0)
+	var yaw_delta := angle_difference(_player.rotation.y, target_yaw)
+	_player.rotation.y += clampf(yaw_delta, -max_step, max_step)
+
+
+func _get_horizontal_velocity_yaw() -> float:
+	if not is_instance_valid(_player):
+		return _view_yaw
+	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+	if horizontal_velocity.length_squared() <= 0.0001:
+		return get_base_view_yaw()
+	# Godot's forward axis is -Z. Convert the world-space velocity vector into
+	# the yaw whose forward direction points along that velocity.
+	return atan2(-horizontal_velocity.x, -horizontal_velocity.y)
+
+
+func _get_moving_body_target_yaw(movement_config: MovementConfig = null) -> float:
+	var view_yaw := get_base_view_yaw()
+	var velocity_yaw := _get_horizontal_velocity_yaw()
+	var threshold_degrees := movement_config.moving_body_velocity_yaw_threshold_degrees \
+		if movement_config else 120.0
+	var velocity_view_offset := absf(angle_difference(view_yaw, velocity_yaw))
+	if velocity_view_offset > deg_to_rad(clampf(threshold_degrees, 0.0, 180.0)):
+		return view_yaw
+	return velocity_yaw
 
 
 var _body_yaw_blend_remaining: float = 0.0
@@ -871,7 +875,9 @@ func begin_moving_body_yaw_blend(duration: float) -> void:
 	_body_yaw_blend_duration = maxf(duration, 0.001)
 	_body_yaw_blend_remaining = _body_yaw_blend_duration
 	_body_yaw_blend_start = _player.rotation.y if is_instance_valid(_player) else _view_yaw
-	_body_yaw_blend_target = get_base_view_yaw()
+	var movement_config := _player.player_config.movement_config \
+		if is_instance_valid(_player) and _player.player_config else null
+	_body_yaw_blend_target = _get_moving_body_target_yaw(movement_config)
 
 
 func process_moving_body_yaw_blend(delta: float) -> void:
