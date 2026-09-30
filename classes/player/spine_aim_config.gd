@@ -20,6 +20,10 @@ extends Resource
 ## 与 free_look_bone_names 一一对应的自由观察权重。
 @export var free_look_bone_weights: Array[float] = [1.0]
 
+## Bone whose authored forward axis is calibrated to the project's look basis.
+## This keeps model-specific bone orientation out of camera and weapon code.
+@export var head_bone_name: String = "mixamorig_Head"
+
 ## 抬头和低头的最大角度。
 @export_range(0.0, 89.0, 0.5) var max_look_up_degrees: float = 55.0
 ## 脊柱可分摊的最大低头角度（度）。

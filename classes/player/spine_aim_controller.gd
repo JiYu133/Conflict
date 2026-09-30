@@ -1,6 +1,8 @@
 class_name SpineAimController
 extends Node
 
+const HEAD_MUZZLE_TARGET_DISTANCE: float = 1000.0
+
 var _player: BasePlayer
 var _camera_controller: PlayerCameraController
 var _skeleton: Skeleton3D
@@ -60,6 +62,7 @@ func process_aim(delta: float, enabled: bool = true) -> void:
 		_modifier.yaw_radians = 0.0
 		_modifier.free_pitch_radians = 0.0
 		_modifier.free_yaw_radians = 0.0
+		_modifier.head_target_valid = false
 		return
 	var base_pitch := 0.0
 	var free_pitch := 0.0
@@ -85,6 +88,24 @@ func process_aim(delta: float, enabled: bool = true) -> void:
 	_modifier.yaw_radians = _current_yaw
 	_modifier.free_pitch_radians = _current_free_pitch
 	_modifier.free_yaw_radians = _current_free_yaw
+	_update_head_muzzle_target()
+
+
+func _update_head_muzzle_target() -> void:
+	_modifier.head_target_valid = false
+	if not is_instance_valid(_player) or not _player.weapon_manager:
+		return
+	var weapon := _player.weapon_manager.current_weapon
+	if not is_instance_valid(weapon):
+		return
+	var muzzle_position := weapon.get_muzzle_position()
+	var muzzle_direction := weapon.get_muzzle_direction()
+	if not muzzle_position.is_finite() or not muzzle_direction.is_finite() \
+			or muzzle_direction.is_zero_approx():
+		return
+	_modifier.head_target_world_position = muzzle_position \
+			+ muzzle_direction.normalized() * HEAD_MUZZLE_TARGET_DISTANCE
+	_modifier.head_target_valid = true
 
 
 func _move_before_first_ik_modifier() -> void:
@@ -102,12 +123,17 @@ class SpineAimModifier extends SkeletonModifier3D:
 	var yaw_radians: float = 0.0
 	var free_pitch_radians: float = 0.0
 	var free_yaw_radians: float = 0.0
+	var head_target_world_position: Vector3 = Vector3.ZERO
+	var head_target_valid: bool = false
 
 	var _player: BasePlayer
 	var _bone_indices: Array[int] = []
 	var _bone_weights: Array[float] = []
 	var _free_look_bone_indices: Array[int] = []
 	var _free_look_bone_weights: Array[float] = []
+	var _head_bone_idx: int = -1
+	var _head_to_view_basis: Basis = Basis.IDENTITY
+	var _head_alignment_calibrated: bool = false
 
 
 	func setup(player: BasePlayer, config: SpineAimConfig) -> void:
@@ -122,6 +148,8 @@ class SpineAimModifier extends SkeletonModifier3D:
 		var free_data := _collect_bones(skeleton, config.free_look_bone_names, config.free_look_bone_weights)
 		_free_look_bone_indices.assign(free_data["indices"])
 		_free_look_bone_weights.assign(free_data["weights"])
+		_head_bone_idx = skeleton.find_bone(config.head_bone_name)
+		_head_alignment_calibrated = false
 
 
 	func _collect_bones(skeleton: Skeleton3D, names: Array[String], weights: Array[float]) -> Dictionary:
@@ -150,11 +178,13 @@ class SpineAimModifier extends SkeletonModifier3D:
 
 
 	func _process_modification() -> void:
-		if not apply_aim or (absf(pitch_radians) < 0.00001 and absf(yaw_radians) < 0.00001 and absf(free_pitch_radians) < 0.00001 and absf(free_yaw_radians) < 0.00001) or not is_instance_valid(_player):
+		if not apply_aim or not is_instance_valid(_player):
 			return
 		var skeleton := get_skeleton()
 		if not skeleton:
 			return
+		if not _head_alignment_calibrated:
+			_calibrate_head_view_basis(skeleton)
 
 		# 视角俯仰围绕玩家世界空间的右轴旋转。转换到 Skeleton 空间后，
 		# 即使模型根节点有 180 度朝向修正，抬头/低头方向仍保持正确。
@@ -176,6 +206,47 @@ class SpineAimModifier extends SkeletonModifier3D:
 				_free_look_bone_indices[i],
 				Quaternion(skeleton_up, free_yaw_radians * _free_look_bone_weights[i]) * Quaternion(skeleton_right, free_pitch_radians * _free_look_bone_weights[i])
 			)
+		_align_head_to_muzzle_target(skeleton)
+
+
+	func _calibrate_head_view_basis(skeleton: Skeleton3D) -> void:
+		if _head_bone_idx < 0:
+			return
+		var skeleton_basis := skeleton.global_basis.orthonormalized()
+		var head_basis := (
+			skeleton_basis * skeleton.get_bone_global_pose(_head_bone_idx).basis
+		).orthonormalized()
+		var body_basis := _player.global_basis.orthonormalized()
+		# Converts the imported head bone basis into the project's view basis.
+		# It captures FBX/Mixamo axis differences without hard-coded Euler offsets.
+		_head_to_view_basis = (head_basis.inverse() * body_basis).orthonormalized()
+		_head_alignment_calibrated = true
+
+
+	func _align_head_to_muzzle_target(skeleton: Skeleton3D) -> void:
+		if not head_target_valid or not _head_alignment_calibrated or _head_bone_idx < 0:
+			return
+		var skeleton_basis := skeleton.global_basis.orthonormalized()
+		var head_pose := skeleton.get_bone_global_pose(_head_bone_idx)
+		var head_world_position := skeleton.global_transform * head_pose.origin
+		var target_direction := head_target_world_position - head_world_position
+		if not target_direction.is_finite() or target_direction.is_zero_approx():
+			return
+		target_direction = target_direction.normalized()
+		var world_up := _player.global_basis.orthonormalized().y.normalized()
+		if absf(target_direction.dot(world_up)) > 0.999:
+			world_up = _player.global_basis.orthonormalized().z.normalized()
+		var desired_view_basis := Basis.looking_at(target_direction, world_up).orthonormalized()
+		var desired_head_basis := (
+			desired_view_basis * _head_to_view_basis.inverse()
+		).orthonormalized()
+		var current_head_basis := (
+			skeleton_basis * head_pose.basis
+		).orthonormalized()
+		var world_delta := Quaternion(desired_head_basis) * Quaternion(current_head_basis).inverse()
+		var skeleton_rotation := Quaternion(skeleton_basis)
+		var skeleton_delta := skeleton_rotation.inverse() * world_delta * skeleton_rotation
+		_apply_global_rotation(skeleton, _head_bone_idx, skeleton_delta.normalized())
 
 
 	func _apply_global_rotation(skeleton: Skeleton3D, bone_idx: int, global_extra: Quaternion) -> void:

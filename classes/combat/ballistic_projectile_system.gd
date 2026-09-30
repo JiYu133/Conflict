@@ -4,7 +4,7 @@ extends Node
 ## Shared, allocation-light external-ballistics simulation.
 ## Projectile origin and direction are supplied by the weapon muzzle only.
 
-const DEFAULT_ENVIRONMENT: BallisticEnvironmentConfig = preload("res://assets/config/ballistics/default_environment.tres")
+const DEFAULT_ENVIRONMENT = preload("res://assets/config/ballistics/default_environment.tres")
 const ENVIRONMENT_IMPACT_EFFECT = preload("res://classes/combat/environment_impact_effect.gd")
 ## Legacy constants retained for callers that used the original fixed limits.
 const MAX_RANGE_M: float = 2000.0

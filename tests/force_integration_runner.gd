@@ -119,10 +119,16 @@ func _run() -> void:
 			received_angular[0] += payload.angular_impulse_world
 		)
 		weapon.recoil_component.apply_recoil(1.0)
-		receiver.update_pose_offsets(0.0)
+		receiver.update_pose_offsets(0.016)
 		results["weapon_recoil_reaches_bones"] = not receiver.get_pose_offsets().is_empty()
+		weapon.release_trigger()
+		receiver.update_pose_offsets(0.016)
+		results["release_trigger_preserves_recoil_state"] = (
+			not receiver._recoil_states.is_empty()
+			and not receiver.get_pose_offsets().is_empty()
+		)
 		var shot: Dictionary = captured_shot[0]
-		var basis := weapon.global_basis.orthonormalized()
+		var basis: Basis = weapon.global_basis.orthonormalized()
 		results["recoil_linear_impulse_conserved"] = received_linear[0].is_equal_approx(
 			basis * (shot.get("linear_impulse_local", Vector3.ZERO) as Vector3)
 		)
@@ -131,6 +137,7 @@ func _run() -> void:
 		)
 	else:
 		results["weapon_recoil_reaches_bones"] = false
+		results["release_trigger_preserves_recoil_state"] = false
 		results["recoil_linear_impulse_conserved"] = false
 		results["recoil_angular_impulse_conserved"] = false
 

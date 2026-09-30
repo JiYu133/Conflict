@@ -1,8 +1,11 @@
 extends Node
 
 var failures := 0
-var wrist_samples := 0
-var wrist_error := 0.0
+var left_hand_samples := 0
+var right_hand_samples := 0
+var left_hand_error := 0.0
+var right_hand_error := 0.0
+var record_hand_errors := true
 
 
 func _ready() -> void:
@@ -24,8 +27,25 @@ func _run() -> void:
 	var hand := player.hand_ik_controller
 	var foot := player.foot_ik_controller
 	var skeleton := player.model_manager.skeleton
+	var spine := player.spine_aim_controller
+	var weapon := player.weapon_manager.current_weapon
+	spine.process_aim(0.016, true)
+	var expected_head_target := weapon.get_muzzle_position() \
+			+ weapon.get_muzzle_direction() * SpineAimController.HEAD_MUZZLE_TARGET_DISTANCE
+	_check(
+		spine._modifier.head_target_valid \
+				and spine._modifier.head_target_world_position.distance_to(expected_head_target) < 0.0001,
+		"head target comes from the same muzzle ray used by projectiles"
+	)
 	_check(foot._left_ik != null and foot._right_ik != null, "default model supplies both foot solvers")
 	_check(foot._left_target != null and foot._right_target != null, "default model supplies both foot targets")
+	_check(hand._ik_node != null and hand._right_ik_node != null, "default model supplies both hand solvers")
+	_check(hand._hand_target != null and hand._right_hand_target != null, "default model supplies both hand targets")
+	_check(
+		hand._target_modifier.get_index() < hand._ik_node.get_index()
+			and hand._target_modifier.get_index() < hand._right_ik_node.get_index(),
+		"weapon pose and both hand targets update before arm solving"
+	)
 	_check(foot._pose_modifier.get_index() < foot._left_ik.get_index() and foot._pose_modifier.get_index() < foot._right_ik.get_index(), "animated feet sampled before both solvers")
 	for solver in [foot._left_ik, foot._right_ik]:
 		_check(solver.get_root_bone(0) >= 0 and solver.get_middle_bone(0) >= 0 and solver.get_end_bone(0) >= 0, "authored leg chain resolves")
@@ -39,6 +59,9 @@ func _run() -> void:
 	_check(is_equal_approx(hand._target_weight, hand._ik_weight * hand._config.ads_ik_weight), "ADS takes precedence over running")
 	player.weapon_manager.set_aiming(false)
 	_check(not hand._is_ads and is_equal_approx(hand._target_weight, hand._ik_weight * hand._config.run_ik_weight), "leaving ADS restores movement weight")
+	hand.set_prone_state(true)
+	_check(is_equal_approx(hand._target_weight, hand._ik_weight * hand._config.prone_ik_weight), "prone state selects configured IK weight")
+	hand.set_prone_state(false)
 
 	# Observe the real engine modifier chain at full influence.
 	var saved_config := hand._config
@@ -46,22 +69,28 @@ func _run() -> void:
 	hand._config.walk_ik_weight = 1.0
 	hand._config.run_ik_weight = 1.0
 	hand._config.ads_ik_weight = 1.0
-	hand._config.wrist_rotation_offset = Vector3(35, 70, -20)
 	hand._ik_weight = 1.0
 	hand.set_movement_state(false, false)
 	hand.process_ik(1.0)
-	hand._wrist_modifier.modification_processed.connect(func():
-		var actual := (skeleton.global_basis.orthonormalized() * skeleton.get_bone_global_pose(hand._hand_bone_idx).basis.orthonormalized()).get_rotation_quaternion()
-		var desired := hand._hand_target.global_basis.orthonormalized().get_rotation_quaternion()
-		if hand._current_weight > 0.999:
-			wrist_samples += 1
-			wrist_error = maxf(wrist_error, actual.angle_to(desired))
+	hand._ik_node.modification_processed.connect(func():
+		if record_hand_errors and hand._current_weight > 0.999:
+			left_hand_samples += 1
+			var actual := skeleton.global_transform * skeleton.get_bone_global_pose(hand._hand_bone_idx).origin
+			left_hand_error = maxf(left_hand_error, actual.distance_to(hand._hand_target.global_position))
+	)
+	hand._right_ik_node.modification_processed.connect(func():
+		if record_hand_errors and hand._current_weight > 0.999:
+			right_hand_samples += 1
+			var actual := skeleton.global_transform * skeleton.get_bone_global_pose(hand._right_hand_bone_idx).origin
+			right_hand_error = maxf(right_hand_error, actual.distance_to(hand._right_hand_target.global_position))
 	)
 	for i in 30:
 		await get_tree().process_frame
-	_check(wrist_samples > 0 and wrist_error < 0.002, "wrist orientation reaches target after arm solve")
+	_check(left_hand_samples > 0 and left_hand_error < 0.01, "left arm IK reaches the live weapon target")
+	_check(right_hand_samples > 0 and right_hand_error < 0.01, "right arm IK reaches the live weapon target")
+	record_hand_errors = false
 	hand._config = saved_config
-	_test_rotation_spaces()
+	_test_rotation_spaces(player)
 	_test_grip_priority()
 
 	# Freeze animation and use an explicit pose so swing/contact assertions are deterministic.
@@ -72,6 +101,24 @@ func _run() -> void:
 	# Upstream uses authored wrist targets instead of automatic calibration.
 	var authored_target := hand._left_hand_wrist_target
 	_check(is_instance_valid(authored_target), "default weapon has an authored wrist target")
+	var authored_grip := hand._left_hand_grip
+	var saved_grip_transform := authored_grip.global_transform
+	var saved_wrist_transform := authored_target.global_transform
+	var displaced_grip := saved_grip_transform
+	displaced_grip.origin += Vector3(0.04, -0.02, 0.03)
+	authored_grip.global_transform = displaced_grip
+	var wrist_orientation := Basis.from_euler(Vector3(0.3, -0.5, 0.7))
+	var displaced_wrist := Transform3D(wrist_orientation, saved_wrist_transform.origin + Vector3(0.7, 0.4, -0.6))
+	authored_target.global_transform = displaced_wrist
+	hand._update_hand_target()
+	var expected_grip_origin := displaced_grip.origin \
+		+ displaced_grip.basis.orthonormalized() * hand._config.grip_position_offset \
+		- hand._get_current_wrist_to_palm_world() * hand._config.fallback_palm_contact_ratio \
+		+ displaced_grip.basis.orthonormalized() * hand._config.fallback_wrist_position_offset
+	_check(hand._hand_target.global_position.distance_to(expected_grip_origin) < 0.0001, "wrist target position remains owned by the grip")
+	_check(hand._hand_target.global_basis.orthonormalized().is_equal_approx(wrist_orientation.orthonormalized()), "wrist target orientation drives wrist rotation")
+	authored_grip.global_transform = saved_grip_transform
+	authored_target.global_transform = saved_wrist_transform
 	hand._left_hand_grip = null
 	hand._update_hand_target()
 	_check(hand._hand_target.global_transform.is_equal_approx(authored_target.global_transform), "wrist-only weapons preserve the authored target transform")
@@ -129,14 +176,15 @@ func _run() -> void:
 	_check(old_solver.influence == 0.0 and not old_sync.active and hand._ik_node == null, "failed model bind disables old hand chain")
 	hand.setup(skeleton, saved_config)
 	hand.setup(skeleton, saved_config)
-	_check(skeleton.get_node_or_null("LeftHandWrist") == hand._wrist_modifier, "repeated model binding replaces modifiers without duplicates")
+	_check(skeleton.get_node_or_null("LeftHandTargetSync") == hand._target_modifier, "repeated model binding replaces target sync without duplicates")
+	_check(skeleton.get_node_or_null("LeftHandWrist") == null, "hand placement does not install a direct wrist rotation modifier")
 	player.model_manager.model_unloaded.emit()
 	_check(hand._ik_node == null and foot._left_ik == null, "model unload clears both controllers")
-	print("ik_regression_check=%s failures=%d wrist_samples=%d wrist_error_deg=%.4f" % ["ok" if failures == 0 else "FAILED", failures, wrist_samples, rad_to_deg(wrist_error)])
+	print("ik_regression_check=%s failures=%d left_error=%.4f right_error=%.4f" % ["ok" if failures == 0 else "FAILED", failures, left_hand_error, right_hand_error])
 	get_tree().quit(0 if failures == 0 else 1)
 
 
-func _test_rotation_spaces() -> void:
+func _test_rotation_spaces(player: BasePlayer) -> void:
 	var skeleton := Skeleton3D.new()
 	add_child(skeleton)
 	skeleton.rotation = Vector3(0.2, 0.7, -0.1)
@@ -153,6 +201,7 @@ func _test_rotation_spaces() -> void:
 	spine._apply_global_rotation(skeleton, 1, delta)
 	var actual := skeleton.get_bone_global_pose(1).basis.get_rotation_quaternion()
 	_check(actual.angle_to(delta * before) < 0.002, "spine applies skeleton-space rotation with nonidentity bone rests")
+	_test_head_muzzle_alignment(player)
 	skeleton.reset_bone_poses()
 	var ankle := FootIKController.FootAnkleModifier.new()
 	skeleton.add_child(ankle)
@@ -162,6 +211,47 @@ func _test_rotation_spaces() -> void:
 	ankle._apply_ankle_rotation(1, normal, 0.6)
 	actual = (skeleton.global_basis * skeleton.get_bone_global_pose(1).basis).get_rotation_quaternion()
 	_check(actual.angle_to(delta * before) < 0.002, "ankle applies world-space tilt with rotated skeleton and bone rests")
+	skeleton.queue_free()
+
+
+func _test_head_muzzle_alignment(player: BasePlayer) -> void:
+	var skeleton := Skeleton3D.new()
+	player.add_child(skeleton)
+	skeleton.rotation = Vector3(-0.12, 0.48, 0.08)
+	skeleton.add_bone("mixamorig_Head")
+	skeleton.set_bone_rest(0, Transform3D(
+		Basis.from_euler(Vector3(0.4, -0.7, 0.25)), Vector3.UP
+	))
+	skeleton.reset_bone_poses()
+	var config := SpineAimConfig.new()
+	config.bone_names = []
+	config.bone_weights = []
+	config.free_look_bone_names = []
+	config.free_look_bone_weights = []
+	var modifier := SpineAimController.SpineAimModifier.new()
+	skeleton.add_child(modifier)
+	modifier.setup(player, config)
+	modifier._process_modification()
+	# Simulate an animation rotating the head away from the weapon target.
+	skeleton.set_bone_pose_rotation(0, Quaternion.from_euler(Vector3(-0.3, 0.5, 0.2)))
+	modifier.head_target_world_position = player.global_position + Vector3(7.0, 3.0, -11.0)
+	modifier.head_target_valid = true
+	modifier._process_modification()
+	var head_pose := skeleton.get_bone_global_pose(0)
+	var head_basis := (
+		skeleton.global_basis.orthonormalized()
+		* head_pose.basis
+	).orthonormalized()
+	var actual_view := (head_basis * modifier._head_to_view_basis).orthonormalized()
+	var head_position := skeleton.global_transform * head_pose.origin
+	var expected_direction := (
+		modifier.head_target_world_position - head_position
+	).normalized()
+	_check(
+		(-actual_view.z).dot(expected_direction) > 0.99999,
+		"head view calibration looks at the actual muzzle target"
+	)
+	modifier.queue_free()
 	skeleton.queue_free()
 
 

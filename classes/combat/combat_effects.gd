@@ -132,48 +132,12 @@ func _on_damage_taken(info: DamageInfo) -> void:
 	if not info:
 		return
 
-	_spawn_impact_droplets(info)
 	_spawn_character_wound(info)
-	_spawn_wall_splatter(info)
 
 
 func _spawn_impact_droplets(info: DamageInfo) -> void:
-	var parent := _world_parent()
-	if not parent:
-		return
-
-	var particles := CPUParticles3D.new()
-	particles.name = "ImpactDroplets"
-	particles.amount = clampi(roundi(info.amount / 55.0), 9, 24)
-	particles.lifetime = 0.42
-	particles.one_shot = true
-	particles.explosiveness = 1.0
-	particles.randomness = 0.5
-	particles.direction = (-info.direction).normalized() if info.direction != Vector3.ZERO else Vector3.UP
-	particles.spread = 48.0
-	particles.initial_velocity_min = 2.2
-	particles.initial_velocity_max = 5.2
-	particles.gravity = Vector3(0.0, -9.8, 0.0)
-	particles.damping_min = 0.3
-	particles.damping_max = 1.0
-	particles.scale_amount_min = 0.55
-	particles.scale_amount_max = 1.45
-
-	var droplet_mesh := SphereMesh.new()
-	droplet_mesh.radius = 0.012
-	droplet_mesh.height = 0.024
-	droplet_mesh.radial_segments = 8
-	droplet_mesh.rings = 4
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.34, 0.008, 0.018, 1.0)
-	material.roughness = 0.72
-	droplet_mesh.surface_set_material(0, material)
-	particles.mesh = droplet_mesh
-
-	parent.add_child(particles)
-	particles.global_position = info.hit_position
-	particles.emitting = true
-	_queue_free_after(particles, particles.lifetime + 0.3)
+	# Disabled: only character wound decals are rendered.
+	return
 
 
 func _spawn_character_wound(info: DamageInfo) -> void:
@@ -212,74 +176,13 @@ func _spawn_character_wound(info: DamageInfo) -> void:
 
 
 func _spawn_wall_splatter(info: DamageInfo) -> void:
-	if info.direction == Vector3.ZERO or not _player.get_world_3d():
-		return
-
-	var travel_dir := info.direction.normalized()
-	var exclude: Array[RID] = _health.get_hitbox_rids()
-	exclude.append(_player.get_rid())
-	var query := PhysicsRayQueryParameters3D.create(
-		info.hit_position + travel_dir * 0.08,
-		info.hit_position + travel_dir * WALL_TRACE_DISTANCE_M,
-		ENVIRONMENT_MASK,
-		exclude
-	)
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	var result := _player.get_world_3d().direct_space_state.intersect_ray(query)
-	if result.is_empty():
-		return
-
-	var size_scale: float = clampf(sqrt(maxf(info.amount, 1.0) / 600.0), 0.68, 1.35)
-	_spawn_world_decal(
-		_random_variant(_wall_splatter_variants),
-		result.get("position", info.hit_position),
-		result.get("normal", -travel_dir),
-		Vector2(0.78, 0.78) * size_scale,
-		120.0,
-		"WallSplatter"
-	)
+	# Disabled: world wall splatter is intentionally not rendered.
+	return
 
 
 func _spawn_floor_mark(pool: bool, external_rate: float = 0.0, scale_multiplier: float = 1.0) -> void:
-	if not _player or not _player.get_world_3d():
-		return
-
-	var origin := _player.global_position + Vector3.UP * 0.45
-	var exclude: Array[RID] = _health.get_hitbox_rids() if _health else []
-	exclude.append(_player.get_rid())
-	var query := PhysicsRayQueryParameters3D.create(
-		origin,
-		origin + Vector3.DOWN * FLOOR_TRACE_DISTANCE_M,
-		ENVIRONMENT_MASK,
-		exclude
-	)
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	var result := _player.get_world_3d().direct_space_state.intersect_ray(query)
-	if result.is_empty():
-		return
-
-	if pool:
-		var pool_scale: float = clampf(0.72 + external_rate / 40.0, 0.72, 1.08) * scale_multiplier
-		_spawn_world_decal(
-			_random_variant(_floor_pool_variants),
-			result.get("position", origin),
-			result.get("normal", Vector3.UP),
-			Vector2(0.72, 0.54) * pool_scale,
-			180.0,
-			"FloorPool"
-		)
-	else:
-		var drop_scale: float = _rng.randf_range(0.72, 1.12) * scale_multiplier
-		_spawn_world_decal(
-			_random_variant(_floor_droplet_variants),
-			result.get("position", origin),
-			result.get("normal", Vector3.UP),
-			Vector2(0.13, 0.13) * drop_scale,
-			90.0,
-			"FloorDroplet"
-		)
+	# Disabled: ground droplets and pools are intentionally not rendered.
+	return
 
 
 func _spawn_world_decal(
@@ -386,40 +289,8 @@ func _bleed_interval(rate: MedicalEnums.BleedRate) -> float:
 
 
 func _spawn_arterial_spurt(external_rate: float) -> void:
-	var parent := _world_parent()
-	if not parent:
-		return
-
-	var source_position := _player.global_position + Vector3.UP * 1.0
-	var outward := (_player.global_basis.x + Vector3.UP * 0.12).normalized()
-	if _latest_wound_decal:
-		var wound_decal = _latest_wound_decal.get_ref()
-		if is_instance_valid(wound_decal):
-			source_position = wound_decal.global_position
-			outward = (wound_decal.global_basis.y + Vector3.UP * 0.12).normalized()
-
-	var particles := CPUParticles3D.new()
-	particles.name = "ArterialSpurt"
-	particles.amount = clampi(roundi(external_rate * 0.55), 6, 11)
-	particles.lifetime = 0.34
-	particles.one_shot = true
-	particles.explosiveness = 1.0
-	particles.randomness = 0.34
-	particles.direction = outward
-	particles.spread = 14.0
-	particles.initial_velocity_min = 1.8
-	particles.initial_velocity_max = 3.6
-	particles.gravity = Vector3(0.0, -9.8, 0.0)
-	particles.damping_min = 0.25
-	particles.damping_max = 0.7
-	particles.scale_amount_min = 0.45
-	particles.scale_amount_max = 1.15
-	particles.mesh = _make_droplet_mesh(0.009)
-
-	parent.add_child(particles)
-	particles.global_position = source_position
-	particles.emitting = true
-	_queue_free_after(particles, particles.lifetime + 0.3)
+	# Disabled: arterial spray is intentionally not rendered.
+	return
 
 
 func _make_droplet_mesh(radius: float) -> SphereMesh:

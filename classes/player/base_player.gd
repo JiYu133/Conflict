@@ -80,6 +80,7 @@ var stance_controller: StanceController
 var model_manager: PlayerModelManager
 var look_controller: PlayerLookController
 var camera_controller: PlayerCameraController
+var optic_render_controller: OpticRenderController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
 var collision_controller: PlayerCollisionController
@@ -174,6 +175,8 @@ func _initialize_subsystems() -> void:
 	model_manager = _create_subsystem(PlayerModelManager.new(), "ModelManager")
 	look_controller = _create_subsystem(PlayerLookController.new(), "LookController") as PlayerLookController
 	camera_controller = _create_subsystem(PlayerCameraController.new(),"CameraController")
+	if not is_ai_player:
+		optic_render_controller = _create_subsystem(OpticRenderController.new(), "OpticRenderController") as OpticRenderController
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
 	stance_controller = _create_subsystem(StanceController.new(), "StanceController")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
@@ -225,10 +228,13 @@ func _initialize_subsystems() -> void:
 		model_manager,
 		player_config.model_config if player_config else null
 		)
+	hand_ik_controller.set_weapon_pose_controller(camera_controller)
 
 
 	weapon_manager.set_camera_controller(camera_controller)
 	weapon_manager.set_settings_service(settings_service)
+	if optic_render_controller:
+		optic_render_controller.initialize(self, weapon_manager, camera_controller)
 	weapon_drop_system.initialize(self, weapon_manager)
 
 	health_system.initialize(
@@ -422,17 +428,17 @@ func _on_model_loaded(_model: Node3D) -> void:
 
 	if weapon_mount:
 		GlobalLogger.info("Player", "Weapon mount has been set: " + weapon_mount.name)
-		# 武器直接挂在右手骨骼的 BoneAttachment3D 下（WeaponMount），随右手动画移动。
-		# 不要改挂到模型下的静态节点：那样只能在模型加载瞬间采样一次右手位置
-		# （此时骨骼仍是 rest/T-pose），武器会被焊死在体侧且不随视角俯仰。
-		# 左手再通过 IK 抓握武器上的 LeftHandGrip（见 HandIKController）。
-		ragdoll_system.set_weapon_mount(weapon_mount)
-		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(weapon_mount)
+		# WeaponMount remains an animation pose source only. The actual weapon is
+		# parented to an independent rig so both hands can solve toward its grips
+		# without the old right-hand -> weapon -> right-hand feedback loop.
+		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(weapon_mount, _model)
 		if sway_pivot:
 			weapon_manager.set_mount(sway_pivot)
+			ragdoll_system.set_weapon_mount(camera_controller.get_weapon_pose_root())
 			GlobalLogger.info("Player", "Weapon sway pivot created, weapons attach under: " + sway_pivot.name)
 		else:
 			weapon_manager.set_mount(weapon_mount)
+			ragdoll_system.set_weapon_mount(weapon_mount)
 	else:
 		GlobalLogger.error("Player", "Cannot find any weapon mount,the weapon will be not visible.")
 		GlobalLogger.error("Player", "If there's already a weapon mount,try to check if its name is \"WeaponMount\" ")
@@ -600,6 +606,10 @@ func _add_recoil_hand_contact(
 
 
 func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
+	# A weapon's contact points and inertia may change, so discard the previous
+	# weapon's persistent recoil state before binding the new component.
+	if force_receiver:
+		force_receiver.clear_forces()
 	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
 	hand_ik_controller.set_weapon(new_weapon, weight)
 	if camera_controller:
@@ -621,6 +631,8 @@ func _sync_weapon_weight_to_stamina() -> void:
 
 
 func _process(delta: float) -> void:
+	if weapon_manager and weapon_manager.is_aiming and (not is_alive or not controllable):
+		weapon_manager.cancel_aiming()
 	var stance_geometry_settled := not stance_controller \
 			or not stance_controller.is_stance_transitioning()
 	if _prone_collision_sampling_pending_frames > 0 \
@@ -637,6 +649,9 @@ func _process(delta: float) -> void:
 	# Prone clips own the spine and lower body, but the left hand must continue
 	# following the weapon grip or the full-body clip lets it release the rifle.
 	spine_aim_controller.process_aim(delta, procedural_animation_active and not prone)
+	# The independent weapon rig still samples the authored hand pose when arm IK
+	# is disabled, including the pre-physics death-animation phase.
+	camera_controller.refresh_weapon_pose()
 	hand_ik_controller.set_prone_state(prone)
 	hand_ik_controller.process_ik(delta, procedural_animation_active)
 	foot_ik_controller.set_active(procedural_animation_active and not prone, delta if procedural_animation_active else 0.0)
@@ -664,6 +679,13 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if is_alive and controllable:
+		# 瞄准：按住与切换模式共享同一个可重绑定动作。
+		if event.is_action_pressed("aim"):
+			var ads_mode := String(settings_service.get_value("controls/ads_input_mode", "hold"))
+			_request_aim(not weapon_manager.is_aiming if ads_mode == "toggle" else true)
+		elif event.is_action_released("aim") \
+				and String(settings_service.get_value("controls/ads_input_mode", "hold")) == "hold":
+			_request_aim(false)
 		# 换弹
 		if event.is_action_pressed("reload"):
 			weapon_manager.reload()
@@ -820,7 +842,13 @@ func _debug_trigger_pain_feedback(world_direction: Vector3) -> void:
 func _on_started_sprinting() -> void:
 	hand_ik_controller.set_movement_state(true, true)
 	weapon_manager.release_trigger()
-	weapon_manager.set_aiming(false)
+	weapon_manager.cancel_aiming()
+
+
+func _request_aim(enabled: bool) -> void:
+	if enabled and movement_controller and movement_controller.is_sprinting():
+		movement_controller.suppress_sprint_until_release()
+	weapon_manager.set_aiming(enabled)
 
 
 func _on_stance_changed(value: float) -> void:
@@ -940,7 +968,12 @@ func die(
 	if not is_alive:
 		return
 	var inherited_velocity := velocity
+	weapon_manager.cancel_aiming()
 	is_alive = false
+	# Recoil and hit pose state must not leak into the ragdoll lifecycle. The
+	# pending impact impulse is kept separately for PlayerRagdollSystem.
+	if force_receiver:
+		force_receiver.clear_recoil_state()
 	_activate_ragdoll(
 		death_type, impact_direction,
 		impact_energy_j, impact_mass_kg, impact_damage_type, inherited_velocity
@@ -964,6 +997,7 @@ func _activate_ragdoll(
 	if camera_controller:
 		camera_controller.clear_pain_impulse()
 		camera_controller.set_ragdoll_camera_shake(false)
+		camera_controller.reset_weapon_pose_to_hip()
 	is_ragdolled = true
 	spine_aim_controller.process_aim(0.0, false)
 	hand_ik_controller.process_ik(0.0, false)

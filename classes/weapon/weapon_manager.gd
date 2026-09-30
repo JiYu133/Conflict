@@ -24,6 +24,8 @@ var _stats_changed_callable: Callable  # 存储 lambda 以便 disconnect
 
 func equip_weapon(weapon: BaseWeapon, emit_changed: bool = true) -> void:
 	if current_weapon:
+		release_trigger()
+		cancel_aiming()
 		if _weapon_anim_controller:
 			_weapon_anim_controller.play_holster()
 		# 显式断开信号，避免 queue_free 延迟期间旧信号仍触发
@@ -139,6 +141,7 @@ func release_trigger() -> void:
 
 func reload() -> void:
 	if current_weapon:
+		set_aiming(false)
 		current_weapon.reload()
 
 func cycle_fire_mode() -> bool:
@@ -160,17 +163,25 @@ func set_fire_mode(mode: String) -> bool:
 
 func attempt_malfunction_clearance() -> void:
 	if current_weapon:
+		set_aiming(false)
 		current_weapon.attempt_malfunction_clearance()
 
 func set_aiming(aiming: bool) -> void:
-	is_aiming = aiming
+	var next_state := aiming and is_instance_valid(current_weapon)
+	if is_aiming == next_state:
+		return
+	is_aiming = next_state
 	aiming_changed.emit(is_aiming)
 	if _weapon_anim_controller:
-		if aiming:
+		if is_aiming:
 			_weapon_anim_controller.play_ads_in()
 		else:
 			_weapon_anim_controller.play_ads_out()
 	_apply_ads_state()
+
+
+func cancel_aiming() -> void:
+	set_aiming(false)
 
 ## 根据配置创建武器实例，装备并自动装上预设配件
 func load_and_equip(config: WeaponConfig) -> void:
@@ -270,7 +281,8 @@ func _apply_ads_state() -> void:
 		is_aiming,
 		current_weapon.get_effective_ads_time(),
 		current_weapon.get_effective_fov_override(),
-		current_weapon.config.ads_center_offset
+		current_weapon.config.ads_center_offset,
+		current_weapon.get_ads_anchor()
 	)
 
 

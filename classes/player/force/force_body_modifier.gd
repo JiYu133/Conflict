@@ -3,62 +3,36 @@ extends SkeletonModifier3D
 
 # ============================================================
 # 力的骨骼姿态叠加器
-# 功能：每帧先把上一帧改动过的骨骼还原到基准姿态，再重新应用当前力
-#       产生的旋转与限幅位移。还原步骤是“每帧累加漂移”问题的根因修复：
-#       不做还原的话，任何常驻力都会逐帧叠加成无限旋转。
+# 功能：把当前力产生的旋转与限幅位移叠加到当前帧的上游骨骼姿态。
+#       SkeletonModifier3D 执行前已经收到动画和前序 modifier 的新姿态；
+#       不能回写上一帧缓存，否则后坐力结束时会插入旧姿势并产生跳变。
 # 用法：由 BasePlayer 在模型加载后创建，插在 SpineAimModifier 之后、
 #       第一个 TwoBoneIK3D 之前，使 IK 拥有最终发言权。
 # ============================================================
 
 var _receiver: ForceReceiver = null
-## 上一帧被改动过的骨骼及其基准姿态：bone_idx → {rotation, position}
-var _touched: Dictionary = {}
 
 
 ## 绑定力接收器；骨架由 SkeletonModifier3D 的父节点自动解析。
 func setup(receiver: ForceReceiver) -> void:
 	_receiver = receiver
-	_touched.clear()
 
 
 func get_touched_bone_count() -> int:
-	return _touched.size()
+	# Compatibility/debug API. No cross-frame pose state is retained.
+	return 0
 
 
 func _process_modification_with_delta(_delta: float) -> void:
 	var skeleton := get_skeleton()
 	if not skeleton:
 		return
-	# 第一步：还原基准姿态，杜绝跨帧累加。
-	_restore_base(skeleton)
 	if not is_instance_valid(_receiver):
 		return
 	var offsets := _receiver.get_pose_offsets()
 	if offsets.is_empty():
 		return
 	_apply_offsets(skeleton, offsets)
-
-
-# 内部 — 还原 ───────────────────────────────────────────────
-
-func _restore_base(skeleton: Skeleton3D) -> void:
-	if _touched.is_empty():
-		return
-	# 先深后浅：父骨骼的姿态会影响子骨骼，从叶子往根还原更稳妥。
-	var indices := _touched.keys()
-	indices.sort()
-	var i := indices.size() - 1
-	while i >= 0:
-		var bone_idx: int = int(indices[i])
-		i -= 1
-		var entry: Dictionary = _touched[bone_idx]
-		if bone_idx < 0 or bone_idx >= skeleton.get_bone_count():
-			continue
-		var rotation: Quaternion = entry["rotation"]
-		var position: Vector3 = entry["position"]
-		skeleton.set_bone_pose_rotation(bone_idx, rotation)
-		skeleton.set_bone_pose_position(bone_idx, position)
-	_touched.clear()
 
 
 # 内部 — 应用 ───────────────────────────────────────────────
@@ -73,10 +47,6 @@ func _apply_offsets(skeleton: Skeleton3D, offsets: Dictionary) -> void:
 		if bone_idx < 0 or bone_idx >= bone_count:
 			continue
 		var entry: Dictionary = offsets[bone_idx_value]
-		_touched[bone_idx] = {
-			"rotation": skeleton.get_bone_pose_rotation(bone_idx),
-			"position": skeleton.get_bone_pose_position(bone_idx),
-		}
 		_apply_translation(skeleton, bone_idx, entry.get("translation", Vector3.ZERO))
 		_apply_rotation(skeleton, bone_idx, entry.get("axis", Vector3.ZERO), float(entry.get("angle", 0.0)))
 

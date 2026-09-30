@@ -2,7 +2,7 @@ class_name HandIKConfig
 extends Resource
 
 # ============================================================
-# 左手 IK 配置资源（TwoBoneIK3D 版本）
+# 双手 IK 配置资源（TwoBoneIK3D 版本）
 #
 # 用法：
 #   1. 在编辑器中右键 → New Resource → 选择 HandIKConfig
@@ -45,8 +45,8 @@ extends Resource
 ## 冲刺（Sprint）时的 IK 权重
 @export_range(0.0, 1.0) var sprint_ik_weight: float = 0.1
 
-## ADS 时的 IK 权重
-@export_range(0.0, 1.0) var ads_ik_weight: float = 0.8
+## ADS 时的 IK 权重。建议保持 1，确保双手完整跟随独立武器姿态。
+@export_range(0.0, 1.0) var ads_ik_weight: float = 1.0
 
 ## 趴下及趴下过渡时的 IK 权重。
 ## 趴下动画的左臂基姿态离握把较远，需要完整求解到腕骨目标。

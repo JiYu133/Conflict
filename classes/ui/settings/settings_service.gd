@@ -7,7 +7,7 @@ const KeybindStore = preload("res://classes/ui/settings/keybind_store.gd")
 const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
 
 const SAVE_PATH := "user://settings.cfg"
-const VERSION := 5
+const VERSION := 7
 
 const GRAPHICS_DEFAULTS_V3 := {
 	"graphics/hit_camera_impact": 1.0,
@@ -35,7 +35,9 @@ const DEFAULTS := {
 	"controls/sensitivity": 1.0,
 	"controls/radial_menu_hold_threshold": 0.25,
 	"controls/invert_y": false,
+	"controls/ads_input_mode": "hold",
 	"graphics/window_mode": "fullscreen",
+	"graphics/magnified_scope_mode": "pixel_zoom",
 	"graphics/hit_camera_impact": 1.0,
 	"graphics/damage_blur": 1.0,
 	"graphics/coma_effect": true,
@@ -159,11 +161,17 @@ func _normalize_value(key: String, value: Variant) -> Variant:
 			return clampf(float(value), 0.10, 1.00)
 		"controls/invert_y":
 			return bool(value)
+		"controls/ads_input_mode":
+			var mode := String(value)
+			return mode if mode in ["hold", "toggle"] else DEFAULTS[key]
 		"audio/menu_music_volume", "audio/loading_music_volume", "audio/loading_muffle":
 			return clampf(float(value), 0.0, 1.0)
 		"graphics/window_mode":
 			var mode := String(value)
 			return mode if mode in ["windowed", "fullscreen"] else DEFAULTS[key]
+		"graphics/magnified_scope_mode":
+			var mode := String(value)
+			return mode if mode in ["pixel_zoom", "dual_camera"] else DEFAULTS[key]
 		"graphics/hit_camera_impact", "graphics/damage_blur", "graphics/death_camera_shake":
 			return clampf(float(value), 0.0, 1.0)
 		"graphics/muzzle_flash_distance":

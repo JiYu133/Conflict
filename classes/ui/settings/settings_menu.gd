@@ -618,6 +618,15 @@ func _build_controls_page() -> void:
 	_add_slider_row(SettingsText.CONTROL_SENSITIVITY, SettingsText.CONTROL_SENSITIVITY_HINT, "controls/sensitivity", 0.10, 3.00, 0.05)
 	_add_slider_row(SettingsText.CONTROL_RADIAL_MENU_HOLD, SettingsText.CONTROL_RADIAL_MENU_HOLD_HINT, "controls/radial_menu_hold_threshold", 0.10, 1.00, 0.05)
 	_add_toggle_row(SettingsText.CONTROL_INVERT_Y, SettingsText.CONTROL_INVERT_Y_HINT, "controls/invert_y")
+	_add_option_row(
+		SettingsText.CONTROL_ADS_INPUT_MODE,
+		SettingsText.CONTROL_ADS_INPUT_MODE_HINT,
+		"controls/ads_input_mode",
+		[
+			{"label": SettingsText.ADS_INPUT_HOLD, "value": "hold"},
+			{"label": SettingsText.ADS_INPUT_TOGGLE, "value": "toggle"},
+		]
+	)
 	_add_section(SettingsText.SECTION_KEYBINDS, SettingsText.SECTION_KEYBINDS_HINT)
 	_add_binding_header()
 	var current_category := ""
@@ -636,6 +645,16 @@ func _build_video_page() -> void:
 	_content_subtitle.text = "调整窗口显示方式、视觉特效和血腥内容显示。"
 	_add_section(SettingsText.SECTION_DISPLAY)
 	_add_window_mode_row()
+	_add_section(SettingsText.SECTION_OPTICS)
+	_add_option_row(
+		SettingsText.VIDEO_MAGNIFIED_SCOPE_MODE,
+		SettingsText.VIDEO_MAGNIFIED_SCOPE_MODE_HINT,
+		"graphics/magnified_scope_mode",
+		[
+			{"label": SettingsText.SCOPE_MODE_PIXEL_ZOOM, "value": "pixel_zoom"},
+			{"label": SettingsText.SCOPE_MODE_DUAL_CAMERA, "value": "dual_camera"},
+		]
+	)
 	_add_section(SettingsText.SECTION_COMFORT)
 	_add_slider_row(SettingsText.VIDEO_HIT_CAMERA_IMPACT, SettingsText.VIDEO_HIT_CAMERA_IMPACT_HINT, "graphics/hit_camera_impact", 0.0, 1.0, 0.05)
 	_add_slider_row(SettingsText.VIDEO_DAMAGE_BLUR, SettingsText.VIDEO_DAMAGE_BLUR_HINT, "graphics/damage_blur", 0.0, 1.0, 0.05)

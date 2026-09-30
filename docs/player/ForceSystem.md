@@ -20,7 +20,7 @@
 | `force_config.gd` | `ForceConfig`（Resource） | 衰减、传播深度、姿态增益与上限、冲量换算比例 |
 | `force_propagation.gd` | `ForcePropagation` | 深度受限 BFS，按层级距离给出逐骨骼权重（带缓存） |
 | `force_receiver.gd` | `ForceReceiver`（Node） | 受力入口、姿态偏移求解、待用冲量缓存 |
-| `force_body_modifier.gd` | `ForceBodyModifier`（SkeletonModifier3D） | 每帧还原基准姿态后重新叠加旋转与限幅位移 |
+| `force_body_modifier.gd` | `ForceBodyModifier`（SkeletonModifier3D） | 在当前帧上游姿态上叠加旋转与限幅位移 |
 
 ## 力的表示
 
@@ -121,8 +121,9 @@ apply_force(
 第一个 `TwoBoneIK3D` 之前。`SkeletonModifier3D` 的兄弟顺序即执行顺序，因此
 **IK 拥有最终发言权**。
 
-每帧流程：还原上一帧动过的骨骼到基准姿态 → 重新应用当前力的旋转/位移。
-还原步骤是“每帧累加漂移”问题的根因修复。
+每帧流程：动画与前序 modifier 生成当前姿态 → `ForceBodyModifier` 读取当前剩余力
+→ 只在这一帧姿态上叠加旋转/位移。修改器不保存或回写上一帧的骨骼基准，
+因此不会覆盖新的动画/瞄准姿态，也不会在后坐力结束时插入一帧旧姿势。
 
 ## 配置依赖
 
@@ -144,6 +145,8 @@ apply_force(
 
 `BasePlayer.apply_weapon_recoil()` 将 `RecoilPhysicsModel` 的冲量转换到玩家世界空间，并按 `ForceConfig` 中的肩部、主手和辅手接触刚度分配。每个有效接触点通过 `ForceReceiver.apply_recoil_impulse()` 写入对应骨骼；接触点力矩与剩余纯角冲量共同形成骨骼角位移。后坐力持续时间由武器的转动惯量、控制刚度、阻尼和 `ForceConfig.decay_floor` 推导，不使用固定秒数。后坐力不改变角色根节点速度，也不复用受击的经验性平移/旋转增益。
 
+`ForceReceiver` 将每次射击的角冲量累加到持续的角度/角速度状态，并用解析临界阻尼响应回到零。线性 `ForcePayload` 回收或松开扳机都不会清除这份状态，因此连续射击和停火恢复不会突然归位；`ForceBodyModifier` 仍是唯一的骨骼姿态写回者，并在 Hand IK 之前叠加偏移，让左手 IK 继续约束武器握把。
+
 可校准参数：`recoil_shoulder_stiffness`、`recoil_primary_hand_stiffness`、`recoil_support_hand_stiffness`、`recoil_bone_inertia_kg_m2` 和 `decay_floor`。武器端的弹头/装药/燃气/质心/惯量、控制刚度与阻尼仍由 `WeaponConfig`、`BarrelConfig` 和附件配置提供。
 
 `PlayerRagdollSystem.set_force_provider(receiver)` 接入后，`_apply_impact_impulse()`
@@ -155,9 +158,7 @@ apply_force(
 
 ## 注意事项
 
-- 本期**不接摄像机**；塔科夫式头部弹簧摄像机是独立的后续步骤，
-  `camera_force_weight` 相应延后。
-- 武器后坐力集成延后到下个里程碑；现有接口（尤其位移限幅）已按后坐力需求预留。
+- 摄像机后坐力仍由 `PlayerCameraController` 独立消费 `RecoilComponent`，不写入角色朝向或 `ForceReceiver`。
 - `revive()` 与 `prepare_for_encounter_spawn()` 都会清空力与待用冲量。
 
 ## 测试
@@ -169,7 +170,7 @@ godot --headless --path . --script res://tests/force_integration_runner.gd
 
 `force_system_runner.gd` 为单位/回归用例（衰减曲线、传播权重与深度截断、
 姿态上限与 overload、跨帧漂移守卫、非有限输入稳健性、冲量推导、一次性消费、
-`Local` 空间换算、生效力上限、修饰器姿态还原与真实骨骼姿态漂移守卫、
+`Local` 空间换算、生效力上限、当前帧姿态叠加与真实骨骼姿态漂移守卫、
 布娃娃提供者契约）。
 
 `force_integration_runner.gd` 加载真实 `assets/map/test_map.tscn` 玩家场景，

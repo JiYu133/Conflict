@@ -116,6 +116,9 @@ func _start_effect() -> void:
 		return
 	if not _blood_effects_enabled():
 		return
+	# Blood decals/particles on the world are disabled. Keep the lifecycle,
+	# cleanup, settings, and console interfaces available for future effects.
+	return
 	# 等待布娃娃的 deferred 启动至少跨过一个物理帧，再从当前骨骼姿态投影伤口。
 	await get_tree().physics_frame
 	if not _has_started or not is_instance_valid(_player):

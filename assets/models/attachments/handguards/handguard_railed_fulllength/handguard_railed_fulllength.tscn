@@ -10,12 +10,10 @@ script = ExtResource("1_base")
 [node name="Mesh" parent="." unique_id=398433626 instance=ExtResource("3_mesh")]
 
 [node name="LeftHandGrip" type="Marker3D" parent="." unique_id=141084524]
-transform = Transform3D(0, 1, 0, 1, 0, 0, 0, 0, -1, -0.07311324, -0.05368633, 0.11887932)
-visible = false
+transform = Transform3D(0, 1, 0, 1, 0, 0, 0, 0, -1, -0.010418899, -0.12744136, 0.054813743)
 
-[node name="LeftHandWristTarget" type="Marker3D" parent="."]
-transform = Transform3D(0, 1, 0, 1, 0, 0, 0, 0, -1, -0.07311324, -0.05368633, 0.11887932)
-visible = false
+[node name="LeftHandWristTarget" type="Marker3D" parent="." unique_id=1124595964]
+transform = Transform3D(-4.371139e-08, 0, -1.0000002, 0, 1.0000002, 0, 1, 0, -4.37114e-08, 0.07412506, -0.15483025, 0.11887932)
 
 [node name="Underbarrel" type="Marker3D" parent="." unique_id=547466798]
 script = ExtResource("2_slot")

@@ -64,7 +64,12 @@ func _run() -> void:
 	player.weapon_manager.set_aiming(true)
 	await _frames(30)
 	_check(hand._is_ads and is_equal_approx(hand._current_weight, hand._ik_weight * hand._config.ads_ik_weight), "crouch ADS keeps configured hand weight")
-	_check(hand._hand_target.global_position.distance_to(hand._left_hand_wrist_target.global_position) < 0.003, "crouch support hand follows authored weapon target")
+	_check(
+		hand._hand_target.global_position.distance_to(
+			hand._get_current_wrist_target_transform().origin
+		) < 0.003,
+		"crouch support hand follows the live weapon grip target"
+	)
 	player.weapon_manager.set_aiming(false)
 
 	var slope := StaticBody3D.new()

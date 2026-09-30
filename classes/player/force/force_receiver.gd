@@ -40,18 +40,23 @@ var _pending_impulse: Dictionary = {}
 
 ## 骨骼静止朝向缓存（bone_idx → 世界空间单位向量）
 var _bone_direction_cache: Dictionary = {}
+## Persistent angular recoil state per contact bone: {angle, velocity, duration}.
+var _recoil_states: Dictionary = {}
 
 
 ## 绑定玩家与配置；skeleton 可为空，稍后通过 set_skeleton() 补上。
 func initialize(player: Node3D, config: ForceConfig = null, skeleton: Skeleton3D = null) -> void:
 	_player = player
 	_config = config if config else ForceConfig.new()
+	_skeleton = skeleton
 	if not is_instance_valid(_propagation):
 		_propagation = ForcePropagation.new()
-	_propagation.configure(skeleton, _config.decay_per_level, _config.max_propagation_depth)
-	_skeleton = skeleton
+		_propagation.configure(skeleton, _config.decay_per_level, _config.max_propagation_depth)
+	else:
+		_propagation.configure(skeleton, _config.decay_per_level, _config.max_propagation_depth)
 	_bone_direction_cache.clear()
 	_pose_offsets.clear()
+	_recoil_states.clear()
 	_peak_strength = 0.0
 	_overloaded = false
 
@@ -61,9 +66,12 @@ func set_skeleton(skeleton: Skeleton3D) -> void:
 	_skeleton = skeleton
 	if not is_instance_valid(_propagation):
 		_propagation = ForcePropagation.new()
-	_propagation.configure(skeleton, _config.decay_per_level, _config.max_propagation_depth)
+		_propagation.configure(skeleton, _config.decay_per_level, _config.max_propagation_depth)
+	else:
+		_propagation.configure(skeleton, _config.decay_per_level, _config.max_propagation_depth)
 	_bone_direction_cache.clear()
 	_pose_offsets.clear()
+	_recoil_states.clear()
 	_peak_strength = 0.0
 	_overloaded = false
 
@@ -157,6 +165,7 @@ func apply_recoil_impulse(
 	var direction := linear_impulse.normalized()
 	if direction.is_zero_approx():
 		direction = Vector3.ZERO
+	var active_count_before := _active.size()
 	apply_force(
 		direction,
 		0.0,
@@ -170,8 +179,9 @@ func apply_recoil_impulse(
 		impulse_ns,
 		angular_impulse
 	)
-	if not _active.is_empty():
+	if _active.size() > active_count_before:
 		(_active.back() as ForceTypes.ForcePayload).physical_recoil = true
+		_accumulate_recoil_impulse(hit_bone, angular_impulse, duration)
 
 
 ## 从伤害事件推导力与待用冲量。本期唯一接入点（HealthSystem.damage_taken）。
@@ -255,9 +265,23 @@ func clear_forces() -> void:
 	for payload in _active:
 		_release_payload(payload)
 	_active.clear()
+	_recoil_states.clear()
 	_pose_offsets.clear()
 	_peak_strength = 0.0
 	_overloaded = false
+
+
+## Clear only persistent firearm recoil. Impact payloads remain available for
+## the ragdoll transition that may be triggered by the same damage event.
+func clear_recoil_state() -> void:
+	_recoil_states.clear()
+	var index := _active.size() - 1
+	while index >= 0:
+		var payload: ForceTypes.ForcePayload = _active[index]
+		if payload.physical_recoil:
+			_active.remove_at(index)
+			_release_payload(payload)
+		index -= 1
 
 
 # 查询 ───────────────────────────────────────────────────────
@@ -316,6 +340,7 @@ func update_pose_offsets(delta: float) -> void:
 			_active.remove_at(index)
 			_release_payload(payload)
 		index -= 1
+	_update_recoil_states(step)
 	_rebuild_pose_offsets()
 	_update_overload()
 
@@ -325,8 +350,22 @@ func update_pose_offsets(delta: float) -> void:
 func _rebuild_pose_offsets() -> void:
 	_pose_offsets.clear()
 	_peak_strength = 0.0
-	if not is_instance_valid(_skeleton) or _active.is_empty():
+	if not is_instance_valid(_skeleton) or (_active.is_empty() and _recoil_states.is_empty()):
 		return
+	for bone_idx_value in _recoil_states:
+		var state: Dictionary = _recoil_states[bone_idx_value]
+		var state_idx := int(bone_idx_value)
+		var state_angle: Vector3 = state["angle"]
+		if state_angle.length_squared() <= 0.00000001:
+			continue
+		var state_inertia := _recoil_inertia_for_bone(state_idx)
+		_pose_offsets[state_idx] = {
+			"push": Vector3.ZERO,
+			"angular_impulse": state_angle * state_inertia,
+			"physical_recoil": true,
+			"depth": 0,
+			"raw_strength": state_angle.length(),
+		}
 	for raw_payload in _active:
 		var payload: ForceTypes.ForcePayload = raw_payload
 		var bone_idx := _skeleton.find_bone(payload.hit_bone)
@@ -348,10 +387,6 @@ func _rebuild_pose_offsets() -> void:
 			# must be resolved once at the contact bone; propagating it to every
 			# ancestor/child would apply the same angular momentum repeatedly.
 			var angular_contribution := Vector3.ZERO
-			if int(affected_idx) == bone_idx:
-				# The shot changes angular velocity first; angle builds over time.
-				var response := _recoil_impulse_response(payload.elapsed, payload.duration)
-				angular_contribution = payload.angular_impulse_world * response
 			if scalar <= 0.0 and angular_contribution.length_squared() <= 0.000001:
 				continue
 			if not _pose_offsets.has(affected_idx):
@@ -415,15 +450,17 @@ func _resolve_offset(
 	var rotation_vector := Vector3.ZERO
 	var bone_direction := _bone_direction_world(bone_idx)
 	if not physical_recoil and push_length > 0.000001 and bone_direction.length_squared() > 0.0:
+		# The incoming force pushes the struck bone away from the projectile.
 		var candidate := bone_direction.cross(direction)
 		if candidate.length_squared() > 0.0000001:
 			rotation_vector = candidate.normalized() * (_config.rotation_gain * effective)
-	if angular_impulse.length_squared() > 0.000001:
+	if angular_impulse.length_squared() > 0.000000000001:
 		var inertia := _recoil_inertia_for_bone(bone_idx)
 		rotation_vector += angular_impulse / inertia
 	var angle := rotation_vector.length()
 	var axis := rotation_vector / angle if angle > 0.000001 else Vector3.ZERO
-	angle = minf(angle, maxf(_config.recoil_max_bone_angle_rad, 0.0))
+	if physical_recoil:
+		angle = minf(angle, maxf(_config.recoil_max_bone_angle_rad, 0.0))
 	if not is_finite(angle) or not axis.is_finite() or not translation.is_finite():
 		return {}
 	return {
@@ -440,14 +477,47 @@ func _recoil_inertia_for_bone(bone_idx: int) -> float:
 	return maxf(float(_config.recoil_bone_inertia_kg_m2.get(bone_name, 0.08)), 0.0001)
 
 
-## Critically-damped impulse response: zero at impact, rises, then decays
-## asymptotically. Duration is a dynamics time scale, never a cutoff time.
-func _recoil_impulse_response(elapsed: float, duration: float) -> float:
-	if not is_finite(elapsed) or not is_finite(duration) or duration <= 0.0 or elapsed <= 0.0:
-		return 0.0
-	var progress := elapsed / duration
-	const SETTLING_POLE := 4.7439
-	return duration * progress * exp(1.0 - SETTLING_POLE * progress)
+func _accumulate_recoil_impulse(hit_bone: String, angular_impulse: Vector3, duration: float) -> void:
+	if not is_instance_valid(_skeleton) or not angular_impulse.is_finite():
+		return
+	var bone_idx := _resolve_bone_index(hit_bone)
+	if bone_idx < 0:
+		return
+	var state: Dictionary = _recoil_states.get(bone_idx, {
+		"angle": Vector3.ZERO,
+		"velocity": Vector3.ZERO,
+		"duration": maxf(duration, 0.05),
+	})
+	state["velocity"] = state["velocity"] + angular_impulse / _recoil_inertia_for_bone(bone_idx)
+	state["duration"] = maxf(float(state["duration"]), maxf(duration, 0.05))
+	_recoil_states[bone_idx] = state
+
+
+func _update_recoil_states(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	for bone_idx_value in _recoil_states.keys():
+		var bone_idx := int(bone_idx_value)
+		var state: Dictionary = _recoil_states[bone_idx_value]
+		var angle: Vector3 = state["angle"]
+		var velocity: Vector3 = state["velocity"]
+		var duration := maxf(float(state["duration"]), 0.05)
+		var omega := 4.7439 / duration
+		# Exact critically-damped integration. Explicit Euler becomes unstable for
+		# the short response times used by weapons and can create visible jumps or
+		# NaN values after a burst of shots.
+		var decay := exp(-omega * delta)
+		var combined := velocity + omega * angle
+		var next_angle := (angle + combined * delta) * decay
+		var next_velocity := (velocity - omega * combined * delta) * decay
+		angle = next_angle
+		velocity = next_velocity
+		state["angle"] = angle
+		state["velocity"] = velocity
+		if angle.length_squared() < 0.00000001 and velocity.length_squared() < 0.00000001:
+			_recoil_states.erase(bone_idx_value)
+		else:
+			_recoil_states[bone_idx_value] = state
 
 
 func _recoil_decay_weight(elapsed: float, duration: float) -> float:
@@ -466,11 +536,22 @@ func _is_recoil_settled(payload: ForceTypes.ForcePayload) -> bool:
 	var bone_idx := _resolve_bone_index(payload.hit_bone)
 	if bone_idx < 0:
 		return true
-	var response := _recoil_impulse_response(payload.elapsed, payload.duration)
-	var remaining_angle := payload.angular_impulse_world.length() * response \
+	var remaining_angle := payload.angular_impulse_world.length() \
+		* _recoil_impulse_response(payload.elapsed, payload.duration) \
 		/ _recoil_inertia_for_bone(bone_idx)
 	var remaining_linear := payload.magnitude * _recoil_decay_weight(payload.elapsed, payload.duration)
 	return remaining_angle <= RECOIL_SETTLED_ANGLE_RAD and remaining_linear <= 0.0001
+
+
+## Envelope of the critically-damped response to one impulse. This is used
+## only to decide when its ForcePayload can be reclaimed; the persistent state
+## remains the source of the actual pose until it settles.
+func _recoil_impulse_response(elapsed: float, duration: float) -> float:
+	if not is_finite(elapsed) or not is_finite(duration) or duration <= 0.0 or elapsed <= 0.0:
+		return 0.0
+	var response_duration := maxf(duration, 0.05)
+	var progress := elapsed / response_duration
+	return response_duration * progress * exp(1.0 - 4.7439 * progress)
 
 
 ## 点源（爆炸）按径向取方向；其余情况使用统一方向。

@@ -18,13 +18,17 @@ static func run_all() -> Dictionary:
 		"robustness_rejects_non_finite_input": _robustness_rejects_non_finite_input(),
 		"impulse_matches_ragdoll_formula": _impulse_matches_ragdoll_formula(),
 		"physical_recoil_angular_impulse_moves_bone": _physical_recoil_angular_impulse_moves_bone(),
+		"recoil_state_persists_after_payload_cleanup": _recoil_state_persists_after_payload_cleanup(),
+		"recoil_burst_accumulates_and_settles": _recoil_burst_accumulates_and_settles(),
+		"recoil_extreme_input_stays_finite": _recoil_extreme_input_stays_finite(),
 		"pending_impulse_is_one_shot": _pending_impulse_is_one_shot(),
 		"clearing_resets_pose_and_pending": _clearing_resets_pose_and_pending(),
 		"bone_for_body_part_covers_all_parts": _bone_for_body_part_covers_all_parts(),
 		"local_space_direction_is_rotated": _local_space_direction_is_rotated(),
 		"max_active_forces_is_enforced": _max_active_forces_is_enforced(),
-		"modifier_applies_and_restores_bone_pose": _modifier_applies_and_restores_bone_pose(),
+		"modifier_applies_and_preserves_upstream_pose": _modifier_applies_and_preserves_upstream_pose(),
 		"modifier_bone_pose_does_not_drift": _modifier_bone_pose_does_not_drift(),
+		"modifier_release_preserves_current_upstream_pose": _modifier_release_preserves_current_upstream_pose(),
 		"modifier_respects_translation_limits": _modifier_respects_translation_limits(),
 		"ragdoll_provider_consumes_pending_impulse": _ragdoll_provider_consumes_pending_impulse(),
 		"ragdoll_without_provider_falls_back": _ragdoll_without_provider_falls_back(),
@@ -64,6 +68,55 @@ static func _physical_recoil_angular_impulse_moves_bone() -> bool:
 	receiver.update_pose_offsets(1.0)
 	return initial_response_ok and continues_past_time_scale \
 		and receiver.get_active_force_count() == 0
+
+
+static func _recoil_state_persists_after_payload_cleanup() -> bool:
+	var skeleton := _build_skeleton()
+	var config := _make_config()
+	config.recoil_bone_inertia_kg_m2["mixamorig_RightHand"] = 0.01
+	var receiver := _make_receiver(skeleton, config)
+	receiver.apply_recoil_impulse(Vector3(0.1, 0.0, 0.0), Vector3.RIGHT * 0.1, "mixamorig_RightHand", 0.12)
+	receiver.update_pose_offsets(0.016)
+	if receiver._active.is_empty() or receiver._recoil_states.is_empty():
+		return false
+	for payload in receiver._active:
+		receiver._release_payload(payload)
+	receiver._active.clear()
+	receiver.update_pose_offsets(0.016)
+	return not receiver.get_pose_offsets().is_empty() and not receiver._recoil_states.is_empty()
+
+
+static func _recoil_burst_accumulates_and_settles() -> bool:
+	var skeleton := _build_skeleton()
+	var config := _make_config()
+	config.recoil_bone_inertia_kg_m2["mixamorig_RightHand"] = 0.02
+	var receiver := _make_receiver(skeleton, config)
+	var bone := "mixamorig_RightHand"
+	for _shot in 3:
+		receiver.apply_recoil_impulse(Vector3.ZERO, Vector3.RIGHT * 0.04, bone, 0.12)
+		receiver.update_pose_offsets(0.016)
+	var burst_angle := _angle_of(receiver, bone)
+	if burst_angle <= 0.0 or receiver._recoil_states.is_empty():
+		return false
+	for _frame in 240:
+		receiver.update_pose_offsets(0.016)
+	var settled := receiver.get_pose_offsets().is_empty() \
+		and receiver._recoil_states.is_empty() \
+		and is_zero_approx(_angle_of(receiver, bone))
+	return settled
+
+
+static func _recoil_extreme_input_stays_finite() -> bool:
+	var skeleton := _build_skeleton()
+	var config := _make_config()
+	config.recoil_bone_inertia_kg_m2["mixamorig_RightHand"] = 0.0001
+	var receiver := _make_receiver(skeleton, config)
+	for _shot in 12:
+		receiver.apply_recoil_impulse(Vector3.ZERO, Vector3(1.0e6, -1.0e6, 1.0e6), "mixamorig_RightHand", 0.01)
+		receiver.update_pose_offsets(0.016)
+		if not _offsets_are_finite(receiver):
+			return false
+	return true
 
 
 # ── 骨架构建 ────────────────────────────────────────────────
@@ -625,8 +678,8 @@ static func _console_death_produces_no_impulse() -> bool:
 		return false
 	return true
 
-## 力修饰器必须真的改写骨骼姿态，且在力消失后还原基准姿态。
-static func _modifier_applies_and_restores_bone_pose() -> bool:
+## 力修饰器必须真的改写骨骼姿态，且在力消失后保留当前上游姿态。
+static func _modifier_applies_and_preserves_upstream_pose() -> bool:
 	var skeleton := _build_skeleton()
 	var config := _make_config()
 	config.decay_floor = 1.0
@@ -650,9 +703,11 @@ static func _modifier_applies_and_restores_bone_pose() -> bool:
 	if not pushed_rotation.is_finite() or not pushed_position.is_finite():
 		return false
 
-	# 清空力后修饰器应把骨骼还原到基准姿态
+	# 上游动画在下一帧重新提供基准姿态；无偏移时修改器必须保持它不动。
 	receiver.clear_forces()
 	receiver.update_pose_offsets(0.0)
+	skeleton.set_bone_pose_rotation(bone_idx, base_rotation)
+	skeleton.set_bone_pose_position(bone_idx, base_position)
 	modifier._process_modification_with_delta(0.016)
 	var restored_rotation := skeleton.get_bone_pose_rotation(bone_idx)
 	var restored_position := skeleton.get_bone_pose_position(bone_idx)
@@ -684,6 +739,9 @@ static func _modifier_bone_pose_does_not_drift() -> bool:
 		return false
 	for _frame in 90:
 		receiver.update_pose_offsets(0.016)
+		# Emulate the engine rebuilding the upstream animation pose before the
+		# SkeletonModifier chain runs again.
+		skeleton.reset_bone_poses()
 		modifier._process_modification_with_delta(0.016)
 		var rotation := skeleton.get_bone_pose_rotation(bone_idx)
 		var position := skeleton.get_bone_pose_position(bone_idx)
@@ -692,6 +750,39 @@ static func _modifier_bone_pose_does_not_drift() -> bool:
 		if not position.is_equal_approx(baseline_position):
 			return false
 	return true
+
+
+## Recoil completion must not restore a pose cached before the current frame.
+static func _modifier_release_preserves_current_upstream_pose() -> bool:
+	var skeleton := _build_skeleton()
+	var config := _make_config()
+	config.recoil_bone_inertia_kg_m2["mixamorig_RightHand"] = 0.02
+	var receiver := _make_receiver(skeleton, config)
+	var modifier := ForceBodyModifier.new()
+	skeleton.add_child(modifier)
+	modifier.setup(receiver)
+	var bone_idx := skeleton.find_bone("mixamorig_RightHand")
+	var first_upstream := Quaternion.from_euler(Vector3(0.1, -0.2, 0.05))
+	skeleton.set_bone_pose_rotation(bone_idx, first_upstream)
+	receiver.apply_recoil_impulse(
+		Vector3.ZERO, Vector3.RIGHT * 0.04, "mixamorig_RightHand", 0.12
+	)
+	receiver.update_pose_offsets(0.016)
+	modifier._process_modification_with_delta(0.016)
+	if skeleton.get_bone_pose_rotation(bone_idx).is_equal_approx(first_upstream):
+		return false
+
+	# Stop adding impulses and let the persistent state decay on its own.
+	for _frame in 240:
+		receiver.update_pose_offsets(0.016)
+	if not receiver.get_pose_offsets().is_empty() or not receiver._recoil_states.is_empty():
+		return false
+
+	var current_upstream := Quaternion.from_euler(Vector3(-0.25, 0.35, -0.1))
+	skeleton.set_bone_pose_rotation(bone_idx, current_upstream)
+	modifier._process_modification_with_delta(0.016)
+	return skeleton.get_bone_pose_rotation(bone_idx).is_equal_approx(current_upstream) \
+		and modifier.get_touched_bone_count() == 0
 
 
 ## 位移偏移受 max_translation_m 硬性钳制，且只施加在浅层骨骼上。

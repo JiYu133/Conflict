@@ -77,6 +77,8 @@ var _recoil_pitch_spring := CameraSpring1D.new()
 var _recoil_yaw_spring := CameraSpring1D.new()
 
 var _sway_pivot: Node3D = null
+var _weapon_pose_root: Node3D = null
+var _weapon_pose_source: Node3D = null
 
 # 蹲下眼部高度插值
 var _eye_height: float = 1.6
@@ -126,10 +128,12 @@ var _ragdoll_camera_original_transform: Transform3D = Transform3D.IDENTITY
 # ADS
 var _is_ads: bool = false
 var _ads_progress: float = 0.0
+var _ads_blend: float = 0.0
 var _ads_transition_time: float = 0.25
 var _hip_fov: float = 90.0
 var _ads_fov: float = 60.0
 var _ads_center_offset: Vector3 = Vector3.ZERO
+var _ads_anchor: Node3D = null
 
 
 # ============================================================
@@ -145,6 +149,8 @@ func initialize(
 	look_controller: PlayerLookController = null
 ) -> void:
 	_model_manager = model_manager
+	if is_instance_valid(_model_manager) and not _model_manager.model_unloaded.is_connected(_on_model_unloaded):
+		_model_manager.model_unloaded.connect(_on_model_unloaded)
 	_model_lookup_config = model_lookup_config if model_lookup_config else ModelLookupConfig.new()
 	_camera_config = camera_config if camera_config else CameraConfig.new()
 	_look_controller = look_controller
@@ -200,7 +206,9 @@ func enable_camera() -> void:
 		_ragdoll_head_conversion_valid = false
 		_ragdoll_head_to_camera_basis = Basis.IDENTITY
 		# 恢复死亡前的真实父节点；部分模型使用自带 Camera3D，并没有 CameraMount。
-		var restore_parent := _camera_mount if is_instance_valid(_camera_mount) else _ragdoll_camera_original_parent
+		# The live camera is kept under the player so model-root stance offsets do
+		# not move it after the controller has written its global transform.
+		var restore_parent := _player if is_instance_valid(_player) else _ragdoll_camera_original_parent
 		if is_instance_valid(_active_camera) and is_instance_valid(restore_parent):
 			if _active_camera.get_parent():
 				_active_camera.get_parent().remove_child(_active_camera)
@@ -222,6 +230,7 @@ func enable_camera() -> void:
 	elif _model_camera:
 		_model_camera.current = true
 		_active_camera = _model_camera
+		_reparent_camera_to_player(_active_camera)
 	else:
 		_create_mount_from_skeleton(viewport_camera)
 
@@ -380,6 +389,20 @@ func _on_model_loaded() -> void:
 	_find_camera_nodes()
 
 
+func _on_model_unloaded() -> void:
+	# Authored cameras are detached from the model while active so stance/root
+	# offsets cannot move them. They therefore need explicit cleanup on reload.
+	if is_instance_valid(_model_camera):
+		_model_camera.queue_free()
+	_model_camera = null
+	_active_camera = null
+	_camera_mount = null
+	_bone_attachment = null
+	_sway_pivot = null
+	_weapon_pose_root = null
+	_weapon_pose_source = null
+
+
 func _find_camera_nodes() -> void:
 	if not _model_manager.model_node:
 		return
@@ -400,6 +423,7 @@ func _find_camera_nodes() -> void:
 	elif _model_camera:
 		_model_camera.current = true
 		_active_camera = _model_camera
+		_reparent_camera_to_player(_active_camera)
 	else:
 		push_warning("未找到摄像机挂载点")
 
@@ -417,6 +441,19 @@ func _attach_to_mount(camera: Camera3D, mount: Node3D) -> void:
 		camera.rotation = Vector3.ZERO
 		camera.current = true
 		_active_camera = camera
+		_reparent_camera_to_player(camera)
+
+
+func _reparent_camera_to_player(camera: Camera3D) -> void:
+	if not is_instance_valid(camera) or not is_instance_valid(_player):
+		return
+	if camera.get_parent() == _player:
+		return
+	var saved_global := camera.global_transform
+	if camera.get_parent():
+		camera.get_parent().remove_child(camera)
+	_player.add_child(camera)
+	camera.global_transform = saved_global
 
 
 func _create_mount_from_skeleton(camera: Camera3D) -> void:
@@ -601,25 +638,72 @@ func apply_stance_value(value: float) -> void:
 func _update_ads(delta: float) -> void:
 	var target: float = 1.0 if _is_ads else 0.0
 	_ads_progress = move_toward(_ads_progress, target, delta / max(_ads_transition_time, 0.001))
-	_active_camera.fov = lerp(_hip_fov, _ads_fov, _ads_progress)
+	# Keep timing deterministic while removing the hard linear start/stop from
+	# the visible weapon and FOV transition.
+	_ads_blend = _smoothstep(_ads_progress)
+	_active_camera.fov = lerp(_hip_fov, _ads_fov, _ads_blend)
 
 
-func set_ads_state(ads: bool, ads_time: float, zoom_fov: float, center_offset: Vector3) -> void:
+func _smoothstep(value: float) -> float:
+	var t := clampf(value, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+
+func set_ads_state(
+	ads: bool,
+	ads_time: float,
+	zoom_fov: float,
+	center_offset: Vector3,
+	ads_anchor: Node3D = null
+) -> void:
 	_is_ads = ads
 	_ads_transition_time = ads_time
 	_ads_fov = zoom_fov if zoom_fov > 0.0 else _hip_fov
 	_ads_center_offset = center_offset
+	_ads_anchor = ads_anchor if is_instance_valid(ads_anchor) else null
+
+
+func reset_weapon_pose_to_hip() -> void:
+	_is_ads = false
+	_ads_progress = 0.0
+	_ads_blend = 0.0
+	if is_instance_valid(_active_camera):
+		_active_camera.fov = _hip_fov
+	refresh_weapon_pose()
 
 
 # ============================================================
 # 武器 ADS 居中偏移
 # ============================================================
 func _update_weapon_spring(_delta: float) -> void:
-	if not _sway_pivot:
+	refresh_weapon_pose()
+
+
+## Update the independent weapon rig from the animated hand pose, then blend
+## it toward the camera-centred ADS pose. This is also called from the hand IK
+## modifier so both arm targets consume the current weapon transform.
+func refresh_weapon_pose() -> void:
+	if not is_instance_valid(_weapon_pose_root) or not is_instance_valid(_weapon_pose_source):
 		return
-	var pos_target := _ads_center_offset * _ads_progress
-	_sway_pivot.position.x = pos_target.x
-	_sway_pivot.position.y = pos_target.y
+	_refresh_pose_source_attachment()
+	var hip_global := _weapon_pose_source.global_transform
+	if is_instance_valid(_ads_anchor) and is_instance_valid(_active_camera):
+		var anchor_from_pose := _weapon_pose_root.global_transform.affine_inverse() \
+					* _ads_anchor.global_transform
+		var ads_global := _active_camera.global_transform * anchor_from_pose.affine_inverse()
+		_weapon_pose_root.global_transform = hip_global.interpolate_with(ads_global, _ads_blend)
+		return
+	var fallback_ads := hip_global * Transform3D(Basis.IDENTITY, _ads_center_offset)
+	_weapon_pose_root.global_transform = hip_global.interpolate_with(fallback_ads, _ads_blend)
+
+
+func _refresh_pose_source_attachment() -> void:
+	var node: Node = _weapon_pose_source
+	while is_instance_valid(node):
+		if node is BoneAttachment3D:
+			(node as BoneAttachment3D).on_skeleton_update()
+			return
+		node = node.get_parent()
 
 
 func set_recoil_component(component: RecoilComponent) -> void:
@@ -766,20 +850,45 @@ func _update_ragdoll_camera_shake(delta: float) -> Dictionary:
 # ============================================================
 # 公开 API
 # ============================================================
-func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
+func setup_weapon_sway_pivot(weapon_mount: Node3D, pose_parent: Node3D = null) -> Node3D:
 	if not weapon_mount:
 		return null
 	if _sway_pivot and is_instance_valid(_sway_pivot):
 		return _sway_pivot
+	_weapon_pose_source = weapon_mount
+	_weapon_pose_root = Node3D.new()
+	_weapon_pose_root.name = "WeaponPoseRoot"
+	var root_parent := pose_parent if is_instance_valid(pose_parent) else weapon_mount.get_parent() as Node3D
+	if not is_instance_valid(root_parent):
+		return null
+	root_parent.add_child(_weapon_pose_root)
+	_refresh_pose_source_attachment()
+	_weapon_pose_root.global_transform = weapon_mount.global_transform
 	var pivot: Node3D = Node3D.new()
 	pivot.name = "WeaponSwayPivot"
-	weapon_mount.add_child(pivot)
+	_weapon_pose_root.add_child(pivot)
 	_sway_pivot = pivot
 	return pivot
 
 
 func get_active_camera() -> Camera3D:
 	return _active_camera
+
+
+func get_ads_progress() -> float:
+	return _ads_progress
+
+
+func get_ads_blend() -> float:
+	return _ads_blend
+
+
+func get_weapon_pose_root() -> Node3D:
+	return _weapon_pose_root
+
+
+func get_weapon_pose_source() -> Node3D:
+	return _weapon_pose_source
 
 func _update_prone_roll_head_camera() -> bool:
 	var rolling := is_instance_valid(_player) \
