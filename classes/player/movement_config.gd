@@ -61,6 +61,8 @@ extends Resource
 @export var turn_in_place_enabled: bool = true
 ## 视角与身体偏差达到此角度后触发原地转身。
 @export_range(0.0, 180.0, 0.5) var turn_trigger_angle_degrees: float = 40.0
+## 移动中视角与身体偏差达到此角度时，强制播放下半身转身动画。
+@export_range(45.0, 180.0, 0.5) var forced_turn_angle_degrees: float = 120.0
 ## 原地转身和自由观察期间允许视角偏离身体的最大角度。
 @export_range(0.0, 180.0, 0.5) var turn_view_limit_degrees: float = 90.0
 ## 视角受限时保留的最低输入灵敏度比例。

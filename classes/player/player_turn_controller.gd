@@ -20,6 +20,7 @@ var _clip_length := 0.0
 var _landing_blend_active := false
 var _playback_speed := 1.0
 var _turn_block_reason := "none"
+var _forced_turning := false
 
 
 func initialize(player: BasePlayer, camera: PlayerCameraController, movement: PlayerMovementController, animation: PlayerAnimationController, config: MovementConfig) -> void:
@@ -73,6 +74,7 @@ func get_debug_snapshot() -> Dictionary:
 		"is_prone_turn": prone_turn,
 		"is_crawl_turn": prone_turn and _camera != null and _camera._is_moving(),
 		"playback_speed": _playback_speed,
+		"forced_turning": _forced_turning,
 		"remaining_angle": _camera.get_body_yaw_offset() if _camera else 0.0,
 		"remaining_turn_angle": _turn_angle * (1.0 - _last_progress) if _turning else 0.0,
 		"block_reason": _turn_block_reason,
@@ -87,11 +89,14 @@ func _try_start_turn() -> void:
 	# Entry/exit and crouch-to-prone phases own the complete skeleton. Starting
 	# a turn here would replace their direct AnimationPlayer clip mid-transition.
 	if not _config.turn_in_place_enabled or not _animation \
-			or (_player.stance_controller and _player.stance_controller.is_prone_transitioning()) \
-			or (_animation.get_current_state() != PlayerAnimationController.State.IDLE and not _is_prone()):
+			or (_player.stance_controller and _player.stance_controller.is_prone_transitioning()):
 		return
 	var offset := _camera.get_body_yaw_offset()
-	if absf(offset) < deg_to_rad(_config.turn_trigger_angle_degrees):
+	var abs_offset := absf(offset)
+	var forced := not _is_prone() and abs_offset >= deg_to_rad(_config.forced_turn_angle_degrees)
+	if not forced and _animation.get_current_state() != PlayerAnimationController.State.IDLE and not _is_prone():
+		return
+	if abs_offset < deg_to_rad(_config.turn_trigger_angle_degrees):
 		_turn_block_reason = "below_trigger"
 		return
 	var prone := _is_prone()
@@ -106,6 +111,7 @@ func _try_start_turn() -> void:
 		return
 	_last_progress = 0.0
 	_turning = true
+	_forced_turning = forced
 	_animation.begin_external_turn(_turn_state, _get_playback_speed())
 	_turn_block_reason = "active"
 	_movement.set_turn_constraint(true, _config.turn_constrained_speed_ratio, _config.turn_constrained_acceleration_ratio)
@@ -117,7 +123,7 @@ func _process_turn(delta: float = 0.0) -> void:
 		return
 	# Prone crawling still uses the authored turn clip. Standing/crouched turns
 	# are cancelled by locomotion as before.
-	if _camera._is_moving() and not _is_prone():
+	if _camera._is_moving() and not _is_prone() and not _forced_turning:
 		_exit_turn_to_locomotion()
 		return
 	var opposite_state := _get_turn_state_for_offset(_camera.get_body_yaw_offset())
@@ -133,7 +139,11 @@ func _process_turn(delta: float = 0.0) -> void:
 	_last_progress = progress
 	_animation.set_turn_playback_speed(_get_playback_speed())
 	if progress >= 0.999:
+		if _forced_turning and absf(_camera.get_body_yaw_offset()) >= deg_to_rad(_config.turn_trigger_angle_degrees):
+			_restart_turn(_get_turn_state_for_offset(_camera.get_body_yaw_offset()))
+			return
 		_turning = false
+		_forced_turning = false
 		_movement.set_turn_constraint(false)
 		_animation.end_external_turn()
 		_turn_block_reason = "completed"
@@ -141,6 +151,7 @@ func _process_turn(delta: float = 0.0) -> void:
 
 func _exit_turn_to_locomotion() -> void:
 	_turning = false
+	_forced_turning = false
 	_last_progress = 0.0
 	_movement.set_turn_constraint(false)
 	_animation.end_external_turn()
@@ -162,6 +173,7 @@ func _is_prone() -> bool:
 
 func _restart_turn(next_state: PlayerAnimationController.State) -> void:
 	_turn_state = next_state
+	_forced_turning = _forced_turning or (not _is_prone() and absf(_camera.get_body_yaw_offset()) >= deg_to_rad(_config.forced_turn_angle_degrees))
 	_turn_angle = clampf(_camera.get_body_yaw_offset(), -deg_to_rad(_config.turn_clip_authored_angle_degrees), deg_to_rad(_config.turn_clip_authored_angle_degrees))
 	_clip_length = _animation.get_turn_clip_length(_turn_state)
 	_last_progress = 0.0
@@ -187,6 +199,7 @@ func _cancel_turn() -> void:
 	if not _turning:
 		return
 	_turning = false
+	_forced_turning = false
 	_last_progress = 0.0
 	_movement.set_turn_constraint(false)
 	if _animation:

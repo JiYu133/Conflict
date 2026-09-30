@@ -116,6 +116,8 @@ var stop_brake_strength: float:
 	get: return movement_config.stop_brake_strength if movement_config else 5.0
 var turn_decel_factor: float:
 	get: return movement_config.turn_decel_factor if movement_config else 0.85
+var forced_turn_angle_degrees: float:
+	get: return movement_config.forced_turn_angle_degrees if movement_config else 120.0
 var moving_body_turn_speed_degrees: float:
 	get: return movement_config.moving_body_turn_speed_degrees if movement_config else 360.0
 var moving_body_velocity_yaw_threshold_degrees: float:

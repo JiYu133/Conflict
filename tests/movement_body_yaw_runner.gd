@@ -36,7 +36,10 @@ func _run() -> void:
 	var camera = player.get("camera_controller")
 	var look = player.get("look_controller")
 	var spine = player.get("spine_aim_controller")
-	results["controllers_ready"] = camera != null and look != null and spine != null
+	var turn = player.get("turn_controller")
+	var animation = player.get("animation_controller")
+	results["controllers_ready"] = camera != null and look != null and spine != null \
+			and turn != null and animation != null
 	if not results["controllers_ready"]:
 		_finish(results)
 		return
@@ -67,6 +70,33 @@ func _run() -> void:
 	var backward_local_velocity: Vector3 = player.global_transform.basis.transposed() * player.velocity
 	results["backward_keeps_view_facing_body"] = absf(angle_difference(backward_body_yaw, 0.0)) < EPSILON
 	results["backward_animation_direction_preserved"] = -backward_local_velocity.z < -EPSILON
+
+	# A large view/body mismatch must interrupt locomotion and keep the turn
+	# active even though horizontal velocity remains non-zero.
+	turn.call("_cancel_turn")
+	player.rotation.y = 0.0
+	player.velocity = Vector3.FORWARD
+	look.set_base_yaw(deg_to_rad(150.0))
+	animation.call("_transition", PlayerAnimationController.State.RUN)
+	turn.call("_try_start_turn")
+	var forced_snapshot: Dictionary = turn.get_debug_snapshot()
+	results["fast_moving_turn_is_forced"] = bool(forced_snapshot.get("turning", false)) \
+			and bool(forced_snapshot.get("forced_turning", false))
+	turn.call("_process_turn", 0.01)
+	results["forced_turn_survives_locomotion"] = turn.is_turning()
+
+	# Turn clips are filtered to leg tracks. Spine and arm tracks stay on the
+	# base pose so weapon aim remains controlled by SpineAim/hand IK.
+	results["turn_filter_includes_leg"] = bool(animation.call(
+			"_is_turn_lower_body_path", NodePath("Skeleton3D:mixamorig_LeftUpLeg")
+	))
+	results["turn_filter_excludes_spine"] = not bool(animation.call(
+			"_is_turn_lower_body_path", NodePath("Skeleton3D:mixamorig_Spine2")
+	))
+	results["turn_filter_excludes_arms"] = not bool(animation.call(
+			"_is_turn_lower_body_path", NodePath("Skeleton3D:mixamorig_RightArm")
+	))
+	turn.call("_cancel_turn")
 
 	map.queue_free()
 	_finish(results)

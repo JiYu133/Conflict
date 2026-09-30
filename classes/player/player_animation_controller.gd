@@ -363,6 +363,7 @@ func _setup_turn_transitions() -> void:
 		_add_transition_if_missing(sm, SM_IDLE, turn_state)
 		_add_transition_if_missing(sm, turn_state, SM_IDLE)
 		for locomotion_state in [SM_WALK, SM_CROUCH_WALK, SM_RUN, SM_SPRINT]:
+			_add_transition_if_missing(sm, locomotion_state, turn_state)
 			_add_transition_if_missing(sm, turn_state, locomotion_state)
 
 
@@ -739,7 +740,13 @@ func begin_external_turn(turn_state: State, playback_speed: float) -> void:
 			_direct_prone_turn = false
 			return
 	else:
-		_transition(turn_state)
+		# Chained turns can reuse the same direction after consuming one authored
+		# 90-degree clip. Restart that state explicitly so the lower-body clip does
+		# not remain parked on its final frame while gameplay yaw keeps rotating.
+		if _state == turn_state and _playback:
+			_playback.start(_state_to_sm_name(turn_state), true)
+		else:
+			_transition(turn_state)
 	set_turn_playback_speed(playback_speed)
 
 
