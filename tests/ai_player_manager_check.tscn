@@ -1,6 +1,0 @@
-[gd_scene load_steps=2 format=3]
-
-[ext_resource type="Script" path="res://tests/ai_player_manager_check.gd" id="1_test"]
-
-[node name="AIPlayerManagerCheck" type="Node"]
-script = ExtResource("1_test")

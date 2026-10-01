@@ -14,7 +14,9 @@ const ACTIONS: Array[Dictionary] = [
 	{ "action": "crouch", "display": SettingsText.ACTION_CROUCH, "category": SettingsText.CATEGORY_STANCE },
 	{ "action": "stance_raise", "display": SettingsText.ACTION_STANCE_RAISE, "category": SettingsText.CATEGORY_STANCE },
 	{ "action": "stance_lower", "display": SettingsText.ACTION_STANCE_LOWER, "category": SettingsText.CATEGORY_STANCE },
+	{ "action": "free_look", "display": SettingsText.ACTION_FREE_LOOK, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "fire", "display": SettingsText.ACTION_FIRE, "category": SettingsText.CATEGORY_COMBAT },
+	{ "action": "aim", "display": SettingsText.ACTION_AIM, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "reload", "display": SettingsText.ACTION_RELOAD, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "cycle_fire_mode", "display": SettingsText.ACTION_CYCLE_FIRE_MODE, "category": SettingsText.CATEGORY_COMBAT },
 	{ "action": "clear_malfunction", "display": SettingsText.ACTION_CLEAR_MALFUNCTION, "category": SettingsText.CATEGORY_COMBAT },
@@ -324,8 +326,11 @@ static func _normalize_binding(binding):
 	if binding is Array:
 		var keys: Array[int] = []
 		for code in binding:
-			if int(code) not in keys:
-				keys.append(int(code))
+			if code is String:
+				return null
+			var key_code := int(code)
+			if key_code != 0 and key_code not in keys:
+				keys.append(key_code)
 		if keys.is_empty():
 			return null
 		return keys.slice(maxi(0, keys.size() - 2))
@@ -381,9 +386,16 @@ static func _decode_bindings(encoded) -> Array:
 			var combo: Array = []
 			for code in data.get("codes", []):
 				combo.append(int(code))
-			var normalized = _normalize_binding(combo)
-			if normalized != null:
-				out.append(normalized)
+			# Older versions encoded a single key as a one-element combo. That
+			# binding is not added to InputMap, so migrate it back to an event.
+			if combo.size() == 1 and combo[0] != 0:
+				var key := InputEventKey.new()
+				key.physical_keycode = combo[0]
+				out.append(key)
+			else:
+				var normalized = _normalize_binding(combo)
+				if normalized != null:
+					out.append(normalized)
 		else:
 			var event := _decode_event(data)
 			if event:

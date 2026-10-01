@@ -20,7 +20,7 @@ const GRID_SHADER_PATH := "res://assets/shaders/blueprint_grid.gdshader"
 const AttachmentCatalog = preload("res://classes/ui/weapon_mod/attachment_catalog.gd")
 const WeaponPreviewScript = preload("res://classes/ui/weapon_mod/weapon_preview.gd")
 const CalloutLayerScript = preload("res://classes/ui/weapon_mod/weapon_callout_layer.gd")
-const MOD_CONFIG: WeaponModConfig = preload("res://assets/config/ui/weapon_mod_config.tres")
+const MOD_CONFIG = preload("res://assets/config/ui/weapon_mod_config.tres")
 
 # 配色沿用设置页
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)
@@ -1200,10 +1200,6 @@ func _upsert_stat_bar(label_text: String, value: float, max_value: float, lower_
 
 func _describe_modifiers(cfg: AttachmentConfig) -> String:
 	var parts: PackedStringArray = []
-	if not is_zero_approx(cfg.hipfire_spread_modifier):
-		parts.append("%s %+.2f" % [_config.modifier_hipfire, cfg.hipfire_spread_modifier])
-	if not is_zero_approx(cfg.ads_spread_modifier):
-		parts.append("%s %+.2f" % [_config.modifier_ads, cfg.ads_spread_modifier])
 	if not is_zero_approx(cfg.weight_kg):
 		parts.append("%s %+.2fkg" % [_config.modifier_weight, cfg.weight_kg])
 	if parts.is_empty():

@@ -21,6 +21,13 @@ signal stopped_running
 signal started_sprinting
 ## 开始冲刺（长按 Shift，全力疾跑）
 signal stopped_sprinting
+
+enum LocomotionMode {
+	STAND,
+	CROUCH,
+	PRONE,
+}
+const CROUCH_STANCE_THRESHOLD := 0.3
 ## 停止冲刺
 
 
@@ -39,6 +46,7 @@ var _had_input: bool = false
 
 var _shift_held_time: float = 0.0
 var _shift_was_held: bool = false
+var _sprint_suppressed_until_release: bool = false
 
 var _camera_controller: PlayerCameraController = null
 var _turn_constraint_active: bool = false
@@ -55,6 +63,16 @@ var _ai_input_active: bool = false
 var _ai_input_direction: Vector3 = Vector3.ZERO
 var _ai_input_running: bool = false
 var _ai_input_sprinting: bool = false
+var _prone_roll_cooldown: float = 0.0
+var _prone_roll_timer: float = 0.0
+var _prone_roll_duration: float = 0.0
+## The authored clips are 2.5-3.27s long, but only the configured opening
+## window should propel the CharacterBody. Camera/animation timing stays on
+## _prone_roll_timer so visual playback cannot turn into a multi-metre slide.
+var _prone_roll_motion_timer: float = 0.0
+var _prone_rolling: bool = false
+var _prone_roll_direction: float = 0.0
+var _prone_roll_world_direction: Vector3 = Vector3.ZERO
 
 
 func is_running() -> bool:
@@ -62,6 +80,57 @@ func is_running() -> bool:
 
 func is_sprinting() -> bool:
 	return _is_sprinting
+
+
+func suppress_sprint_until_release() -> void:
+	_sprint_suppressed_until_release = true
+	_shift_held_time = 0.0
+	if _is_sprinting:
+		_exit_sprint()
+
+func is_prone_rolling() -> bool:
+	return _prone_rolling
+
+func is_prone_roll_active() -> bool:
+	return _prone_rolling
+
+func get_prone_roll_direction() -> float:
+	return _prone_roll_direction
+
+func get_prone_roll_progress() -> float:
+	if not _prone_rolling or _prone_roll_duration <= 0.0:
+		return 0.0
+	return clampf(1.0 - _prone_roll_timer / _prone_roll_duration, 0.0, 1.0)
+
+## Single source of truth for the three gameplay locomotion postures.
+func get_locomotion_mode() -> LocomotionMode:
+	if _player and _player.stance_controller \
+			and (_player.stance_controller.is_prone() or _player.stance_controller.is_prone_transitioning()):
+		return LocomotionMode.PRONE
+	var stance_value := _player.stance_controller.get_stance_value() if _player and _player.stance_controller else 0.0
+	return LocomotionMode.CROUCH if stance_value >= CROUCH_STANCE_THRESHOLD else LocomotionMode.STAND
+
+
+func is_crouched_locomotion() -> bool:
+	return get_locomotion_mode() == LocomotionMode.CROUCH
+
+## Ends a prone-only action before another system changes the player's pose.
+## This keeps roll velocity, camera banking, and the direct animation override
+## from leaking into an exit transition or a later control-state restore.
+func cancel_prone_roll() -> void:
+	if not _prone_rolling:
+		return
+	_prone_rolling = false
+	_prone_roll_direction = 0.0
+	_prone_roll_world_direction = Vector3.ZERO
+	_prone_roll_timer = 0.0
+	_prone_roll_duration = 0.0
+	_prone_roll_motion_timer = 0.0
+	_velocity.x = 0.0
+	_velocity.z = 0.0
+	if _player:
+		_player.velocity.x = 0.0
+		_player.velocity.z = 0.0
 
 func set_turn_constraint(active: bool, speed_ratio: float = 1.0, acceleration_ratio: float = 1.0) -> void:
 	_turn_constraint_active = active
@@ -71,18 +140,19 @@ func set_turn_constraint(active: bool, speed_ratio: float = 1.0, acceleration_ra
 func get_max_speed() -> float:
 	if not _config:
 		return 4.0
-	var base: float
-	if _is_sprinting:
-		base = _config.sprint_speed
-	elif _is_running:
-		base = _config.run_speed
-	else:
-		# 根据姿态插值速度：站立=walk_speed, 蹲下=crouch_speed
-		var stance = _player.stance_controller.get_stance_value() if _player.stance_controller else 0.0
-		base = lerp(_config.walk_speed, _config.crouch_speed, stance)
+	var base := _get_ground_speed()
 	if _player and _player.health_system:
 		base *= _player.health_system.get_movement_speed_multiplier()
 	return base
+
+
+func _get_ground_speed() -> float:
+	if _is_sprinting:
+		return _config.sprint_speed
+	if _is_running:
+		return _config.run_speed
+	var stance_value := _player.stance_controller.get_stance_value() if _player and _player.stance_controller else 0.0
+	return lerpf(_config.walk_speed, _config.crouch_speed, stance_value)
 
 
 func initialize(player: BasePlayer, config: PlayerConfig, camera_controller: PlayerCameraController) -> void:
@@ -150,7 +220,9 @@ func _physics_process(delta: float) -> void:
 		_velocity = Vector3.ZERO
 		_player.velocity = Vector3.ZERO
 		return
-	if not _player.controllable and not ai_driving:
+	# Once a roll starts it continues through temporary control locks. Death and
+	# ragdoll still take the lifecycle branch above and cancel it explicitly.
+	if not _player.controllable and not ai_driving and not _prone_rolling:
 		if _was_controllable:
 			clear_locomotion_state()
 		_was_controllable = false
@@ -180,6 +252,22 @@ func _physics_process(delta: float) -> void:
 		_velocity = _player.velocity
 		return
 	_was_controllable = true
+	if _prone_roll_cooldown > 0.0:
+		_prone_roll_cooldown -= delta
+	if _prone_rolling:
+		_prone_roll_timer -= delta
+		_prone_roll_motion_timer = maxf(_prone_roll_motion_timer - delta, 0.0)
+		var has_roll_animation := _player.animation_controller != null
+		var animation_finished := has_roll_animation and not _player.animation_controller.is_prone_roll_playing()
+		var fallback_finished := not has_roll_animation and _prone_roll_timer <= 0.0
+		if animation_finished or fallback_finished:
+			_prone_rolling = false
+			_prone_roll_world_direction = Vector3.ZERO
+			_prone_roll_cooldown = _config.prone_roll_cooldown
+			_prone_roll_timer = 0.0
+			_prone_roll_motion_timer = 0.0
+			if _player.animation_controller and _player.stance_controller and _player.stance_controller.is_prone():
+				_player.animation_controller.play_prone_idle()
 
 	# ──────────────────────────────────────────────────────
 	# 1. 读取输入方向
@@ -201,12 +289,22 @@ func _physics_process(delta: float) -> void:
 		shift_held = Input.is_action_pressed("sprint")
 		has_forward = Input.is_action_pressed("move_forward")
 	var has_input := input_dir.length() > _config.input_dead_zone
+	if get_locomotion_mode() == LocomotionMode.PRONE:
+		_process_prone_movement(delta, input_dir, has_input, ai_driving)
+		return
 
 	# ──────────────────────────────────────────────────────
 	# 2. Shift 按压检测：区分单击（切换 Run）和长按（Sprint）
 	# ──────────────────────────────────────────────────────
+	if not ai_driving and _sprint_suppressed_until_release:
+		if shift_held:
+			_shift_was_held = true
+			_shift_held_time = 0.0
+		else:
+			_sprint_suppressed_until_release = false
+			_shift_was_held = false
 	# 下降沿：Shift 刚松开
-	if not ai_driving and _shift_was_held and not shift_held:
+	elif not ai_driving and _shift_was_held and not shift_held:
 		var threshold := _config.sprint_hold_threshold if _config else 0.25
 		if _shift_held_time < threshold:
 			# 短按 → 切换 Run（不触发 Sprint）
@@ -241,15 +339,7 @@ func _physics_process(delta: float) -> void:
 	# ──────────────────────────────────────────────────────
 	if _player.is_on_floor():
 		# 3a. 确定基础目标速度（与 get_max_speed() 保持一致的优先级）
-		var speed: float
-		if _is_sprinting:
-			speed = _config.sprint_speed
-		elif _is_running:
-			speed = _config.run_speed
-		else:
-			# 根据姿态插值速度
-			var stance = _player.stance_controller.get_stance_value() if _player.stance_controller else 0.0
-			speed = lerp(_config.walk_speed, _config.crouch_speed, stance)
+		var speed := _get_ground_speed()
 		# 功能性损伤乘数
 		if _player.health_system:
 			speed *= _player.health_system.get_movement_speed_multiplier()
@@ -344,7 +434,7 @@ func _physics_process(delta: float) -> void:
 	# ──────────────────────────────────────────────────────
 	# 5. 跳跃（不变）
 	# ──────────────────────────────────────────────────────
-	if not ai_driving and Input.is_action_just_pressed("jump") and _player.is_on_floor():
+	if not ai_driving and Input.is_action_just_pressed("jump") and _player.is_on_floor() and not (_player.stance_controller and _player.stance_controller.is_prone()):
 		# 腿骨折时禁止跳跃
 		var can_jump := true
 		if _player.health_system:
@@ -431,12 +521,14 @@ func _exit_run() -> void:
 
 
 func clear_locomotion_state() -> void:
+	cancel_prone_roll()
 	if _is_sprinting:
 		_exit_sprint()
 	if _is_running:
 		_exit_run()
 	_shift_held_time = 0.0
 	_shift_was_held = false
+	_sprint_suppressed_until_release = false
 	_burst_timer = 0.0
 	_gait_phase = 0.0
 	_ai_input_running = false
@@ -462,8 +554,9 @@ func _set_ai_locomotion_state() -> void:
 # 姿态同步方法（响应 StanceController 信号）
 # ──────────────────────────────────────────────────────
 
-func _on_stance_changed(value: float) -> void:
-	"""响应姿态变化，同步物理参数"""
+## Public value interface; callers do not need access to movement internals.
+func apply_stance_value(value: float) -> void:
+	"""响应姿态变化，只同步移动状态；碰撞体由 PlayerCollisionController 独占。"""
 	# 进入蹲伏时强制退出 Run/Sprint，确保速度上限切换为 crouch_speed
 	if value > 0.05:
 		if _is_sprinting:
@@ -471,35 +564,87 @@ func _on_stance_changed(value: float) -> void:
 		if _is_running:
 			_is_running = false
 			stopped_running.emit()
-	_update_collision_shape(value)
-	_update_model_offset(value)
+
+func _process_prone_movement(delta: float, input_dir: Vector2, has_input: bool, ai_driving: bool) -> void:
+	# Prone movement owns locomotion state. Emit the same transitions as the
+	# normal input path so stamina and animation consumers cannot remain stuck
+	# in Sprinting after an airborne prone transition.
+	if _is_sprinting:
+		_exit_sprint()
+	if _is_running:
+		_exit_run()
+	if _player.stance_controller.is_prone_transitioning():
+		input_dir = Vector2.ZERO
+		has_input = false
+	if not _player.is_on_floor():
+		_velocity.y -= _config.gravity * delta
+	else:
+		_velocity.y = _config.floor_snap_velocity
+	var basis: Basis = _camera_controller.get_view_basis() if _camera_controller else _player.global_basis
+	var direction: Vector3 = (basis.x * input_dir.x + basis.z * input_dir.y).normalized() if has_input else Vector3.ZERO
+	var side: bool = abs(input_dir.x) > abs(input_dir.y) and abs(input_dir.x) > _config.input_dead_zone
+	if _is_prone_roll_combo_pressed(side, ai_driving) and not _prone_rolling and _prone_roll_cooldown <= 0.0:
+		if not _player.stamina_system or _player.stamina_system.consume_prone_roll():
+			if _player.turn_controller:
+				_player.turn_controller.cancel_for_prone_roll()
+			_prone_rolling = true
+			_prone_roll_direction = sign(input_dir.x)
+			var planar_right := basis.x
+			planar_right.y = 0.0
+			if planar_right.length_squared() < 0.000001:
+				planar_right = _player.global_basis.x
+				planar_right.y = 0.0
+			_prone_roll_world_direction = planar_right.normalized() * _prone_roll_direction
+			_prone_roll_duration = _config.prone_roll_duration
+			if _player.animation_controller:
+				var clip_length := _player.animation_controller.play_prone_roll(_prone_roll_direction < 0.0)
+				if clip_length > 0.0:
+					_prone_roll_duration = clip_length
+			_prone_roll_timer = _prone_roll_duration
+			_prone_roll_motion_timer = minf(_config.prone_roll_duration, _prone_roll_duration)
+	var speed: float = 0.0
+	var movement_direction := direction
+	var should_move := has_input
+	if _prone_rolling:
+		if _prone_roll_motion_timer > 0.0:
+			speed = _config.prone_roll_speed
+			movement_direction = _prone_roll_world_direction
+			should_move = not movement_direction.is_zero_approx()
+		else:
+			movement_direction = Vector3.ZERO
+			should_move = false
+	elif has_input:
+		if side:
+			speed = _config.prone_lateral_speed
+		elif input_dir.y < 0.0:
+			speed = _config.prone_forward_speed
+		else:
+			speed = _config.prone_backward_speed
+	if should_move:
+		_velocity.x = move_toward(_velocity.x, movement_direction.x * speed, _config.prone_roll_acceleration * delta)
+		_velocity.z = move_toward(_velocity.z, movement_direction.z * speed, _config.prone_roll_acceleration * delta)
+	else:
+		var brake_strength := _config.prone_roll_acceleration if _prone_rolling else _config.stop_brake_strength
+		_velocity.x = move_toward(_velocity.x, 0.0, brake_strength * delta)
+		_velocity.z = move_toward(_velocity.z, 0.0, brake_strength * delta)
+	_player.velocity = _velocity
+	_player.move_and_slide()
+	_velocity = _player.velocity
+	_had_input = has_input
+	# Enter/exit clips own the skeleton until StanceController marks the
+	# transition complete. Locomotion must not replace them frame-by-frame.
+	var prone_turn_active := _player.turn_controller and _player.turn_controller.is_turning()
+	if _player.animation_controller and not _prone_rolling \
+			and not _player.stance_controller.is_prone_transitioning() \
+			and not prone_turn_active:
+		_player.animation_controller.update_prone_motion(input_dir, has_input)
 
 
-func _update_collision_shape(stance: float) -> void:
-	"""根据姿态值更新碰撞体高度"""
-	# 懒加载碰撞体
-	var collision_shape: CollisionShape3D = null
-	for child in _player.get_children():
-		if child is CollisionShape3D:
-			collision_shape = child
-			break
-
-	if not collision_shape or not (collision_shape.shape is CapsuleShape3D):
-		return
-
-	var shape := collision_shape.shape as CapsuleShape3D
-	var standing_height: float = _config.collision_shape_height
-	var target_height: float = lerp(standing_height, _config.crouch_capsule_height, stance)
-	shape.height = target_height
-	# 胶囊体底部保持在站立时的高度，避免蹲下时碰撞体整体抬高。
-	collision_shape.position.y = _config.collision_shape_y_offset \
-		+ (standing_height - target_height) * 0.5
-
-
-func _update_model_offset(stance: float) -> void:
-	"""根据姿态值更新模型Y偏移（让脚部贴地）"""
-	var model_node: Node3D = _player.model_manager.model_node if _player.model_manager else null
-	if not model_node:
-		return
-	var target_y : float = lerp(_config.model_y_offset, _config.crouch_y_offset, stance)
-	model_node.position.y = target_y
+func _is_prone_roll_combo_pressed(side: bool, ai_driving: bool) -> bool:
+	if ai_driving or not side or not Input.is_action_pressed("jump"):
+		return false
+	# Accept both input orders: hold A/D then press Space, or hold Space then
+	# press A/D. Requiring a fresh edge prevents held keys from chaining rolls.
+	return Input.is_action_just_pressed("jump") \
+		or Input.is_action_just_pressed("move_left") \
+		or Input.is_action_just_pressed("move_right")

@@ -3,15 +3,19 @@ extends Node3D
 
 ## 独立的死亡后外部渗血表现。
 ##
-## 依赖方向：HealthSystem.medically_died / BasePlayer.revived -> 本节点。
-## 本节点不读取、不修改伤口数值；缺少美术纹理时只跳过对应视觉层。
+## 依赖方向：BasePlayer died/revived + 注入的出血点 Callable -> 本节点。
+## 本节点不读取、不修改 HealthSystem/Wound/骨骼；缺少美术纹理时只跳过对应视觉层。
 ## 贴图层使用 Godot 官方 Decal 与 GPUParticles3D 节点，方便替换资源。
 
 const DEFAULT_DROP_COLOR := Color(0.45, 0.01, 0.006, 1.0)
+const ATLAS_COLUMNS := 2
+const ATLAS_VARIANT_COUNT := 4
+const POOL_ALPHA_CUTOFF := 64
 
 var _player: BasePlayer
 var _config: BloodEffectConfig
 var _settings_service = null
+var _bleed_origin_provider: Callable
 var _pools: Array[Decal] = []
 var _drips: GPUParticles3D
 var _ground_ray: RayCast3D
@@ -19,17 +23,26 @@ var _pool_tween: Tween
 var _drip_timer: Timer
 var _drip_start_timer: Timer
 var _has_started := false
+var _blood_pool_variant: Texture2D
+var _blood_pool_variants: Array[Texture2D] = []
+var _blood_drop_variant: Texture2D
+var _rng := RandomNumberGenerator.new()
 
-func initialize(player: BasePlayer, config: BloodEffectConfig = null, settings_service = null) -> void:
+func initialize(
+	player: BasePlayer,
+	config: BloodEffectConfig = null,
+	settings_service = null,
+	bleed_origin_provider: Callable = Callable()
+) -> void:
 	_player = player
 	_config = config if config else BloodEffectConfig.new()
 	_settings_service = settings_service if settings_service else (player.settings_service if player else null)
+	_bleed_origin_provider = bleed_origin_provider
+	_rng.randomize()
 	add_to_group("blood_effects")
-	if not _player or not _player.health_system:
-		push_warning("DeathBloodEffect requires a player with HealthSystem.")
+	if not _player:
+		push_warning("DeathBloodEffect requires a player lifecycle source.")
 		return
-	if not _player.health_system.medically_died.is_connected(_on_medically_died):
-		_player.health_system.medically_died.connect(_on_medically_died)
 	if not _player.died.is_connected(_on_player_died):
 		_player.died.connect(_on_player_died)
 	if not _player.revived.is_connected(_on_player_revived):
@@ -41,6 +54,17 @@ func initialize(player: BasePlayer, config: BloodEffectConfig = null, settings_s
 	_build_nodes()
 
 func _build_nodes() -> void:
+	if _config.blood_pool_texture:
+		_blood_pool_variants = DecalAtlasCache.build_variants(
+			_config.blood_pool_texture, ATLAS_COLUMNS, ATLAS_VARIANT_COUNT, POOL_ALPHA_CUTOFF
+		)
+		_blood_pool_variant = _blood_pool_variants[0] if not _blood_pool_variants.is_empty() else null
+	if _config.blood_drop_texture:
+		var drop_variants := DecalAtlasCache.build_variants(
+			_config.blood_drop_texture, ATLAS_COLUMNS, ATLAS_VARIANT_COUNT
+		)
+		_blood_drop_variant = drop_variants[1] if drop_variants.size() > 1 else null
+
 	_ground_ray = RayCast3D.new()
 	_ground_ray.name = "BloodGroundRay"
 	_ground_ray.collision_mask = _config.ground_collision_mask
@@ -55,7 +79,10 @@ func _build_nodes() -> void:
 		_drips.one_shot = false
 		_drips.emitting = false
 		_drips.visibility_aabb = AABB(Vector3(-2.0, -_config.ground_ray_length, -2.0), Vector3(4.0, _config.ground_ray_length + 3.0, 4.0))
-		_drips.position = Vector3(0.0, 1.0, 0.0)
+		# The effect node itself is moved to the resolved wound position when the
+		# player dies. Keeping the old player-origin offset here would place the
+		# emitter one metre above the actual wound (and above head wounds entirely).
+		_drips.position = Vector3.ZERO
 		_drips.draw_pass_1 = _make_drop_mesh()
 		_drips.process_material = _make_drip_process_material()
 		add_child(_drips)
@@ -73,9 +100,6 @@ func _build_nodes() -> void:
 	add_child(_drip_start_timer)
 	_drip_start_timer.timeout.connect(_begin_drips)
 
-func _on_medically_died(_death_type: PlayerRagdollSystem.DeathType, _direction: Vector3) -> void:
-	_start_once()
-
 func _on_player_died() -> void:
 	# 覆盖控制台/脚本直接调用 BasePlayer.die() 的非医疗死亡路径。
 	_start_once()
@@ -84,7 +108,7 @@ func _start_once() -> void:
 	if _has_started:
 		return
 	_has_started = true
-	# 医疗信号早于 BasePlayer.die() 发出；延迟一帧等待玩家/布娃娃完成状态切换。
+	# 延迟一帧等待玩家/布娃娃完成状态切换。
 	call_deferred("_start_effect")
 
 func _start_effect() -> void:
@@ -92,6 +116,9 @@ func _start_effect() -> void:
 		return
 	if not _blood_effects_enabled():
 		return
+	# Blood decals/particles on the world are disabled. Keep the lifecycle,
+	# cleanup, settings, and console interfaces available for future effects.
+	return
 	# 等待布娃娃的 deferred 启动至少跨过一个物理帧，再从当前骨骼姿态投影伤口。
 	await get_tree().physics_frame
 	if not _has_started or not is_instance_valid(_player):
@@ -119,69 +146,11 @@ func _global_position_for_ground_query() -> void:
 	_ground_ray.target_position = Vector3(0.0, -_config.ground_ray_length, 0.0)
 
 func _find_major_bleed_origin() -> Vector3:
-	if not _player.health_system or not _player.health_system.vitals:
-		return _player.global_position
-	var best_wound: Wound = null
-	for region_value in _player.health_system.vitals.regions.values():
-		var region: BodyRegion = region_value as BodyRegion
-		if not region:
-			continue
-		for wound_value in region.wounds:
-			var wound: Wound = wound_value as Wound
-			if not wound or wound.is_bandaged or wound.is_tourniqueted:
-				continue
-			if wound.bleed_rate == MedicalEnums.BleedRate.NONE:
-				continue
-			if best_wound == null or _is_higher_priority_bleed(wound, best_wound):
-				best_wound = wound
-	if not best_wound:
-		return _player.global_position
-	return _wound_world_position(best_wound)
-
-
-func _is_higher_priority_bleed(candidate: Wound, current: Wound) -> bool:
-	if candidate.bleed_rate != current.bleed_rate:
-		return candidate.bleed_rate > current.bleed_rate
-	return candidate.severity > current.severity
-
-
-func _wound_world_position(wound: Wound) -> Vector3:
-	if wound.has_bone_local_position and not wound.anchor_bone.is_empty():
-		var anchored_position := _bone_world_position(wound.anchor_bone, wound.bone_local_position)
-		if anchored_position != Vector3.INF:
-			return anchored_position
-	if wound.has_hit_position:
-		return wound.hit_position
-	for fallback_name in _fallback_bone_names(wound.body_part):
-		var fallback_position := _bone_world_position(fallback_name, Vector3.ZERO)
-		if fallback_position != Vector3.INF:
-			return fallback_position
+	if _bleed_origin_provider.is_valid():
+		var provided: Variant = _bleed_origin_provider.call()
+		if provided is Vector3 and provided != Vector3.INF:
+			return provided as Vector3
 	return _player.global_position
-
-func _bone_world_position(bone_name: String, local_entry: Vector3) -> Vector3:
-	if not _player.model_manager or not _player.model_manager.skeleton:
-		return Vector3.INF
-	var skeleton: Skeleton3D = _player.model_manager.skeleton
-	var bone_index := skeleton.find_bone(bone_name)
-	if bone_index < 0:
-		return Vector3.INF
-	var bone_world_transform := skeleton.global_transform * skeleton.get_bone_global_pose(bone_index)
-	return bone_world_transform * local_entry
-
-
-func _fallback_bone_names(part: MedicalEnums.BodyPartId) -> Array[String]:
-	match part:
-		MedicalEnums.BodyPartId.HEAD: return ["mixamorig_Head", "Head"]
-		MedicalEnums.BodyPartId.TORSO: return ["mixamorig_Spine2", "mixamorig_Spine1", "Spine2"]
-		MedicalEnums.BodyPartId.LEFT_UPPER_ARM: return ["mixamorig_LeftArm", "LeftArm"]
-		MedicalEnums.BodyPartId.LEFT_FOREARM: return ["mixamorig_LeftForeArm", "LeftForeArm"]
-		MedicalEnums.BodyPartId.RIGHT_UPPER_ARM: return ["mixamorig_RightArm", "RightArm"]
-		MedicalEnums.BodyPartId.RIGHT_FOREARM: return ["mixamorig_RightForeArm", "RightForeArm"]
-		MedicalEnums.BodyPartId.LEFT_THIGH: return ["mixamorig_LeftUpLeg", "LeftUpLeg"]
-		MedicalEnums.BodyPartId.LEFT_CALF: return ["mixamorig_LeftLeg", "LeftLeg"]
-		MedicalEnums.BodyPartId.RIGHT_THIGH: return ["mixamorig_RightUpLeg", "RightUpLeg"]
-		MedicalEnums.BodyPartId.RIGHT_CALF: return ["mixamorig_RightLeg", "RightLeg"]
-	return [""]
 
 func _create_pool(ground_point: Vector3) -> void:
 	if not _config.blood_pool_texture:
@@ -189,20 +158,39 @@ func _create_pool(ground_point: Vector3) -> void:
 		return
 	var pool := Decal.new()
 	pool.name = "BloodPool"
-	pool.texture_albedo = _atlas_variant(_config.blood_pool_texture, 0)
+	pool.texture_albedo = _blood_pool_variants[_rng.randi_range(0, _blood_pool_variants.size() - 1)] \
+		if not _blood_pool_variants.is_empty() else _blood_pool_variant
 	pool.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	pool.size = Vector3(_config.pool_start_size.x, 0.08, _config.pool_start_size.y)
-	pool.position = ground_point + Vector3.UP * _config.ground_offset
+	var size_variation := Vector2(_rng.randf_range(0.78, 1.12), _rng.randf_range(0.78, 1.12))
+	var start_size := _config.pool_start_size * size_variation
+	var final_size := _config.pool_max_size * size_variation
+	pool.size = Vector3(start_size.x, 0.08, start_size.y)
 	# Decal 默认从 +Y 向 -Y 投影，适合水平地面。
-	pool.rotation = Vector3.ZERO
-	add_child(pool)
+	pool.rotation = Vector3(0.0, _rng.randf_range(-PI, PI), 0.0)
+	# Persistent stains belong to the world, not this movable wound emitter.
+	# Otherwise a revive followed by another death relocates every old pool when
+	# DeathBloodEffect moves to the new wound origin.
+	var world_parent := _world_parent()
+	if not world_parent:
+		push_warning("DeathBloodEffect: no world parent; blood pool creation skipped.")
+		pool.queue_free()
+		return
+	world_parent.add_child(pool)
+	# ground_point comes from RayCast3D in world space. Assign it after parenting
+	# through global_position so the wound-origin transform is not applied twice.
+	var position_jitter := Vector3(
+		_rng.randf_range(-0.12, 0.12),
+		0.0,
+		_rng.randf_range(-0.12, 0.12)
+	)
+	pool.global_position = ground_point + position_jitter + Vector3.UP * _config.ground_offset
 	_pools.append(pool)
 
 	_pool_tween = create_tween()
 	_pool_tween.tween_interval(_config.pool_delay)
-	_pool_tween.tween_property(pool, "modulate:a", _config.pool_alpha, 0.35)
+	_pool_tween.tween_property(pool, "modulate:a", _config.pool_alpha * _rng.randf_range(0.72, 0.92), 0.35)
 	_pool_tween.parallel().tween_property(
-		pool, "size", Vector3(_config.pool_max_size.x, 0.08, _config.pool_max_size.y),
+		pool, "size", Vector3(final_size.x, 0.08, final_size.y),
 		_config.pool_growth_duration
 	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
@@ -234,8 +222,16 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 func _blood_effects_enabled() -> bool:
 	return bool(_settings_service.get_value("graphics/blood_effects", true)) if _settings_service else true
 
+
+func _world_parent() -> Node:
+	if is_instance_valid(_player) and is_instance_valid(_player.get_parent()):
+		return _player.get_parent()
+	return get_tree().current_scene if get_tree() else null
+
+
 func _on_player_exiting() -> void:
 	# 死亡效果脱离玩家节点后，仍需跟随玩家实例的生命周期清理。
+	clear_bloodstains()
 	queue_free()
 
 ## 清除该效果节点创建的全部血迹。由 ConsoleSystem 的 clear_blood 指令调用。
@@ -269,23 +265,9 @@ func _make_drop_mesh() -> QuadMesh:
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	material.albedo_color = Color(1.0, 1.0, 1.0, _config.drip_alpha)
-	material.albedo_texture = _atlas_variant(_config.blood_drop_texture, 1)
+	material.albedo_texture = _blood_drop_variant
 	mesh.material = material
 	return mesh
-
-func _atlas_variant(texture: Texture2D, variant_index: int) -> Texture2D:
-	if not texture:
-		return null
-	var atlas_size := texture.get_size()
-	if atlas_size.x < 2.0 or atlas_size.y < 2.0:
-		return texture
-	var atlas := AtlasTexture.new()
-	atlas.atlas = texture
-	var cell_size := atlas_size / 2.0
-	var column := variant_index % 2
-	var row := int(variant_index / 2)
-	atlas.region = Rect2(Vector2(column, row) * cell_size, cell_size)
-	return atlas
 
 func _make_drip_process_material() -> ParticleProcessMaterial:
 	var material := ParticleProcessMaterial.new()

@@ -1,6 +1,8 @@
 class_name RecoilComponent
 extends Node
 
+signal physical_recoil_applied(recoil_data: Dictionary)
+
 # Physics-driven recoil component.
 # Each shot adds angular velocity from RecoilPhysicsModel; a damped spring
 # then returns the camera offset to zero.
@@ -37,9 +39,11 @@ func apply_recoil(control_multiplier: float = 1.0) -> void:
 	if not physics_model:
 		return
 	_control_multiplier = control_multiplier
-	var angular_impulse := physics_model.get_shot_angular_impulse()
+	var shot := physics_model.get_shot_impulse()
+	var angular_impulse: Vector2 = shot["angular_velocity"]
 	_pitch_velocity += angular_impulse.x
 	_yaw_velocity += angular_impulse.y
+	physical_recoil_applied.emit(shot)
 
 
 func set_control_multiplier(value: float) -> void:

@@ -137,9 +137,10 @@ func _update_display() -> void:
 		lines.append("[color=#88ccff]呼吸效率: %.0f%%[/color]" % (vitals.breathing_effectiveness * 100.0))
 
 	# 疼痛等级
-	if vitals.pain_level > 0.01:
-		var pain_color := "#ff4444" if vitals.pain_level >= 0.7 else ("#ff8800" if vitals.pain_level >= 0.4 else "#ffaa44")
-		lines.append("[color=%s]疼痛: %.0f%%[/color]" % [pain_color, vitals.pain_level * 100.0])
+	var effective_pain := _health_system.get_effective_pain_level()
+	if effective_pain > 0.01:
+		var pain_color := "#ff4444" if effective_pain >= 0.7 else ("#ff8800" if effective_pain >= 0.4 else "#ffaa44")
+		lines.append("[color=%s]疼痛: %.0f%%[/color]" % [pain_color, effective_pain * 100.0])
 
 	# === 各部位详情 ===
 	lines.append("")

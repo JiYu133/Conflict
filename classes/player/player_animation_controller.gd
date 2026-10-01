@@ -23,7 +23,12 @@ const SM_TURN_LEFT    := "TurnLeft"
 const SM_TURN_RIGHT   := "TurnRight"
 const SM_CROUCH_TURN_LEFT  := "CrouchTurnLeft"
 const SM_CROUCH_TURN_RIGHT := "CrouchTurnRight"
+const SM_PRONE_TURN_LEFT := "ProneTurnLeft"
+const SM_PRONE_TURN_RIGHT := "ProneTurnRight"
 const TURN_THRESHOLD_EPSILON := deg_to_rad(0.1)
+## Direct prone locomotion clips bypass AnimationTree, so they need an
+## explicit blend time when switching between idle and crawl directions.
+const PRONE_LOCOMOTION_BLEND_TIME := 0.16
 
 # AnimationTree 参数路径 ──────────────────────────────────────
 const PARAM_PLAYBACK           := "parameters/playback"
@@ -32,6 +37,13 @@ const PARAM_CROUCH_WALK_BLEND  := "parameters/CrouchWalk/blend_position"
 const PARAM_RUN_BLEND          := "parameters/Run/blend_position"
 const PARAM_SPRINT_BLEND       := "parameters/Sprint/blend_position"
 const PARAM_STANCE_BLEND       := "parameters/Idle/blend_position"
+## The authored prone lateral clips are also used by the independent prone
+## turn controller. Keep the resource mapping in one place without coupling
+## the movement and turn state machines.
+const PRONE_LATERAL_LEFT_CLIP := &"prone_turn_left/mixamo_com"
+const PRONE_LATERAL_RIGHT_CLIP := &"prone_turn_right/mixamo_com"
+# Prone turns use the direct AnimationPlayer override because the imported
+# AnimationTree does not contain dedicated prone turn nodes.
 const TURN_STATE_NAMES := [SM_TURN_LEFT, SM_TURN_RIGHT, SM_CROUCH_TURN_LEFT, SM_CROUCH_TURN_RIGHT]
 
 
@@ -50,10 +62,13 @@ enum State {
 	TURN_RIGHT,
 	CROUCH_TURN_LEFT,
 	CROUCH_TURN_RIGHT,
+	PRONE_TURN_LEFT,
+	PRONE_TURN_RIGHT,
 }
 
 # 私有变量 ─────────────────────────────────────────────────
 var _animation_tree: AnimationTree
+var _animator: AnimationPlayer
 var _playback: AnimationNodeStateMachinePlayback
 var _movement: PlayerMovementController
 var _player: CharacterBody3D
@@ -69,6 +84,10 @@ var _accumulated_turn_yaw: float = 0.0
 var _turn_timer: float = 0.0
 var _external_turn_active: bool = false
 var _external_turn_speed: float = 1.0
+var _external_turn_position: float = 0.0
+var _prone_animation_override: StringName = &""
+var _direct_prone_turn: bool = false
+var _prone_turn_release_pending: bool = false
 
 
 # 初始化 ────────────────────────────────────────────────────
@@ -83,14 +102,6 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		movement.jumped.connect(_on_jumped)
 	if not movement.landed.is_connected(_on_landed):
 		movement.landed.connect(_on_landed)
-	if not movement.started_running.is_connected(_on_started_running):
-		movement.started_running.connect(_on_started_running)
-	if not movement.stopped_running.is_connected(_on_stopped_running):
-		movement.stopped_running.connect(_on_stopped_running)
-	if not movement.started_sprinting.is_connected(_on_started_sprinting):
-		movement.started_sprinting.connect(_on_started_sprinting)
-	if not movement.stopped_sprinting.is_connected(_on_stopped_sprinting):
-		movement.stopped_sprinting.connect(_on_stopped_sprinting)
 	if not player.died.is_connected(_on_died):
 		player.died.connect(_on_died)
 	if not player.revived.is_connected(_on_revived):
@@ -101,6 +112,7 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		player.stance_controller.stance_changed.connect(_on_stance_changed)
 
 	_animation_tree = model_manager.animation_tree
+	_animator = model_manager.animator
 
 	if not is_instance_valid(_animation_tree):
 		GlobalLogger.debug("AnimationController", "未找到 AnimationTree，动画禁用。")
@@ -113,6 +125,7 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 
 	GlobalLogger.info("AnimationController", "Initialized with AnimationTree.")
 	_setup_animations()
+	_normalize_prone_hips_height()
 	_setup_turn_filters()
 	_setup_turn_transitions()
 	_apply_config_to_transitions()
@@ -166,13 +179,102 @@ func _setup_animations() -> void:
 			var i := anim.get_track_count() - 1
 			while i >= 0:
 				var track_path := anim.track_get_path(i)
-				if not _is_turn_animation_library(lib_name) and anim.track_get_type(i) == Animation.TYPE_POSITION_3D and _is_root_motion_track(track_path):
+				if not _is_turn_animation_library(lib_name) \
+						and not _is_prone_locomotion_library(lib_name) \
+						and anim.track_get_type(i) == Animation.TYPE_POSITION_3D \
+						and _is_root_motion_track(track_path):
 					anim.remove_track(i)
 				i -= 1
 
 
+## Prone clips use different authored Hips heights (especially lateral crawl),
+## which moves the whole skeleton and therefore the head-mounted camera. Keep
+## the prone root at the idle height while preserving horizontal root motion.
+func _normalize_prone_hips_height() -> void:
+	var anim_player := _animator
+	if not is_instance_valid(anim_player) and _animation_tree:
+		var player_path: NodePath = _animation_tree.anim_player
+		anim_player = _animation_tree.get_node(player_path) as AnimationPlayer
+	if not is_instance_valid(anim_player):
+		return
+	var idle_library := anim_player.get_animation_library(&"prone_idle")
+	if not idle_library:
+		return
+	var idle_animation := idle_library.get_animation(&"mixamo_com")
+	var idle_height := _get_hips_height(idle_animation)
+	if is_nan(idle_height):
+		return
+	var prone_libraries := [
+		&"prone_idle", &"prone_forward", &"prone_backward",
+		&"prone_crawl_backward", &"prone_turn_left", &"prone_turn_right",
+		&"prone_roll", &"roll_left"
+	]
+	for library_name in prone_libraries:
+		var library := anim_player.get_animation_library(library_name)
+		if not library:
+			continue
+		for animation_name in library.get_animation_list():
+			var source := library.get_animation(animation_name)
+			if not source:
+				continue
+			var animation := source.duplicate(true) as Animation
+			var is_roll_clip: bool = library_name in [&"prone_roll", &"roll_left"]
+			_normalize_animation_hips_height(animation, idle_height, is_roll_clip)
+			library.remove_animation(animation_name)
+			library.add_animation(animation_name, animation)
+
+
+func _get_hips_height(animation: Animation) -> float:
+	if not animation:
+		return NAN
+	for track_index in animation.get_track_count():
+		if animation.track_get_type(track_index) != Animation.TYPE_POSITION_3D:
+			continue
+		if not str(animation.track_get_path(track_index)).contains("mixamorig_Hips"):
+			continue
+		if animation.track_get_key_count(track_index) == 0:
+			continue
+		var value := animation.track_get_key_value(track_index, 0) as Vector3
+		return value.y
+	return NAN
+
+
+func _normalize_animation_hips_height(
+	animation: Animation,
+	height: float,
+	remove_horizontal_motion: bool = false
+) -> void:
+	if not animation:
+		return
+	for track_index in animation.get_track_count():
+		if animation.track_get_type(track_index) != Animation.TYPE_POSITION_3D:
+			continue
+		if not str(animation.track_get_path(track_index)).contains("mixamorig_Hips"):
+			continue
+		if animation.track_get_key_count(track_index) == 0:
+			continue
+		var first_value := animation.track_get_key_value(track_index, 0) as Vector3
+		for key_index in animation.track_get_key_count(track_index):
+			var value := animation.track_get_key_value(track_index, key_index) as Vector3
+			value.y = height
+			if remove_horizontal_motion:
+				# Roll distance is applied by CharacterBody3D. Keeping the authored
+				# Hips X/Z track would move the mesh a second time.
+				value.x = first_value.x
+				value.z = first_value.z
+			animation.track_set_key_value(track_index, key_index, value)
+
+
 func _is_turn_animation_library(library_name: StringName) -> bool:
-	return str(library_name) in ["turn_left", "turn_right", "crouch_turn_left", "crouch_turn_right"]
+	return str(library_name) in ["turn_left", "turn_right", "crouch_turn_left", "crouch_turn_right", "prone_turn_left", "prone_turn_right"]
+
+
+func _is_prone_locomotion_library(library_name: StringName) -> bool:
+	return str(library_name) in [
+		"prone_idle", "prone_forward", "prone_backward", "prone_crawl_backward",
+		"prone_turn_left", "prone_turn_right", "prone_roll", "roll_left",
+		"prone_enter", "prone_exit", "prone_fire"
+	]
 
 
 func _neutralize_turn_hips(animation: Animation) -> void:
@@ -192,7 +294,7 @@ func _setup_turn_filters() -> void:
 	var sm := _animation_tree.tree_root as AnimationNodeStateMachine
 	if not sm:
 		return
-	for state_name in [SM_TURN_LEFT, SM_TURN_RIGHT, SM_CROUCH_TURN_LEFT, SM_CROUCH_TURN_RIGHT]:
+	for state_name in TURN_STATE_NAMES:
 		if not sm.has_node(state_name):
 			continue
 		var turn_node := sm.get_node(state_name) as AnimationNodeAnimation
@@ -254,13 +356,14 @@ func _setup_turn_transitions() -> void:
 	var sm := _animation_tree.tree_root as AnimationNodeStateMachine
 	if not sm:
 		return
-	for turn_state in [SM_TURN_LEFT, SM_TURN_RIGHT, SM_CROUCH_TURN_LEFT, SM_CROUCH_TURN_RIGHT]:
+	for turn_state in TURN_STATE_NAMES:
 		if not sm.has_node(turn_state):
 			GlobalLogger.warn("AnimationController", "Missing turn state: %s" % turn_state)
 			continue
 		_add_transition_if_missing(sm, SM_IDLE, turn_state)
 		_add_transition_if_missing(sm, turn_state, SM_IDLE)
 		for locomotion_state in [SM_WALK, SM_CROUCH_WALK, SM_RUN, SM_SPRINT]:
+			_add_transition_if_missing(sm, locomotion_state, turn_state)
 			_add_transition_if_missing(sm, turn_state, locomotion_state)
 
 
@@ -291,6 +394,8 @@ func _is_root_motion_track(track_path: NodePath) -> bool:
 
 func _process(delta: float) -> void:
 	if not is_instance_valid(_player) or not is_instance_valid(_animation_tree) or not _playback:
+		return
+	if _prone_animation_override != &"":
 		return
 
 	# 每帧更新 BlendSpace2D 混合坐标（无论当前状态，保持同步）
@@ -384,11 +489,8 @@ func _on_stance_changed(value: float) -> void:
 	_animation_tree.set(PARAM_STANCE_BLEND, value)
 	for turn_state_name in TURN_STATE_NAMES:
 		_animation_tree.set("parameters/%s/Base/blend_position" % turn_state_name, value)
-	# 走路状态下实时切换：半蹲阈值 0.3，避免在临界值来回抖动用滞后
-	if _state == State.WALK and value >= 0.3:
-		_transition(State.CROUCH_WALK)
-	elif _state == State.CROUCH_WALK and value < 0.2:
-		_transition(State.WALK)
+	# Ground locomotion is resolved once per frame in _process(). Keeping the
+	# stance signal focused on blend parameters avoids a second transition path.
 
 
 func _current_stance_value() -> float:
@@ -403,22 +505,6 @@ func _on_landed() -> void:
 		return
 	_land_timer = _config.land_recovery_time
 	_transition(State.LAND)
-
-func _on_started_running() -> void:
-	if _state not in [State.JUMP, State.FALL, State.LAND, State.DEATH]:
-		_transition(State.RUN)
-
-func _on_stopped_running() -> void:
-	if _state == State.RUN:
-		_transition(_resolve_ground_state())
-
-func _on_started_sprinting() -> void:
-	if _state not in [State.JUMP, State.FALL, State.LAND, State.DEATH]:
-		_transition(State.SPRINT)
-
-func _on_stopped_sprinting() -> void:
-	if _state == State.SPRINT:
-		_transition(_resolve_ground_state())
 
 func _on_died() -> void:
 	# 直接设置状态为 DEATH，不调用 _transition()。
@@ -454,9 +540,7 @@ func _resolve_ground_state() -> State:
 		return State.RUN
 
 	var h_speed_sq := _player.velocity.x * _player.velocity.x + _player.velocity.z * _player.velocity.z
-	var is_crouching := false
-	if _player.get("stance_controller") and _player.stance_controller:
-		is_crouching = _player.stance_controller.get_stance_value() >= 0.3
+	var is_crouching: bool = is_instance_valid(_movement) and _movement.is_crouched_locomotion()
 
 	# 滞后：当前是行走类状态时用 exit 阈值，否则用 enter 阈值
 	var is_walk_state := _state in [State.WALK, State.CROUCH_WALK]
@@ -508,26 +592,188 @@ func _process_turn(delta: float) -> void:
 func get_current_state() -> State:
 	return _state
 
+func _prone_player() -> AnimationPlayer:
+	if not _animation_tree:
+		return _animator
+	var player := _animation_tree.get_node_or_null(_animation_tree.anim_player) as AnimationPlayer
+	if player:
+		return player
+	# The model is reparented under BasePlayer after instantiation. Resolve the
+	# sibling explicitly as a fallback when the imported relative path is stale.
+	var parent := _animation_tree.get_parent()
+	return parent.get_node_or_null("AnimationPlayer") as AnimationPlayer if parent else _animator
+
+func play_prone_transition(kind: String) -> bool:
+	var player := _prone_player()
+	if not player:
+		return false
+	_prone_animation_override = &"prone_enter/mixamo_com" if kind == "enter" else &"prone_exit/mixamo_com"
+	if not player.has_animation(_prone_animation_override):
+		_prone_animation_override = &""
+		if _animation_tree:
+			_animation_tree.active = true
+		return false
+	if _animation_tree:
+		_animation_tree.active = false
+	# Keep the previous pose as the blend source. Stopping first discards that
+	# pose and makes the camera-bearing skeleton snap to frame zero.
+	player.play(_prone_animation_override, PRONE_LOCOMOTION_BLEND_TIME)
+	player.seek(0.0, true)
+	return true
+
+func get_prone_transition_length(kind: String) -> float:
+	var player := _prone_player()
+	if not player:
+		return 0.0
+	var anim := &"prone_enter/mixamo_com" if kind == "enter" else &"prone_exit/mixamo_com"
+	var clip := player.get_animation(anim) if player.has_animation(anim) else null
+	return clip.length if clip else 0.0
+
+func clear_prone_override() -> void:
+	_prone_animation_override = &""
+	if _animator:
+		_animator.stop()
+	if _animation_tree:
+		_animation_tree.active = true
+		if _playback:
+			_playback.start(SM_IDLE, true)
+	_state = State.IDLE
+
+func play_prone_idle() -> void:
+	var player := _prone_player()
+	if not player:
+		return
+	var anim: StringName = &"prone_idle/mixamo_com"
+	if not player.has_animation(anim):
+		clear_prone_override()
+		return
+	_play_prone_clip(player, anim, true, PRONE_LOCOMOTION_BLEND_TIME)
+
+func play_prone_roll(left: bool) -> float:
+	var player := _prone_player()
+	if not player:
+		return 0.0
+	var anim: StringName = &"roll_left/mixamo_com" if left else &"prone_roll/mixamo_com"
+	if not player.has_animation(anim):
+		play_prone_idle()
+		return 0.0
+	var clip := player.get_animation(anim)
+	_play_prone_clip(player, anim, false, PRONE_LOCOMOTION_BLEND_TIME)
+	player.seek(0.0, true)
+	return clip.length
+
+
+func is_prone_roll_playing() -> bool:
+	if _prone_animation_override not in [&"roll_left/mixamo_com", &"prone_roll/mixamo_com"]:
+		return false
+	var player := _prone_player()
+	return player != null and player.is_playing()
+
+func update_prone_motion(input_dir: Vector2, has_input: bool) -> void:
+	if _prone_turn_release_pending:
+		_prone_turn_release_pending = false
+		return
+	var player := _prone_player()
+	if not player:
+		return
+	var anim: StringName = &"prone_idle/mixamo_com"
+	if has_input:
+		if abs(input_dir.x) > abs(input_dir.y):
+			anim = get_prone_lateral_clip(input_dir.x < 0.0)
+		elif input_dir.y < 0.0:
+			anim = &"prone_forward/mixamo_com"
+		else:
+			anim = &"prone_backward/mixamo_com"
+	if not player.has_animation(anim):
+		anim = &"prone_idle/mixamo_com"
+	if not player.has_animation(anim):
+		clear_prone_override()
+		return
+	_play_prone_clip(player, anim, true, PRONE_LOCOMOTION_BLEND_TIME)
+
+
+func _play_prone_clip(
+	player: AnimationPlayer,
+	anim: StringName,
+	loop: bool,
+	blend_time: float
+) -> void:
+	if not player or not player.has_animation(anim):
+		return
+	if _animation_tree:
+		_animation_tree.active = false
+	var clip := player.get_animation(anim)
+	clip.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+	_prone_animation_override = anim
+	if player.current_animation != anim:
+		player.play(anim, blend_time)
+
+
+func get_prone_animation_name() -> StringName:
+	return _prone_animation_override
+
+
+## Returns the authored left/right prone clip shared by lateral locomotion and
+## the separate in-place turn controller.
+func get_prone_lateral_clip(left: bool) -> StringName:
+	return PRONE_LATERAL_LEFT_CLIP if left else PRONE_LATERAL_RIGHT_CLIP
+
 
 func begin_external_turn(turn_state: State, playback_speed: float) -> void:
 	_external_turn_active = true
+	_external_turn_position = 0.0
+	_direct_prone_turn = turn_state in [State.PRONE_TURN_LEFT, State.PRONE_TURN_RIGHT]
+	if _direct_prone_turn:
+		var player := _prone_player()
+		var clip := _state_to_animation_name(turn_state)
+		if player and player.has_animation(clip):
+			_state = turn_state
+			if _animation_tree:
+				_animation_tree.active = false
+			_prone_animation_override = clip
+			# Prone lateral crawl and prone turn share authored resources. Blend
+			# into the turn clip so a large-look turn never hard-cuts the head.
+			player.play(clip, PRONE_LOCOMOTION_BLEND_TIME)
+			player.seek(0.0, true)
+		else:
+			_external_turn_active = false
+			_direct_prone_turn = false
+			return
+	else:
+		# Chained turns can reuse the same direction after consuming one authored
+		# 90-degree clip. Restart that state explicitly so the lower-body clip does
+		# not remain parked on its final frame while gameplay yaw keeps rotating.
+		if _state == turn_state and _playback:
+			_playback.start(_state_to_sm_name(turn_state), true)
+		else:
+			_transition(turn_state)
 	set_turn_playback_speed(playback_speed)
-	_transition(turn_state)
 
 
 func end_external_turn() -> void:
 	if not _external_turn_active:
 		return
 	_external_turn_active = false
+	_external_turn_position = 0.0
 	set_turn_playback_speed(1.0)
-	_transition(_resolve_ground_state())
+	if _direct_prone_turn:
+		_prone_turn_release_pending = true
+		_direct_prone_turn = false
+		_state = State.IDLE
+		# A Z/C input can begin an authored prone exit on the same frame that
+		# TurnController observes the new transition and cancels its turn.  Do not
+		# replace that exit clip with idle while releasing the old turn ownership.
+		var stance_controller = _player.get("stance_controller") if _player else null
+		var stance_transitioning: bool = stance_controller != null \
+				and stance_controller.is_prone_transitioning()
+		if not stance_transitioning:
+			play_prone_idle()
+	else:
+		_transition(_resolve_ground_state())
 
 
 func get_turn_clip_length(turn_state: State) -> float:
-	if not _animation_tree:
-		return 0.0
-	var player_path: NodePath = _animation_tree.anim_player
-	var animator := _animation_tree.get_node_or_null(player_path) as AnimationPlayer
+	var animator := _prone_player()
 	if not animator:
 		return 0.0
 	var animation := animator.get_animation(_state_to_animation_name(turn_state))
@@ -537,16 +783,35 @@ func get_turn_clip_length(turn_state: State) -> float:
 func get_turn_playback_progress(clip_length: float) -> float:
 	if not _playback or clip_length <= 0.0:
 		return 1.0
-	return _playback.get_current_play_position() / clip_length
+	return _external_turn_position / clip_length
+
+
+func advance_external_turn(delta: float) -> void:
+	if not _external_turn_active:
+		return
+	# 当前 Godot 版本的 AnimationNodeStateMachinePlayback 没有 seek()；
+	# 用独立时间累计控制身体转向，AnimationPlayer 负责同步播放动画。
+	if delta <= 0.0:
+		# 兼容调试脚本/外部调用：让状态机已经自然播放的进度可被读取。
+		if _direct_prone_turn:
+			var player := _prone_player()
+			_external_turn_position = player.current_animation_position if player else 0.0
+		elif _playback:
+			_external_turn_position = _playback.get_current_play_position()
+		return
+	_external_turn_position += maxf(delta, 0.0) * _external_turn_speed
 
 
 func set_turn_playback_speed(speed: float) -> void:
 	_external_turn_speed = maxf(speed, 0.01)
-	if not _animation_tree:
-		return
-	var animator := _animation_tree.get_node_or_null(_animation_tree.anim_player) as AnimationPlayer
+	var animator := _animator
+	if not animator and _animation_tree:
+		animator = _animation_tree.get_node_or_null(_animation_tree.anim_player) as AnimationPlayer
 	if animator:
 		animator.speed_scale = _external_turn_speed
+
+func get_turn_playback_speed() -> float:
+	return _external_turn_speed
 
 
 func _state_to_animation_name(state: State) -> StringName:
@@ -555,6 +820,8 @@ func _state_to_animation_name(state: State) -> StringName:
 		State.TURN_RIGHT: return &"turn_right/mixamo_com"
 		State.CROUCH_TURN_LEFT: return &"crouch_turn_left/mixamo_com"
 		State.CROUCH_TURN_RIGHT: return &"crouch_turn_right/mixamo_com"
+		State.PRONE_TURN_LEFT: return get_prone_lateral_clip(true)
+		State.PRONE_TURN_RIGHT: return get_prone_lateral_clip(false)
 	return &""
 
 
@@ -575,6 +842,8 @@ func _is_turn_state(state: State) -> bool:
 		State.TURN_RIGHT,
 		State.CROUCH_TURN_LEFT,
 		State.CROUCH_TURN_RIGHT,
+		State.PRONE_TURN_LEFT,
+		State.PRONE_TURN_RIGHT,
 	]
 
 
@@ -593,4 +862,6 @@ func _state_to_sm_name(state: State) -> String:
 		State.TURN_RIGHT:  return SM_TURN_RIGHT
 		State.CROUCH_TURN_LEFT:  return SM_CROUCH_TURN_LEFT
 		State.CROUCH_TURN_RIGHT: return SM_CROUCH_TURN_RIGHT
+		State.PRONE_TURN_LEFT: return SM_PRONE_TURN_LEFT
+		State.PRONE_TURN_RIGHT: return SM_PRONE_TURN_RIGHT
 	return SM_IDLE

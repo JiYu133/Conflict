@@ -36,6 +36,8 @@ var _movement_state: MovementState = MovementState.IDLE
 var _is_exhausted: bool = false
 var _recovery_timer: float = 0.0
 var _carry_weight_kg: float = 0.0
+var _prone_roll_chain_count: int = 0
+var _prone_roll_chain_timer: float = 0.0
 var _prev_low_breath: bool = false  # 上一帧是否处于低体力喘气状态
 
 # 初始化 ────────────────────────────────────────────────────────
@@ -55,6 +57,10 @@ func initialize(player: BasePlayer, config: StaminaConfig) -> void:
 func _physics_process(delta: float) -> void:
 	if not _config or not _player or not _player.is_alive:
 		return
+	if _prone_roll_chain_timer > 0.0:
+		_prone_roll_chain_timer -= delta
+		if _prone_roll_chain_timer <= 0.0:
+			_prone_roll_chain_count = 0
 
 	# 1. 每帧重算动态上限（肺部伤情可能在任意时刻改变）
 	var new_max := _config.max_stamina * _compute_breathing_factor()
@@ -85,10 +91,18 @@ func _physics_process(delta: float) -> void:
 			if _recovery_timer >= _config.recovery_delay:
 				stamina = minf(max_stamina, stamina + _config.recovery_rate_idle * delta)
 
-	# 2b. 半蹲持续消耗：stance 越大消耗越多（按配置倍率）
+	# 2b. 半蹲持续消耗；趴下只在进入/起身过渡期间消耗，稳定趴下可恢复体力。
 	if _player.stance_controller:
-		var stance := _player.stance_controller.get_stance_value()
-		if stance > 0.05 and _movement_state != MovementState.SPRINTING and _movement_state != MovementState.RUNNING:
+		var stance_controller := _player.stance_controller
+		var stance := stance_controller.get_stance_value()
+		var prone_transitioning := stance_controller.is_prone_transitioning()
+		if prone_transitioning and _movement_state != MovementState.SPRINTING and _movement_state != MovementState.RUNNING:
+			var prone_transition_cost := _config.walk_cost_per_sec * _config.prone_transition_cost_multiplier * movement_cost_multiplier * delta
+			stamina = maxf(0.0, stamina - prone_transition_cost)
+			_recovery_timer = 0.0
+		elif not stance_controller.is_prone() \
+				and (stance_controller.is_stance_transitioning() or (stance > 0.05 and stance < 0.99)) \
+				and _movement_state != MovementState.SPRINTING and _movement_state != MovementState.RUNNING:
 			var crouch_cost: float = stance * _config.walk_cost_per_sec * _config.crouch_cost_multiplier * movement_cost_multiplier * delta
 			stamina = maxf(0.0, stamina - crouch_cost)
 			_recovery_timer = 0.0
@@ -200,6 +214,23 @@ func on_stopped_running() -> void:
 func on_jumped() -> void:
 	stamina = maxf(0.0, stamina - _config.jump_cost * get_movement_cost_multiplier())
 	stamina_changed.emit(get_stamina_pct())
+
+func get_prone_roll_cost() -> float:
+	return minf(_config.prone_roll_base_cost + _config.prone_roll_increment_cost * _prone_roll_chain_count, _config.prone_roll_max_cost) if _config else 12.0
+
+func allows_prone_roll() -> bool:
+	return stamina >= get_prone_roll_cost()
+
+func consume_prone_roll() -> bool:
+	if not allows_prone_roll():
+		return false
+	stamina = maxf(0.0, stamina - get_prone_roll_cost())
+	_prone_roll_chain_count += 1
+	_prone_roll_chain_timer = 1.0
+	if _player and _player.movement_controller and _player.movement_controller._config:
+		_prone_roll_chain_timer = _player.movement_controller._config.prone_roll_chain_reset_time
+	stamina_changed.emit(get_stamina_pct())
+	return true
 
 
 # 私有 ──────────────────────────────────────────────────────────

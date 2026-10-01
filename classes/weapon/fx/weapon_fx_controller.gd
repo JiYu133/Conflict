@@ -22,6 +22,7 @@ const HEAT_HAZE_MARKER_NAME := "HeatHaze"
 const HEAT_HAZE_MATERIAL_PATH := "res://assets/materials/fx/heat_haze_material.tres"
 const PREFERRED_HEAT_HAZE_NOISE_PATH := "res://assets/textures/fx/noise_heat_haze.png"
 const DEFAULT_HEAT_HAZE_NOISE_PATH := "res://assets/textures/effects/noise/noise_heat_haze.tres"
+const DEFAULT_BARREL_LENGTH := 0.415
 
 var _weapon: BaseWeapon
 var _fx: WeaponFXConfig
@@ -99,6 +100,13 @@ func _resolve_markers() -> void:
 		return
 	_muzzle_point = _find_forward_marker(MUZZLE_NODE_NAME)
 	_ejection_point = _weapon.find_child(EJECTION_NODE_NAME, true, false) as Node3D
+	if not _ejection_point:
+		# Support authored receiver naming used by older weapon scenes. Keeping
+		# the marker lookup here makes shell placement follow the live assembly.
+		for alias in ["EjectionWindow", "ShellEjection", "ShellPort"]:
+			_ejection_point = _weapon.find_child(alias, true, false) as Node3D
+			if _ejection_point:
+				break
 	var next_heat_marker := _weapon.find_child(HEAT_HAZE_MARKER_NAME, true, false) as Node3D
 	# 旧武器没有专用 Marker 时回退到 Muzzle，但新枪管应始终提供 HeatHaze Marker。
 	if not next_heat_marker:
@@ -252,15 +260,13 @@ func _process(delta: float) -> void:
 		_update_heat_haze_particles()
 
 
-## 有效枪管长度：优先取已装枪管组件，其次武器配置
+## 有效枪管长度：取已装枪管组件，无枪管时使用安全默认值
 func _effective_barrel_length() -> float:
-	if _weapon:
+	if _weapon and _weapon.attachment_manager:
 		var barrel := _weapon._get_attachment_config_of_type(BarrelConfig) as BarrelConfig
 		if barrel:
 			return barrel.barrel_length
-		if _weapon.config:
-			return _weapon.config.barrel_length
-	return 0.415
+	return DEFAULT_BARREL_LENGTH
 
 
 ## 判定枪口装置类别：按已装枪口配件的名称/字段推断。
@@ -313,6 +319,8 @@ func _muzzle_transform() -> Transform3D:
 
 func _spawn_flash(profile: Dictionary, xf: Transform3D) -> void:
 	var scene: PackedScene = profile.get("scene")
+	if not scene and _fx:
+		scene = _fx.flash_scene_standard
 	if not scene:
 		return  # 素材未就绪：静默跳过
 	var node := scene.instantiate() as Node3D

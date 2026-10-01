@@ -165,9 +165,18 @@ func _setup_from_config() -> void:
 	fire_control.initialize(config)
 	gas_component.initialize(config)
 	recoil_component.initialize(config, attachment_manager)
+	recoil_component.physical_recoil_applied.connect(_on_physical_recoil_applied)
 	ejection_component.initialize(config)
 	malfunction_component.initialize(config, bolt_component, ejection_component, ammo_component)
 	fx_controller.initialize(self, config.fx_config)
+
+
+func _on_physical_recoil_applied(recoil_data: Dictionary) -> void:
+	var node: Node = self
+	while node and not (node is BasePlayer):
+		node = node.get_parent()
+	if node and (node as BasePlayer).force_receiver:
+		(node as BasePlayer).apply_weapon_recoil(self, recoil_data)
 
 ## 连接子组件的信号到本类的回调
 ## 这样 BaseWeapon 成为信号总线的中心控制器
@@ -535,21 +544,31 @@ func _apply_attachment_change(attachment_cfg: AttachmentConfig, equipped: bool) 
 	if recoil_component:
 		recoil_component.rebuild_physics()
 
-## 获取当前散布值
-## 区分腰射和机瞄，返回武器基础散布 + 所有附件的散布修正
-func get_current_spread(is_ads: bool) -> float:
-	var base = config.ads_spread if is_ads else config.hipfire_spread
-	if attachment_manager:
-		base += attachment_manager.get_total_spread_modifier(is_ads)
-	return base
+## Legacy spread query retained for callers that have not migrated yet.
+## ADS deliberately returns the same value as hip fire.
+func get_current_spread(_is_ads: bool) -> float:
+	# Legacy compatibility only. Projectile launch never consumes this value,
+	# and ADS is intentionally forbidden from changing weapon accuracy.
+	return config.hipfire_spread if config else 0.0
+
+
+func get_active_optic_attachment() -> OpticAttachment:
+	return attachment_manager.get_active_optic() if attachment_manager else null
+
+
+func get_ads_anchor() -> Node3D:
+	var optic := get_active_optic_attachment()
+	if is_instance_valid(optic):
+		var optic_anchor := optic.get_ads_anchor()
+		if is_instance_valid(optic_anchor):
+			return optic_anchor
+	return find_child("ADSAnchor", true, false) as Node3D
 
 
 ## 获取实际生效的 ADS FOV（配件瞄具优先，回退 config 字段，再回退 -1）
 func get_effective_fov_override() -> float:
-	if attachment_manager:
-		var fov := attachment_manager.get_fov_override()
-		if fov > 0.0:
-			return fov
+	# Optical magnification belongs to the optic SubViewport. Only an explicit
+	# weapon-level override may alter the player's main camera during ADS.
 	return config.ads_fov_override if config else -1.0
 
 
@@ -761,9 +780,6 @@ func _get_control_multiplier() -> float:
 	if not node:
 		return mult
 	var player := node as BasePlayer
-	# ADS 提高控枪刚度
-	if player.weapon_manager and player.weapon_manager.is_aiming:
-		mult *= 1.35
 	# 蹲姿提高控枪稳定性
 	if player.stance_controller:
 		mult *= lerp(1.0, 1.2, player.stance_controller.get_stance_value())
@@ -804,6 +820,10 @@ func _spawn_projectile() -> void:
 
 
 ## 枪口世界坐标（武器局部 -Z 方向延伸 weapon_length）
+func get_muzzle_position() -> Vector3:
+	return _get_muzzle_position()
+
+
 func _get_muzzle_position() -> Vector3:
 	var muzzle_marker := find_child("Muzzle", true, false) as Node3D
 	if muzzle_marker:
@@ -813,6 +833,10 @@ func _get_muzzle_position() -> Vector3:
 
 
 ## 枪口方向完全由枪口 Marker 的 -Z 轴决定；没有 Marker 时使用武器根节点 -Z 轴。
+func get_muzzle_direction() -> Vector3:
+	return _get_muzzle_direction()
+
+
 func _get_muzzle_direction() -> Vector3:
 	var muzzle_marker := find_child("Muzzle", true, false) as Node3D
 	if muzzle_marker:
@@ -997,17 +1021,17 @@ func _grip_node_score(node: Node3D) -> float:
 		if parent is AttachmentSlot:
 			var slot := parent as AttachmentSlot
 			if slot.slot_name == "PistolGrip":
-				priority = 100.0
+				priority = maxf(priority, 100.0)
 			elif slot.slot_type == AttachmentSlot.SlotType.PISTOL_GRIP:
-				priority = 100.0
+				priority = maxf(priority, 100.0)
 			elif slot.slot_name == "Underbarrel":
-				priority = 90.0
+				priority = maxf(priority, 90.0)
 			elif slot.slot_type == AttachmentSlot.SlotType.UNDERBARREL:
-				priority = 90.0
+				priority = maxf(priority, 90.0)
 			elif slot.slot_name == "Handguard":
-				priority = 80.0
+				priority = maxf(priority, 80.0)
 			elif slot.slot_type == AttachmentSlot.SlotType.HANDGUARD:
-				priority = 80.0
+				priority = maxf(priority, 80.0)
 		parent = parent.get_parent()
 
 	var local_z := node.position.z

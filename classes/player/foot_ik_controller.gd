@@ -1,210 +1,282 @@
 class_name FootIKController
 extends Node
 
-
 var _skeleton: Skeleton3D
 var _model_manager: PlayerModelManager
-var _config: ModelLookupConfig
-var _player: CharacterBody3D  # 用于排除自身碰撞
-
+var _player: CharacterBody3D
 var _left_ik: TwoBoneIK3D
 var _right_ik: TwoBoneIK3D
 var _left_target: Marker3D
 var _right_target: Marker3D
-
-var _left_blend: float = 0.0
-var _right_blend: float = 0.0
-
+var _left_blend := 0.0
+var _right_blend := 0.0
+var _left_foot_idx := -1
+var _right_foot_idx := -1
 var _ankle_modifier: FootAnkleModifier
+var _pose_modifier: FootPoseModifier
+var _active := true
+var _left_hit := {"colliding": false, "point": Vector3.ZERO, "normal": Vector3.UP}
+var _right_hit := {"colliding": false, "point": Vector3.ZERO, "normal": Vector3.UP}
 
-var _left_foot_idx: int = -1
-var _right_foot_idx: int = -1
-
-const BLEND_SPEED       := 8.0
-const RAY_ABOVE         := 0.3    # 射线起点在脚骨上方多少米
-const RAY_BELOW         := 0.4    # 射线向下扫多少米
-const ANKLE_OFFSET      := 0.05   # 脚踝关节到脚底的距离（米），防止脚陷地/悬空，按实际模型微调
-const ANKLE_BONE_LEFT   := "mixamorig_LeftFoot"
-const ANKLE_BONE_RIGHT  := "mixamorig_RightFoot"
-
-var _diag_timer: int = 0
-const DIAG_INTERVAL := 180
+const BLEND_SPEED := 8.0
+const RAY_ABOVE := 0.3
+const RAY_BELOW := 0.4
+const ANKLE_OFFSET := 0.05
+const ANKLE_BONE_LEFT := "mixamorig_LeftFoot"
+const ANKLE_BONE_RIGHT := "mixamorig_RightFoot"
+# Lift is relative to the animated support foot. Imported crouch clips can
+# translate both ankles far above the standing rest pose.
+const PLANT_LIFT_START := 0.035
+const PLANT_LIFT_END := 0.12
 
 
-func initialize(model_manager: PlayerModelManager, config: ModelLookupConfig) -> void:
+func initialize(model_manager: PlayerModelManager, _config: ModelLookupConfig) -> void:
+	if is_instance_valid(_model_manager):
+		if _model_manager.model_loaded.is_connected(_on_model_loaded):
+			_model_manager.model_loaded.disconnect(_on_model_loaded)
+		if _model_manager.model_unloaded.is_connected(clear):
+			_model_manager.model_unloaded.disconnect(clear)
+	clear()
 	_model_manager = model_manager
-	_config = config
-	_skeleton = model_manager.skeleton
-	# 向上找到 CharacterBody3D，用于射线排除自身
-	var n: Node = model_manager
-	while n:
-		if n is CharacterBody3D:
-			_player = n as CharacterBody3D
-			break
-		n = n.get_parent()
+	var node: Node = model_manager
+	while node and not node is CharacterBody3D:
+		node = node.get_parent()
+	_player = node as CharacterBody3D
 	_model_manager.model_loaded.connect(_on_model_loaded)
+	_model_manager.model_unloaded.connect(clear)
+	if is_instance_valid(model_manager.skeleton):
+		_on_model_loaded(model_manager.model_node)
+
+
+func clear() -> void:
+	set_active(false)
+	for modifier in [_pose_modifier, _ankle_modifier]:
+		if is_instance_valid(modifier):
+			modifier.active = false
+			if modifier.get_parent():
+				modifier.get_parent().remove_child(modifier)
+			modifier.queue_free()
+	_pose_modifier = null
+	_ankle_modifier = null
+	_skeleton = null
+	_left_ik = null
+	_right_ik = null
+	_left_target = null
+	_right_target = null
+	_left_foot_idx = -1
+	_right_foot_idx = -1
+	_left_hit = {"colliding": false, "point": Vector3.ZERO, "normal": Vector3.UP}
+	_right_hit = _left_hit.duplicate()
 
 
 func _on_model_loaded(_model: Node3D) -> void:
+	clear()
 	_skeleton = _model_manager.skeleton
 	_setup()
+	set_active(true)
 
 
 func _setup() -> void:
-	if not _skeleton:
+	if not is_instance_valid(_skeleton):
 		return
-
-	_left_ik      = _skeleton.get_node_or_null("LeftFootIK")      as TwoBoneIK3D
-	_right_ik     = _skeleton.get_node_or_null("RightFootIK")     as TwoBoneIK3D
-	_left_target  = _skeleton.get_node_or_null("LeftFootTarget")  as Marker3D
+	_left_ik = _skeleton.get_node_or_null("LeftFootIK") as TwoBoneIK3D
+	_right_ik = _skeleton.get_node_or_null("RightFootIK") as TwoBoneIK3D
+	_left_target = _skeleton.get_node_or_null("LeftFootTarget") as Marker3D
 	_right_target = _skeleton.get_node_or_null("RightFootTarget") as Marker3D
-
-	if not _left_ik or not _right_ik:
-		GlobalLogger.warn("FootIK", "未找到 LeftFootIK / RightFootIK，请在编辑器里 Skeleton3D 下添加 TwoBoneIK3D 节点。")
-	if not _left_target or not _right_target:
-		GlobalLogger.warn("FootIK", "未找到 LeftFootTarget / RightFootTarget Marker3D。")
-
-	_setup_ankle_modifier()
-
-	if _left_ik:
-		_left_ik.influence = 0.0
-	if _right_ik:
-		_right_ik.influence = 0.0
-
-	_left_foot_idx  = _skeleton.find_bone(ANKLE_BONE_LEFT)
+	_left_foot_idx = _skeleton.find_bone(ANKLE_BONE_LEFT)
 	_right_foot_idx = _skeleton.find_bone(ANKLE_BONE_RIGHT)
-
-	GlobalLogger.info("FootIK", "脚部 IK 初始化完成  left_ik=%s  right_ik=%s" % [
-		str(is_instance_valid(_left_ik)), str(is_instance_valid(_right_ik))])
-
-
-func _setup_ankle_modifier() -> void:
-	_ankle_modifier = _skeleton.get_node_or_null("FootAnkleModifier") as FootAnkleModifier
-	if not _ankle_modifier:
-		_ankle_modifier = FootAnkleModifier.new()
-		_ankle_modifier.name = "FootAnkleModifier"
-		_skeleton.add_child(_ankle_modifier)
+	_bind_leg(_left_ik, _left_target, _left_foot_idx)
+	_bind_leg(_right_ik, _right_target, _right_foot_idx)
+	if not _valid_leg(_left_ik, _left_target, _left_foot_idx) and not _valid_leg(_right_ik, _right_target, _right_foot_idx):
+		GlobalLogger.warn("FootIK", "Model has no complete foot IK chain; ground adaptation disabled.")
+		return
+	_pose_modifier = FootPoseModifier.new()
+	_pose_modifier.name = "FootPoseSync"
+	_pose_modifier.controller = self
+	_skeleton.add_child(_pose_modifier)
+	# Sample the animated legs before either leg IK can feed its result back.
+	var first_index := _skeleton.get_child_count() - 1
+	for solver in [_left_ik, _right_ik]:
+		if is_instance_valid(solver):
+			first_index = mini(first_index, solver.get_index())
+	_skeleton.move_child(_pose_modifier, first_index)
+	_ankle_modifier = FootAnkleModifier.new()
+	_ankle_modifier.name = "FootAnkleModifier"
+	_skeleton.add_child(_ankle_modifier)
 	_ankle_modifier.setup(_skeleton, self)
 
 
-func process_ik(delta: float) -> void:
-	if not _left_ik and not _right_ik:
+func _valid_leg(solver: TwoBoneIK3D, target: Marker3D, bone_idx: int) -> bool:
+	if not is_instance_valid(solver) or solver.setting_count < 1 or not is_instance_valid(target) or bone_idx < 0:
+		return false
+	var root := solver.get_root_bone(0)
+	var middle := solver.get_middle_bone(0)
+	return root >= 0 and middle >= 0 and solver.get_end_bone(0) == bone_idx \
+		and _skeleton.get_bone_parent(middle) == root and _skeleton.get_bone_parent(bone_idx) == middle \
+		and solver.get_node_or_null(solver.get_pole_node(0)) is Marker3D
+
+
+func _bind_leg(solver: TwoBoneIK3D, target: Marker3D, bone_idx: int) -> void:
+	if is_instance_valid(solver):
+		solver.influence = 0.0
+	if _valid_leg(solver, target, bone_idx):
+		solver.set_target_node(0, solver.get_path_to(target))
+
+
+func _bone_world_position(bone_idx: int) -> Vector3:
+	return (_skeleton.global_transform * _skeleton.get_bone_global_pose(bone_idx)).origin
+
+
+func _update_leg_pole(pole: Marker3D, hip_idx: int, knee_idx: int, foot_idx: int) -> void:
+	if not pole or hip_idx < 0 or knee_idx < 0 or foot_idx < 0:
 		return
-	if not is_instance_valid(_skeleton):
+	var hip := _bone_world_position(hip_idx)
+	var knee := _bone_world_position(knee_idx)
+	var foot := _bone_world_position(foot_idx)
+	var hip_to_foot := foot - hip
+	var bend := knee - (hip + hip_to_foot * clampf(
+		(knee - hip).dot(hip_to_foot) / maxf(hip_to_foot.length_squared(), 0.000001),
+		0.0,
+		1.0
+	))
+	if bend.length_squared() < 0.000001:
+		bend = _skeleton.global_basis.z
+	var pole_distance := maxf((knee - hip).length() + (foot - knee).length(), 0.3)
+	pole.global_position = knee + bend.normalized() * pole_distance
+
+
+func set_active(enabled: bool, fade_delta: float = 0.0) -> void:
+	_active = enabled
+	if not enabled:
+		# Prone transitions fade; death/unload callers use the immediate default.
+		_left_blend = move_toward(_left_blend, 0.0, BLEND_SPEED * fade_delta) if fade_delta > 0.0 else 0.0
+		_right_blend = move_toward(_right_blend, 0.0, BLEND_SPEED * fade_delta) if fade_delta > 0.0 else 0.0
+		if is_instance_valid(_left_ik):
+			_left_ik.influence = _left_blend
+		if is_instance_valid(_right_ik):
+			_right_ik.influence = _right_blend
+		if is_instance_valid(_ankle_modifier):
+			_ankle_modifier.left_blend = _left_blend
+			_ankle_modifier.right_blend = _right_blend
+	if is_instance_valid(_pose_modifier):
+		_pose_modifier.active = enabled
+	if is_instance_valid(_ankle_modifier):
+		_ankle_modifier.active = enabled or _left_blend > 0.0 or _right_blend > 0.0
+
+
+func _physics_process(_delta: float) -> void:
+	if not _active or not is_instance_valid(_skeleton):
 		return
-
-	var left_hit  := _raycast_foot(_left_foot_idx)
-	var right_hit := _raycast_foot(_right_foot_idx)
-
-	var on_ground := _player != null and _player.is_on_floor()
-
-	var left_target_blend  := 1.0 if (left_hit.colliding  and on_ground) else 0.0
-	var right_target_blend := 1.0 if (right_hit.colliding and on_ground) else 0.0
-
-	_left_blend  = move_toward(_left_blend,  left_target_blend,  BLEND_SPEED * delta)
-	_right_blend = move_toward(_right_blend, right_target_blend, BLEND_SPEED * delta)
-
-	# target 位置 = 地面碰撞点 + 脚踝偏移，防止脚踝关节沉入地面
-	if _left_target and left_hit.colliding:
-		_left_target.global_position = left_hit.point + Vector3.UP * ANKLE_OFFSET
-	if _right_target and right_hit.colliding:
-		_right_target.global_position = right_hit.point + Vector3.UP * ANKLE_OFFSET
-
-	if _left_ik:
-		_left_ik.influence = _left_blend
-	if _right_ik:
-		_right_ik.influence = _right_blend
-
-	if _ankle_modifier:
-		_ankle_modifier.left_normal  = left_hit.normal  if left_hit.colliding  else Vector3.UP
-		_ankle_modifier.right_normal = right_hit.normal if right_hit.colliding else Vector3.UP
-		_ankle_modifier.left_blend   = _left_blend
-		_ankle_modifier.right_blend  = _right_blend
-
-	_diag_timer += 1
-	if _diag_timer >= DIAG_INTERVAL:
-		_diag_timer = 0
-		GlobalLogger.info("FootIK", "[诊断] L: blend=%.2f hit=%s  R: blend=%.2f hit=%s" % [
-			_left_blend, str(left_hit.colliding), _right_blend, str(right_hit.colliding)])
+	# Physics queries stay in the physics tick. Pose targets and plant weights
+	# use the current animation later, inside FootPoseModifier.
+	_left_hit = _raycast_foot(_left_foot_idx)
+	_right_hit = _raycast_foot(_right_foot_idx)
 
 
-# 从脚骨骼世界位置上方向下投射射线，不依赖 BoneAttachment3D
+func process_ik(delta: float, enabled: bool = true) -> void:
+	set_active(enabled)
+	if not enabled or not is_instance_valid(_skeleton):
+		return
+	var on_ground := is_instance_valid(_player) and _player.is_on_floor()
+	_left_blend = _update_leg(_left_ik, _left_target, _left_foot_idx, _left_hit, _left_blend, delta, on_ground)
+	_right_blend = _update_leg(_right_ik, _right_target, _right_foot_idx, _right_hit, _right_blend, delta, on_ground)
+	if is_instance_valid(_ankle_modifier):
+		_ankle_modifier.left_normal = _left_hit.normal
+		_ankle_modifier.right_normal = _right_hit.normal
+		_ankle_modifier.left_blend = _left_blend
+		_ankle_modifier.right_blend = _right_blend
+
+
+func _plant_weight(bone_idx: int) -> float:
+	var animated := _bone_world_position(bone_idx)
+	var support_y := animated.y
+	for foot_idx in [_left_foot_idx, _right_foot_idx]:
+		if foot_idx >= 0:
+			support_y = minf(support_y, _bone_world_position(foot_idx).y)
+	var lift := maxf(animated.y - support_y, 0.0)
+	return 1.0 - smoothstep(PLANT_LIFT_START, PLANT_LIFT_END, lift)
+
+
+func _update_leg(solver: TwoBoneIK3D, target: Marker3D, bone_idx: int, hit: Dictionary, blend: float, delta: float, on_ground: bool) -> float:
+	if not _valid_leg(solver, target, bone_idx):
+		if is_instance_valid(solver):
+			solver.influence = 0.0
+		return 0.0
+	var knee := _skeleton.get_bone_parent(bone_idx)
+	_update_leg_pole(solver.get_node(solver.get_pole_node(0)) as Marker3D, _skeleton.get_bone_parent(knee), knee, bone_idx)
+	var plant := _plant_weight(bone_idx)
+	var weight := plant if on_ground and hit.colliding else 0.0
+	# Fade contact acquisition, but never let last frame's weight pin a lifted foot.
+	blend = minf(move_toward(blend, weight, BLEND_SPEED * maxf(delta, 0.0)), plant)
+	var animated_world := _skeleton.global_transform * _skeleton.get_bone_global_pose(bone_idx).origin
+	if hit.colliding and on_ground:
+		# Project this frame's foot onto the cached contact plane, keeping animation X/Z.
+		var normal: Vector3 = hit.normal
+		if normal.y > 0.1:
+			var ground_y: float = hit.point.y - (normal.x * (animated_world.x - hit.point.x) + normal.z * (animated_world.z - hit.point.z)) / normal.y
+			target.global_position = Vector3(animated_world.x, ground_y + ANKLE_OFFSET, animated_world.z)
+		else:
+			blend = 0.0
+	else:
+		target.global_position = animated_world
+	solver.influence = blend
+	return blend
+
+
 func _raycast_foot(bone_idx: int) -> Dictionary:
 	var result := {"colliding": false, "point": Vector3.ZERO, "normal": Vector3.UP}
-	if bone_idx == -1 or not is_instance_valid(_skeleton):
+	if bone_idx < 0 or not is_instance_valid(_skeleton):
 		return result
-
-	# 脚骨骼当前世界位置
-	var foot_world: Vector3 = (_skeleton.global_transform * _skeleton.get_bone_global_pose(bone_idx)).origin
-	var ray_from := foot_world + Vector3.UP * RAY_ABOVE
-	var ray_to   := foot_world + Vector3.DOWN * RAY_BELOW
-
-	var query := PhysicsRayQueryParameters3D.create(ray_from, ray_to)
-	query.collision_mask = PhysicsLayers.WORLD
-	if _player:
+	var foot_world := (_skeleton.global_transform * _skeleton.get_bone_global_pose(bone_idx)).origin
+	var query := PhysicsRayQueryParameters3D.create(foot_world + Vector3.UP * RAY_ABOVE, foot_world + Vector3.DOWN * RAY_BELOW, PhysicsLayers.WORLD)
+	if is_instance_valid(_player):
 		query.exclude = [_player.get_rid()]
-
-	var space := _skeleton.get_world_3d().direct_space_state
-	if not space:
-		return result
-
-	var hit := space.intersect_ray(query)
+	var hit := _skeleton.get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
 		result.colliding = true
-		result.point     = hit.position
-		result.normal    = hit.normal
+		result.point = hit.position
+		result.normal = hit.normal
 	return result
 
 
-# ─────────────────────────────────────────────────────────────
-# 脚踝法线对齐修改器
-# ─────────────────────────────────────────────────────────────
+class FootPoseModifier extends SkeletonModifier3D:
+	var controller: FootIKController
+
+	func _process_modification_with_delta(delta: float) -> void:
+		if is_instance_valid(controller) and controller._active:
+			controller.process_ik(delta)
+
+
 class FootAnkleModifier extends SkeletonModifier3D:
-
-	var _skeleton: Skeleton3D
-	var _left_idx: int  = -1
-	var _right_idx: int = -1
-
-	var left_normal:  Vector3 = Vector3.UP
-	var right_normal: Vector3 = Vector3.UP
-	var left_blend:   float   = 0.0
-	var right_blend:  float   = 0.0
-
+	var _left_idx := -1
+	var _right_idx := -1
+	var left_normal := Vector3.UP
+	var right_normal := Vector3.UP
+	var left_blend := 0.0
+	var right_blend := 0.0
 
 	func setup(skeleton: Skeleton3D, _controller: FootIKController) -> void:
-		_skeleton = skeleton
-		_left_idx  = skeleton.find_bone(ANKLE_BONE_LEFT)
+		_left_idx = skeleton.find_bone(ANKLE_BONE_LEFT)
 		_right_idx = skeleton.find_bone(ANKLE_BONE_RIGHT)
 
-
 	func _process_modification() -> void:
-		if _left_idx != -1 and left_blend > 0.001:
+		if _left_idx >= 0 and left_blend > 0.001:
 			_apply_ankle_rotation(_left_idx, left_normal, left_blend)
-		if _right_idx != -1 and right_blend > 0.001:
+		if _right_idx >= 0 and right_blend > 0.001:
 			_apply_ankle_rotation(_right_idx, right_normal, right_blend)
-
 
 	func _apply_ankle_rotation(bone_idx: int, ground_normal: Vector3, blend: float) -> void:
 		var skel := get_skeleton()
 		if not skel:
 			return
-
-		# 计算世界 UP → 地面法线的旋转
-		var dot := Vector3.UP.dot(ground_normal)
-		if dot >= 0.9999:
-			return  # 平地，不旋转
-
-		var rot_axis := Vector3.UP.cross(ground_normal)
-		if rot_axis.length_squared() < 0.0001:
+		var axis := Vector3.UP.cross(ground_normal)
+		if axis.length_squared() < 0.0001:
 			return
-		var rot_angle := Vector3.UP.angle_to(ground_normal) * blend
-
-		# 限制最大旋转角（防止极端斜面扭断脚踝）
-		rot_angle = clampf(rot_angle, -deg_to_rad(25.0), deg_to_rad(25.0))
-
-		# 转到骨骼本地空间叠加
-		var world_rot   := Quaternion(rot_axis.normalized(), rot_angle)
-		var skel_basis  := skel.global_transform.basis.orthonormalized()
-		var local_extra := Quaternion(skel_basis).inverse() * world_rot * Quaternion(skel_basis)
-
-		skel.set_bone_pose_rotation(bone_idx, local_extra * skel.get_bone_pose_rotation(bone_idx))
+		var angle := minf(Vector3.UP.angle_to(ground_normal), deg_to_rad(25.0)) * blend
+		var world_extra := Quaternion(axis.normalized(), angle)
+		var parent_world := skel.global_basis.orthonormalized()
+		var parent_idx := skel.get_bone_parent(bone_idx)
+		if parent_idx >= 0:
+			parent_world *= skel.get_bone_global_pose(parent_idx).basis.orthonormalized()
+		var local_extra := Quaternion(parent_world).inverse() * world_extra * Quaternion(parent_world)
+		skel.set_bone_pose_rotation(bone_idx, (local_extra * skel.get_bone_pose_rotation(bone_idx)).normalized())

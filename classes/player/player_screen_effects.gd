@@ -4,10 +4,10 @@ extends Node
 # ============================================================
 # 玩家屏幕效果系统
 # 效果层级（CanvasLayer.layer）：
-#   1  UI CanvasLayer — vignette(z=9)、模糊(z=10)、MedicalDebugHUD
+#   1  UI CanvasLayer — vignette(z=9)、MedicalDebugHUD
 #   8  ComaEffect     — 昏迷眼皮（独立 CanvasLayer，由 base_player 创建）
-#   9  _coma_canvas   — 濒死扭曲/重影（动态创建）
-#   9  _death_canvas  — 死亡全屏渐黑（动态创建，创建顺序在 coma 之后）
+#   9  _physiological_canvas — 疼痛/死亡模糊与濒死视觉（单次屏幕采样）
+#   9  _death_canvas  — 死亡全屏渐黑（创建顺序在生理效果之后）
 #   10 NotificationManager — 通知，永远最顶
 # ============================================================
 
@@ -15,8 +15,10 @@ extends Node
 signal should_play_breath(intensity: float)
 
 # ── 体力/疼痛效果参数 ────────────────────────────────────────
-const BLUR_PULSE_DECAY: float = 1.5
-const MAX_PULSE_BLUR: float = 3.5
+const HIT_FEEDBACK_DECAY_TIME: float = 1.25
+const HIT_ENERGY_REFERENCE_J: float = 600.0
+const MAX_HIT_GLOBAL_BLUR: float = 1.25
+const MAX_HIT_EDGE_BLUR: float = 8.0
 const MAX_BASE_BLUR: float = 1.2
 const STAMINA_BLUR_START: float = 0.4
 const STAMINA_VIGNETTE_START: float = 0.6
@@ -33,20 +35,21 @@ const COMA_EFFECT_DARK_STRENGTH: float = 0.38
 # ── 节点引用 ────────────────────────────────────────────────
 var _blur_rect: ColorRect = null
 var _vignette_rect: ColorRect = null
+var _physiological_canvas: CanvasLayer = null
 var _death_canvas: CanvasLayer = null   # layer=9，独立于 UI CanvasLayer
 var _death_rect: ColorRect = null
-var _coma_canvas: CanvasLayer = null    # layer=9，位于死亡渐黑层下方
-var _coma_rect: ColorRect = null
 
 # ── 内部状态 ────────────────────────────────────────────────
 var _player = null
 var _settings_service = null
 
 # 疼痛/体力模糊
-var _blur_pulse: float = 0.0
+var _hit_intensity: float = 0.0
+var _hit_screen_direction := Vector2.ZERO
 var _blur_base: float = 0.0
 var _blur_base_target: float = 0.0
 var _current_pain: float = 0.0
+var _current_stamina_pct: float = 1.0
 
 # 昏迷模糊（独立叠加，不与体力/疼痛基底混用）
 const UNCONSCIOUS_BLUR: float = 2.5
@@ -80,27 +83,54 @@ func _ready() -> void:
 		GlobalLogger.warn("ScreenEffects", "UI CanvasLayer not found — screen effects disabled")
 
 
+func _exit_tree() -> void:
+	# Effect canvases live under the root so they can outlive the player
+	# ragdoll. Always remove them when the owning scene is unloaded; otherwise
+	# a title-screen transition can inherit the previous scene's black overlay.
+	_cleanup_partial_overlay_nodes()
+
+
 # ── 每帧更新 ────────────────────────────────────────────────
 func _process(delta: float) -> void:
+	_ensure_overlay_nodes()
 	if not _blur_rect:
 		return
-	_update_stamina_blur(delta)
-	_update_coma_effect(delta)
+	_update_physiological_effect(delta)
 	_update_death_fade(delta)
 
 
-func _update_stamina_blur(delta: float) -> void:
-	_blur_pulse = move_toward(_blur_pulse, 0.0, delta / BLUR_PULSE_DECAY)
+func _update_physiological_effect(delta: float) -> void:
+	_hit_intensity = move_toward(_hit_intensity, 0.0, delta / HIT_FEEDBACK_DECAY_TIME)
 	_blur_base = lerp(_blur_base, _blur_base_target, delta * 3.0)
 
 	var damage_blur_scale := _setting_float("graphics/damage_blur", 1.0)
-	var final_blur := (_blur_pulse + _blur_base) * damage_blur_scale
+	var final_blur := (_hit_intensity * MAX_HIT_GLOBAL_BLUR + _blur_base) * damage_blur_scale
 	if _unconscious_blur_active and _setting_enabled("graphics/coma_effect", true):
 		final_blur = maxf(final_blur, UNCONSCIOUS_BLUR)
 	if _death_active and _setting_enabled("graphics/death_effect", true):
 		final_blur = maxf(final_blur, ease(_death_progress, -2.0) * DEATH_BLUR_MAX)
-	(_blur_rect.material as ShaderMaterial).set_shader_parameter("blur_amount", final_blur)
-	_blur_rect.visible = final_blur > 0.001
+
+	if not _setting_enabled("graphics/coma_effect", true):
+		_coma_effect_target = 0.0
+		_coma_effect_current = 0.0
+	else:
+		_coma_effect_time += delta
+		_coma_effect_current = move_toward(
+			_coma_effect_current,
+			_coma_effect_target,
+			delta * COMA_EFFECT_FADE_SPEED
+		)
+
+	var physiological_mat := _blur_rect.material as ShaderMaterial
+	physiological_mat.set_shader_parameter("blur_amount", final_blur)
+	physiological_mat.set_shader_parameter("coma_intensity", _coma_effect_current)
+	physiological_mat.set_shader_parameter("time", _coma_effect_time)
+	physiological_mat.set_shader_parameter("dark_strength", COMA_EFFECT_DARK_STRENGTH)
+	physiological_mat.set_shader_parameter("hit_direction", _hit_screen_direction)
+	physiological_mat.set_shader_parameter("hit_intensity", _hit_intensity * damage_blur_scale)
+	physiological_mat.set_shader_parameter("hit_edge_blur", MAX_HIT_EDGE_BLUR)
+	_blur_rect.visible = final_blur > 0.001 or _coma_effect_current > 0.001 \
+		or _hit_intensity > 0.001
 
 	_vignette_current = lerp(_vignette_current, _vignette_target, delta * 2.0)
 	var mat := _vignette_rect.material as ShaderMaterial
@@ -122,31 +152,11 @@ func _update_death_fade(delta: float) -> void:
 	_death_rect.visible = _death_progress > 0.001
 
 
-func _update_coma_effect(delta: float) -> void:
-	if not _coma_rect:
-		return
-	if not _setting_enabled("graphics/coma_effect", true):
-		_coma_effect_target = 0.0
-		_coma_effect_current = 0.0
-		_coma_rect.visible = false
-		return
-	_coma_effect_time += delta
-	_coma_effect_current = move_toward(
-		_coma_effect_current,
-		_coma_effect_target,
-		delta * COMA_EFFECT_FADE_SPEED
-	)
-	var mat := _coma_rect.material as ShaderMaterial
-	mat.set_shader_parameter("intensity", _coma_effect_current)
-	mat.set_shader_parameter("time", _coma_effect_time)
-	mat.set_shader_parameter("dark_strength", COMA_EFFECT_DARK_STRENGTH)
-	_coma_rect.visible = _coma_effect_current > 0.001
-
-
 # ── 公开 API ────────────────────────────────────────────────
 
 ## 昏迷/濒死：启用持续模糊、渐暗、画面扭曲和轻微重影
 func trigger_unconscious_blur() -> void:
+	_ensure_overlay_nodes()
 	if not _setting_enabled("graphics/coma_effect", true):
 		return
 	_unconscious_blur_active = true
@@ -154,18 +164,18 @@ func trigger_unconscious_blur() -> void:
 
 ## 死亡：渐黑 + 模糊
 func trigger_death_blur() -> void:
+	_ensure_overlay_nodes()
 	_unconscious_blur_active = false
 	_coma_effect_target = 0.0
 	_coma_effect_current = 0.0
-	if _coma_rect:
-		_coma_rect.visible = false
-	if not _setting_enabled("graphics/death_effect", true):
-		return
 	_death_active = true
 	_death_progress = 0.0
+	if not _setting_enabled("graphics/death_effect", true):
+		return
 
 ## 复活/恢复意识：清除所有覆盖
 func clear_death_blur() -> void:
+	_ensure_overlay_nodes()
 	_unconscious_blur_active = false
 	_coma_effect_target = 0.0
 	_coma_effect_current = 0.0
@@ -174,9 +184,8 @@ func clear_death_blur() -> void:
 	if _death_rect:
 		_death_rect.modulate.a = 0.0
 		_death_rect.visible = false
-	if _coma_rect:
-		_coma_rect.visible = false
-	_blur_pulse = 0.0
+	_hit_intensity = 0.0
+	_hit_screen_direction = Vector2.ZERO
 	_vignette_target = 0.0
 	_vignette_current = 0.0
 
@@ -184,40 +193,89 @@ func clear_death_blur() -> void:
 # ── 信号回调 ────────────────────────────────────────────────
 
 func _on_damage_taken(info: DamageInfo) -> void:
-	if _setting_float("graphics/damage_blur", 1.0) > 0.0:
-		var ke_ref := 600.0
-		var pulse_strength := (info.amount / ke_ref) * MAX_PULSE_BLUR * 0.5
-		pulse_strength = maxf(pulse_strength, _current_pain * MAX_PULSE_BLUR * 0.6)
-		_blur_pulse = maxf(_blur_pulse, pulse_strength)
-
 	# 受伤镜头反馈使用一次性角度冲击，而不是持续随机抖动。
 	# 四肢命中通常不应像躯干/头部一样强烈地影响视线。
+	var body_scale := 1.0
+	match info.body_part:
+		MedicalEnums.BodyPartId.HEAD:
+			body_scale = 1.25
+		MedicalEnums.BodyPartId.LEFT_UPPER_ARM, MedicalEnums.BodyPartId.LEFT_FOREARM, MedicalEnums.BodyPartId.RIGHT_UPPER_ARM, MedicalEnums.BodyPartId.RIGHT_FOREARM, MedicalEnums.BodyPartId.LEFT_THIGH, MedicalEnums.BodyPartId.LEFT_CALF, MedicalEnums.BodyPartId.RIGHT_THIGH, MedicalEnums.BodyPartId.RIGHT_CALF:
+			body_scale = 0.65
+
+	if _setting_float("graphics/damage_blur", 1.0) > 0.0 and info.amount > 0.0:
+		var severity := clampf(info.amount / HIT_ENERGY_REFERENCE_J * body_scale, 0.0, 1.0)
+		trigger_directional_hit(info.direction, severity)
+
 	if _player and _player.is_alive and _player.controllable and _player.camera_controller:
-		var body_scale := 1.0
-		match info.body_part:
-			MedicalEnums.BodyPartId.HEAD:
-				body_scale = 1.25
-			MedicalEnums.BodyPartId.LEFT_UPPER_ARM, MedicalEnums.BodyPartId.LEFT_FOREARM, MedicalEnums.BodyPartId.RIGHT_UPPER_ARM, MedicalEnums.BodyPartId.RIGHT_FOREARM, MedicalEnums.BodyPartId.LEFT_THIGH, MedicalEnums.BodyPartId.LEFT_CALF, MedicalEnums.BodyPartId.RIGHT_THIGH, MedicalEnums.BodyPartId.RIGHT_CALF:
-				body_scale = 0.65
 		if _setting_float("graphics/hit_camera_impact", 1.0) > 0.0:
 			_player.camera_controller.add_pain_impulse(info.direction, info.amount, body_scale)
 
+
+## Trigger visual feedback without changing medical state. world_direction is
+## the projectile travel direction towards the player; severity is normalized.
+func trigger_directional_hit(world_direction: Vector3, severity: float) -> void:
+	_ensure_overlay_nodes()
+	var normalized_severity := clampf(severity, 0.0, 1.0)
+	if normalized_severity <= 0.0:
+		return
+	_hit_intensity = maxf(_hit_intensity, normalized_severity)
+	_hit_screen_direction = _world_hit_to_screen_direction(world_direction)
+
+
+func set_debug_coma_effect(enabled: bool) -> void:
+	_ensure_overlay_nodes()
+	_unconscious_blur_active = enabled
+	_coma_effect_target = 1.0 if enabled else 0.0
+	if not enabled:
+		_coma_effect_current = 0.0
+
+
+func clear_debug_effects() -> void:
+	clear_death_blur()
+	_hit_intensity = 0.0
+	_hit_screen_direction = Vector2.ZERO
+	_blur_base = 0.0
+	_blur_base_target = 0.0
+	_current_pain = 0.0
+	_current_stamina_pct = 1.0
+
+
+func _world_hit_to_screen_direction(world_direction: Vector3) -> Vector2:
+	if world_direction.is_zero_approx() or not _player or not _player.camera_controller:
+		return Vector2.ZERO
+	var camera := _player.camera_controller.get_active_camera() as Camera3D
+	if not is_instance_valid(camera):
+		return Vector2.ZERO
+	# DamageInfo stores projectile travel. Negating it points back to the source.
+	var source_local := camera.global_basis.orthonormalized().inverse() \
+		* -world_direction.normalized()
+	# Encode horizontal azimuth on X; front/top point towards the upper edge,
+	# while back/bottom point towards the lower edge.
+	var screen_direction := Vector2(source_local.x, source_local.z - source_local.y)
+	return screen_direction.normalized() if screen_direction.length_squared() > 0.01 \
+		else Vector2.ZERO
+
 func _on_pain_changed(level: float) -> void:
-	_current_pain = level
-	var pain_base := maxf(0.0, (level - 0.5) * 2.0) * (MAX_BASE_BLUR * 0.3)
-	_blur_base_target = maxf(_blur_base_target, pain_base)
+	_current_pain = clampf(level, 0.0, 1.0)
+	_recalculate_base_blur()
 
 func _on_stamina_changed(pct: float) -> void:
-	if pct < STAMINA_VIGNETTE_START:
-		_vignette_target = (1.0 - pct / STAMINA_VIGNETTE_START) * MAX_VIGNETTE_ALPHA
+	_current_stamina_pct = clampf(pct, 0.0, 1.0)
+	if _current_stamina_pct < STAMINA_VIGNETTE_START:
+		_vignette_target = (1.0 - _current_stamina_pct / STAMINA_VIGNETTE_START) * MAX_VIGNETTE_ALPHA
 	else:
 		_vignette_target = 0.0
+	_recalculate_base_blur()
 
-	if pct < STAMINA_BLUR_START:
-		var stamina_base := (1.0 - pct / STAMINA_BLUR_START) * MAX_BASE_BLUR
-		_blur_base_target = maxf(_current_pain * MAX_BASE_BLUR * 0.3, stamina_base)
-	else:
-		_blur_base_target = maxf(0.0, (_current_pain - 0.5) * 2.0 * MAX_BASE_BLUR * 0.3)
+
+func _recalculate_base_blur() -> void:
+	var pain_base := maxf(0.0, (_current_pain - 0.5) * 2.0) \
+		* (MAX_BASE_BLUR * 0.3)
+	var stamina_base := 0.0
+	if _current_stamina_pct < STAMINA_BLUR_START:
+		stamina_base = (1.0 - _current_stamina_pct / STAMINA_BLUR_START) \
+			* MAX_BASE_BLUR
+	_blur_base_target = maxf(pain_base, stamina_base)
 
 
 func _on_setting_changed(key: String, _value: Variant) -> void:
@@ -227,8 +285,6 @@ func _on_setting_changed(key: String, _value: Variant) -> void:
 				_unconscious_blur_active = false
 				_coma_effect_target = 0.0
 				_coma_effect_current = 0.0
-				if _coma_rect:
-					_coma_rect.visible = false
 		"graphics/death_effect":
 			if not _setting_enabled(key, true):
 				_death_active = false
@@ -238,7 +294,8 @@ func _on_setting_changed(key: String, _value: Variant) -> void:
 					_death_rect.visible = false
 		"graphics/damage_blur":
 			if _setting_float(key, 1.0) <= 0.0:
-				_blur_pulse = 0.0
+				_hit_intensity = 0.0
+				_hit_screen_direction = Vector2.ZERO
 				_blur_base = 0.0
 				_blur_base_target = 0.0
 		"graphics/hit_camera_impact":
@@ -261,6 +318,14 @@ func _find_ui_canvas() -> CanvasLayer:
 		return null
 	return _find_canvas_recursive(get_tree().root)
 
+func _ensure_overlay_nodes() -> void:
+	if is_instance_valid(_blur_rect) and is_instance_valid(_vignette_rect) \
+			and is_instance_valid(_death_rect):
+		return
+	var canvas := _find_ui_canvas()
+	if canvas:
+		_setup_overlay_nodes(canvas)
+
 func _find_canvas_recursive(node: Node) -> CanvasLayer:
 	if node is CanvasLayer and node.name == "UI":
 		return node as CanvasLayer
@@ -271,21 +336,22 @@ func _find_canvas_recursive(node: Node) -> CanvasLayer:
 	return null
 
 func _setup_overlay_nodes(canvas: CanvasLayer) -> void:
+	if is_instance_valid(_blur_rect) and is_instance_valid(_vignette_rect) \
+			and is_instance_valid(_death_rect):
+		return
+	_cleanup_partial_overlay_nodes()
 	# z=9  体力 vignette（在 UI CanvasLayer 内）
 	_vignette_rect = _make_fullscreen_rect(canvas, "StaminaVignetteRect", 9,
 		load("res://assets/shaders/vignette.gdshader"))
 
-	# z=10 疼痛/体力模糊（在 UI CanvasLayer 内）
-	_blur_rect = _make_fullscreen_rect(canvas, "PainBlurRect", 10,
-		load("res://assets/shaders/death_blur.gdshader"))
-
-	# 濒死效果单独放在 layer=9；死亡渐黑随后创建并覆盖在其上方。
-	_coma_canvas = CanvasLayer.new()
-	_coma_canvas.name = "ComaDistortionCanvas"
-	_coma_canvas.layer = 9
-	get_tree().root.add_child(_coma_canvas)
-	_coma_rect = _make_fullscreen_rect(_coma_canvas, "ComaDistortionRect", 0,
-		load("res://assets/shaders/coma_distortion.gdshader"))
+	# A single layer handles every effect that reads the screen texture. The
+	# death fade is created afterwards on the same layer so it remains on top.
+	_physiological_canvas = CanvasLayer.new()
+	_physiological_canvas.name = "PhysiologicalEffectCanvas"
+	_physiological_canvas.layer = 9
+	get_tree().root.add_child(_physiological_canvas)
+	_blur_rect = _make_fullscreen_rect(_physiological_canvas, "PhysiologicalEffectRect", 0,
+		load("res://assets/shaders/physiological_effect.gdshader"))
 
 	# 死亡渐黑独立 CanvasLayer(layer=9)，高于濒死效果、低于通知(10)
 	_death_canvas = CanvasLayer.new()
@@ -303,6 +369,17 @@ func _setup_overlay_nodes(canvas: CanvasLayer) -> void:
 	_death_canvas.add_child(_death_rect)
 
 	GlobalLogger.info("ScreenEffects", "Overlay nodes created.")
+
+
+func _cleanup_partial_overlay_nodes() -> void:
+	for node in [_vignette_rect, _physiological_canvas, _death_canvas]:
+		if is_instance_valid(node):
+			node.queue_free()
+	_vignette_rect = null
+	_blur_rect = null
+	_physiological_canvas = null
+	_death_canvas = null
+	_death_rect = null
 
 
 func _make_fullscreen_rect(canvas: CanvasLayer, node_name: String, z: int, shader: Shader) -> ColorRect:

@@ -1,6 +1,6 @@
 extends Node3D
 
-const DEFAULT_CONFIG: EncounterConfig = preload("res://assets/config/encounter/encounter_default.tres")
+const DEFAULT_CONFIG = preload("res://assets/config/encounter/encounter_default.tres")
 const CONTROLLER_SCRIPT := preload("res://classes/encounter/encounter_controller.gd")
 const DIRECTOR_SCRIPT := preload("res://classes/encounter/encounter_ai_director.gd")
 const HUD_SCRIPT := preload("res://classes/encounter/encounter_hud.gd")

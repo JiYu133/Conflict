@@ -21,7 +21,7 @@ extends Resource
 @export var sprint_hold_threshold: float = 0.25
 
 # 物理参数 ────────────────────────────────────────────────────
-@export_group("物理参数")
+@export_group("地面与空中物理")
 ## 地面加速度（m/s²）
 @export var ground_acceleration: float = 6.0
 ## 跳跃力（m/s）
@@ -34,6 +34,8 @@ extends Resource
 @export var air_deceleration: float = 2.0
 ## 接地时 Y 速度钳制值
 @export var floor_snap_velocity: float = -0.5
+
+@export_group("移动约束与输入")
 ## 输入死区
 @export var input_dead_zone: float = 0.1
 ## 后退判定 dot 阈值
@@ -59,7 +61,9 @@ extends Resource
 @export var turn_in_place_enabled: bool = true
 ## 视角与身体偏差达到此角度后触发原地转身。
 @export_range(0.0, 180.0, 0.5) var turn_trigger_angle_degrees: float = 40.0
-## 原地转身期间允许视角偏离身体的最大角度。
+## 移动中视角与身体偏差达到此角度时，强制播放下半身转身动画。
+@export_range(45.0, 180.0, 0.5) var forced_turn_angle_degrees: float = 120.0
+## 原地转身和自由观察期间允许视角偏离身体的最大角度。
 @export_range(0.0, 180.0, 0.5) var turn_view_limit_degrees: float = 90.0
 ## 视角受限时保留的最低输入灵敏度比例。
 @export_range(0.0, 1.0, 0.01) var turn_view_min_sensitivity_ratio: float = 0.25
@@ -69,12 +73,24 @@ extends Resource
 @export_range(0.1, 3.0, 0.01) var turn_min_playback_speed: float = 1.25
 ## 原地转身动画可达到的最大播放速度。
 @export_range(0.1, 3.0, 0.01) var turn_max_playback_speed: float = 1.5
+## 俯卧静止转身动画的最低播放速度；与站立/蹲下转身独立配置。
+@export_range(0.1, 5.0, 0.01) var prone_turn_min_playback_speed: float = 1.0
+## 俯卧静止转身动画的最高播放速度。
+@export_range(0.1, 5.0, 0.01) var prone_turn_max_playback_speed: float = 1.0
+## 俯卧爬行时转身的播放速度比例，略低于静止转身。
+@export_range(0.1, 1.0, 0.01) var prone_crawl_turn_speed_multiplier: float = 0.8
 ## 原地转身受限时的移动速度比例。
 @export_range(0.0, 1.0, 0.01) var turn_constrained_speed_ratio: float = 0.25
 ## 原地转身受限时的加速度比例。
 @export_range(0.0, 1.0, 0.01) var turn_constrained_acceleration_ratio: float = 0.25
-## 原地转身动画切换的混合时长（秒）。
+## 原地转身动画切换和身体 yaw 过渡的混合时长（秒）。
 @export_range(0.0, 1.0, 0.01) var turn_transition_time: float = 0.12
+## 移动时身体追随实际水平速度方向的最大转向速度（度/秒）。
+## 上半身瞄准由 SpineAimController 独立叠加，因此移动时根节点不再直接跟随视角。
+@export_range(30.0, 1440.0, 10.0) var moving_body_turn_speed_degrees: float = 360.0
+## 速度方向相对视角不超过此角度时，身体才转向速度方向。
+## 超过阈值（后方扇区）时身体保持面向视角，让局部负向速度驱动后退动画。
+@export_range(0.0, 180.0, 1.0) var moving_body_velocity_yaw_threshold_degrees: float = 120.0
 
 # 运动手感 ────────────────────────────────────────────────────
 @export_group("运动手感")
@@ -95,26 +111,76 @@ extends Resource
 ## 冲刺速度波动振幅（m/s）
 @export var gait_amplitude_sprint: float = 0.18
 
-# 姿态与蹲下 ──────────────────────────────────────────────────
-@export_group("姿态与蹲下")
+# 姿态 ──────────────────────────────────────────────────
+@export_group("姿态过渡")
 ## 姿态过渡速度（单位/秒）
 @export var stance_transition_speed: float = 3.0
+## Automatic C/Z stance changes use normal-speed interpolation; wheel micro-adjustments keep the slower speed above.
+@export var automatic_stance_transition_speed: float = 8.0
 ## 姿态调整步进值（每次滚轮的增量，0.0~1.0）
 @export var stance_step_size: float = 0.1
+
+@export_group("蹲下")
 ## 蹲下碰撞胶囊体高度（m）
 @export var crouch_capsule_height: float = 0.6
 ## 蹲下时模型 Y 轴偏移
-@export var crouch_y_offset: float = -0.85
+@export var crouch_y_offset: float = -1.3
 ## Walk → CrouchWalk 动画过渡时间（秒），建议与 1/stance_transition_speed 一致
 @export var crouch_walk_xfade_time: float = 0.3
 
+@export_group("俯卧")
+## 俯卧前进速度（m/s）。
+@export var prone_forward_speed: float = 0.8
+## 俯卧后退速度（m/s）。
+@export var prone_backward_speed: float = 0.55
+## 俯卧横向移动速度（m/s）。
+@export var prone_lateral_speed: float = 0.65
+## 俯卧翻滚的目标速度（m/s）。
+@export var prone_roll_speed: float = 3.2
+## 连续翻滚之间的最短冷却时间（秒）。
+@export var prone_roll_cooldown: float = 0.15
+## 超过此时间未继续翻滚时，重置连续翻滚计数（秒）。
+@export var prone_roll_chain_reset_time: float = 1.0
+## 单次俯卧翻滚持续时间（秒）。
+@export var prone_roll_duration: float = 0.45
+## 俯卧翻滚达到目标速度时使用的加速度（m/s²）。
+@export var prone_roll_acceleration: float = 18.0
+## 俯卧状态使用的碰撞胶囊体高度（m）。
+@export var prone_capsule_height: float = 0.6
+## 俯卧碰撞胶囊体中心的 Y 轴偏移（m）。
+@export var prone_collision_y_offset: float = -0.6
+## 俯卧时角色模型的 Y 轴偏移（m）。
+@export var prone_model_y_offset: float = -1.35
+
+@export_group("模型表现")
+## 站立时角色模型的 Y 轴偏移（m）。
+@export var model_y_offset: float = -0.5
+
 # 碰撞体 ──────────────────────────────────────────────────────
-@export_group("碰撞体")
+@export_group("手动碰撞体")
 ## 碰撞胶囊体高度（m）
 @export var collision_shape_height: float = 1.8
 ## 碰撞胶囊体半径（m）
 @export var collision_shape_radius: float = 0.4
 ## 碰撞体 Y 轴偏移（m）
 @export var collision_shape_y_offset: float = 0.0
-## 模型垂直偏移（m）
-@export var model_y_offset: float = -0.5
+
+@export_group("动态碰撞拟合（实验）")
+## 根据当前 BodyHitbox 骨架中心形成的 3D 核心包络自动拟合主碰撞胶囊。
+@export var hitbox_driven_collision: bool = false
+## 核心包络之外保留的统一安全余量（m）。
+@export_range(0.0, 0.2, 0.005) var collision_bounds_margin: float = 0.025
+## 主碰撞胶囊尺寸和中心追随包络的最大速度（m/s）。
+@export_range(0.1, 10.0, 0.1) var collision_bounds_follow_speed: float = 2.0
+## 自动尺寸的通用安全范围；不是动画专用参数。
+@export_range(0.2, 2.5, 0.05) var collision_bounds_min_height: float = 0.6
+## 自动拟合碰撞胶囊允许达到的最大高度（m）。
+@export_range(0.5, 4.0, 0.05) var collision_bounds_max_height: float = 3.0
+## 自动胶囊最大半径，限制异常动画帧造成的过宽环境碰撞体。
+@export_range(0.2, 1.5, 0.05) var collision_bounds_max_radius: float = 0.75
+## 新主轴必须比当前轴长到该比例才允许切换，避免站立/趴下临界点抖动。
+@export_range(1.0, 2.0, 0.05) var collision_axis_switch_ratio: float = 1.15
+## 主轴候选需连续稳定的物理帧数；过滤模型刚加载时的单帧 T-pose。
+@export_range(1, 30, 1) var collision_axis_switch_stability_frames: int = 4
+## 胶囊从竖直轴转向水平轴（或反向）的最大角速度。
+@export_range(30.0, 720.0, 10.0) var collision_axis_follow_speed_degrees: float = 240.0

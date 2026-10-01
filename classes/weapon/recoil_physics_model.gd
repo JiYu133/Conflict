@@ -27,6 +27,8 @@ var attachment_control_damping: float = 0.0
 var impulse_magnitude: float = 0.0
 var pitch_impulse_rad_s: float = 0.0
 var yaw_impulse_rad_s: float = 0.0
+var linear_impulse_local: Vector3 = Vector3.ZERO
+var angular_impulse_local: Vector3 = Vector3.ZERO
 
 var barrel_config: BarrelConfig = null
 var _weapon_config: WeaponConfig = null
@@ -97,16 +99,27 @@ func rebuild(weapon_cfg: WeaponConfig, am: AttachmentManager) -> void:
 
 
 func get_shot_angular_impulse() -> Vector2:
+	var shot := get_shot_impulse()
+	return shot["angular_velocity"]
+
+
+func get_shot_impulse() -> Dictionary:
 	var variation := 0.02
 	if barrel_config:
 		variation = barrel_config.charge_variation
 	var charge_scale := 1.0 + randf_range(-variation, variation)
-	var noise_torque := impulse_magnitude * shooter_impulse_noise
+	var linear_impulse := linear_impulse_local * charge_scale
+	var torque := angular_impulse_local * charge_scale
+	var noise_torque := impulse_magnitude * shooter_impulse_noise \
+		* (bore_point - shoulder_contact).length()
 	var noise_angle := randf_range(-PI, PI)
-	return Vector2(
-		pitch_impulse_rad_s * charge_scale + sin(noise_angle) * noise_torque / inertia_pitch,
-		yaw_impulse_rad_s * charge_scale + cos(noise_angle) * noise_torque / inertia_yaw
-	)
+	torque.x += sin(noise_angle) * noise_torque
+	torque.y += cos(noise_angle) * noise_torque
+	return {
+		"linear_impulse_local": linear_impulse,
+		"angular_impulse_local": torque,
+		"angular_velocity": Vector2(torque.x / inertia_pitch, torque.y / inertia_yaw),
+	}
 
 
 func get_control() -> Vector2:
@@ -114,6 +127,34 @@ func get_control() -> Vector2:
 		base_control_stiffness + attachment_control_stiffness,
 		base_control_damping + attachment_control_damping
 	)
+
+
+## Returns the physically-derived time for the weapon's recoil oscillator to
+## decay to the requested residual fraction. This is used by the player force
+## system as the lifetime of the bone recoil impulse.
+func get_recoil_response_duration_s(residual_fraction: float = 0.05) -> float:
+	var control := get_control()
+	var stiffness := maxf(control.x, 0.0001)
+	var damping := maxf(control.y, 0.0)
+	var floor_value := clampf(residual_fraction, 0.0001, 0.99)
+	var duration := 0.0
+	for inertia_value in [maxf(inertia_pitch, MIN_INERTIA), maxf(inertia_yaw, MIN_INERTIA)]:
+		var inertia: float = float(inertia_value)
+		var natural_frequency := sqrt(stiffness / inertia)
+		var decay_rate := 0.0
+		var damping_ratio := damping / (2.0 * sqrt(stiffness * inertia))
+		if damping_ratio < 1.0:
+			# Underdamped motion decays with the exponential envelope zeta * wn.
+			decay_rate = damping_ratio * natural_frequency
+		else:
+			# For critical/overdamped motion, the slow real pole controls settling.
+			decay_rate = natural_frequency * (
+				damping_ratio - sqrt(maxf(damping_ratio * damping_ratio - 1.0, 0.0))
+			)
+		if decay_rate <= 0.0001:
+			return 2.0
+		duration = maxf(duration, -log(floor_value) / decay_rate)
+	return clampf(duration, 0.01, 2.0)
 
 
 func get_snapshot() -> Dictionary:
@@ -127,10 +168,13 @@ func get_snapshot() -> Dictionary:
 		"gas_impulse_vector": gas_impulse_vector,
 		"gas_impulse_fraction": gas_impulse_fraction,
 		"impulse_magnitude_ns": impulse_magnitude,
+		"linear_impulse_local_ns": linear_impulse_local,
+		"angular_impulse_local_nms": angular_impulse_local,
 		"pitch_impulse_rad_s": pitch_impulse_rad_s,
 		"yaw_impulse_rad_s": yaw_impulse_rad_s,
 		"control_stiffness": get_control().x,
 		"control_damping": get_control().y,
+		"recoil_response_duration_s": get_recoil_response_duration_s(),
 		"shooter_impulse_noise": shooter_impulse_noise,
 	}
 
@@ -218,8 +262,10 @@ func _compute_impulse() -> void:
 	var gas_vec := gas_impulse_vector.normalized() * gas_momentum * gas_impulse_fraction
 	var impulse := Vector3(gas_vec.x, gas_vec.y, bullet_momentum + gas_vec.z)
 	impulse_magnitude = impulse.length()
+	linear_impulse_local = impulse
 
 	var r := bore_point - shoulder_contact
 	var torque := r.cross(impulse)
+	angular_impulse_local = torque
 	pitch_impulse_rad_s = torque.x / inertia_pitch
 	yaw_impulse_rad_s = torque.y / inertia_yaw

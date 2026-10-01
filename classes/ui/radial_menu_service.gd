@@ -3,7 +3,7 @@ extends CanvasLayer
 const RadialMenuOptionScript := preload("res://classes/ui/radial_menu_option.gd")
 const RadialMenuScript := preload("res://classes/ui/radial_menu.gd")
 const RadialMenuConfigScript := preload("res://classes/ui/radial_menu_config.gd")
-const RADIAL_MENU_CONFIG: RadialMenuConfig = preload("res://assets/config/ui/radial_menu_config.tres")
+const RADIAL_MENU_CONFIG = preload("res://assets/config/ui/radial_menu_config.tres")
 const HOLD_THRESHOLD := 0.25
 const HOLD_THRESHOLD_SETTING := "controls/radial_menu_hold_threshold"
 const MOUSE_OWNER := "radial_menu"

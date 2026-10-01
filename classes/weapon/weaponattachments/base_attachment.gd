@@ -12,9 +12,8 @@ extends Node3D
 #   2. 添加子节点做模型（BoxMesh/CylinderMesh 等）
 #   3. WeaponManager 通过 AttachmentManager.equip() 把配件装到对应槽位
 #
-# 数值计算方式：
-#   武器原始值 + 配件修正值 = 实际值
-#   例：原散布 3.0°，红点修正 -0.5° → 实际 2.5°
+# Legacy spread fields remain loadable for old resources, but live projectiles
+# always follow the physical muzzle axis and never gain accuracy from ADS.
 # ════════════════════════════════════════════════════════════════════════
 
 # ──────────────────────────── 公开属性 ────────────────────────────
@@ -37,13 +36,6 @@ func _on_initialized() -> void:
 	pass
 
 # ──────────────────────────── 数值计算接口 ────────────────────────────
-## 返回对散布的总修正（度）
-## 子类可重写以加入特殊逻辑（如：ACOG只在ADS时生效）
-func get_spread_modifier(is_ads: bool) -> float:
-	if is_ads:
-		return config.ads_spread_modifier
-	return config.hipfire_spread_modifier
-
 ## 返回瞄准速度的修正
 func get_ads_speed_modifier() -> float:
 	return config.ads_speed_modifier

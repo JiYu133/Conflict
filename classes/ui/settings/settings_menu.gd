@@ -23,7 +23,7 @@ const COL_VALUE_HIGHLIGHT := Color(1.0, 0.92, 0.52)
 const CATEGORIES := [
 	{ "id": "controls", "label": SettingsText.CATEGORY_CONTROLS },
 	{ "id": "video", "label": SettingsText.CATEGORY_VIDEO },
-	{ "id": "audio", "label": SettingsText.CATEGORY_AUDIO, "available": false },
+	{ "id": "audio", "label": SettingsText.CATEGORY_AUDIO },
 	{ "id": "interface", "label": SettingsText.CATEGORY_INTERFACE, "available": false },
 	{ "id": "accessibility", "label": SettingsText.CATEGORY_ACCESSIBILITY, "available": false },
 ]
@@ -33,6 +33,8 @@ signal closed
 var _open := false
 var _player
 var _settings_service
+var title_mode := false
+var _title_mode := false
 var _theme: Theme
 var _background_blur_layer: CanvasLayer
 var _backdrop: ColorRect
@@ -79,12 +81,14 @@ func is_open() -> bool:
 	return _open or _transitioning
 
 
-func initialize(settings_service, player = null) -> void:
+func initialize(settings_service, player = null, title_mode: bool = false) -> void:
 	_settings_service = settings_service
 	_player = player
+	_title_mode = title_mode
 
 
 func _ready() -> void:
+	_title_mode = title_mode
 	layer = 21
 	_theme = Theme.new()
 	if ResourceLoader.exists(FONT_PATH):
@@ -182,7 +186,7 @@ func _handle_listen_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 		if key_code in _listening_combo:
-			_finish_listen(_listening_combo.duplicate())
+			_finish_listen(_binding_from_tokens(_listening_combo))
 			get_viewport().set_input_as_handled()
 			return
 		return
@@ -192,7 +196,7 @@ func _handle_listen_input(event: InputEvent) -> void:
 			_add_listening_token("mouse:%d" % mouse_event.button_index)
 			get_viewport().set_input_as_handled()
 		elif ("mouse:%d" % mouse_event.button_index) in _listening_combo:
-			_finish_listen(_listening_combo.duplicate())
+			_finish_listen(_binding_from_tokens(_listening_combo))
 			get_viewport().set_input_as_handled()
 
 
@@ -202,6 +206,21 @@ func _add_listening_token(token) -> void:
 	_listening_combo.append(token)
 	if _listening_combo.size() > 2:
 		_listening_combo.pop_front()
+
+
+func _binding_from_tokens(tokens: Array):
+	# A single token must become an InputEvent; arrays are reserved for
+	# keyboard combinations and are interpreted by KeybindStore as combos.
+	if tokens.size() == 1:
+		var token = tokens[0]
+		if token is String and String(token).begins_with("mouse:"):
+			var mouse := InputEventMouseButton.new()
+			mouse.button_index = int(String(token).trim_prefix("mouse:"))
+			return mouse
+		var key := InputEventKey.new()
+		key.physical_keycode = int(token)
+		return key
+	return tokens.duplicate()
 
 
 func _finish_listen(input_binding) -> void:
@@ -218,7 +237,7 @@ func _finish_listen(input_binding) -> void:
 
 
 func _key_code(event: InputEventKey) -> int:
-	return event.keycode if event.keycode != 0 else event.physical_keycode
+	return event.physical_keycode if event.physical_keycode != 0 else event.keycode
 
 
 func _is_modifier_only_key(event: InputEventKey) -> bool:
@@ -272,14 +291,18 @@ func _apply_modifier(input_event: InputEvent, key_code: int, enabled: bool) -> v
 
 func _build_ui() -> void:
 	_backdrop = ColorRect.new()
-	_backdrop.color = COL_BACKDROP
+	_backdrop.color = Color(0.0, 0.0, 0.0, 0.16) if _title_mode else COL_BACKDROP
 	_backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(_backdrop)
 
 	_panel = PanelContainer.new()
 	_panel.theme = _theme
-	_panel.add_theme_stylebox_override("panel", _box(COL_PANEL, COL_BORDER, 4))
+	_panel.add_theme_stylebox_override(
+		"panel",
+		_box(Color(0.0, 0.0, 0.0, 0.0), Color(1, 1, 1, 0.0), 0)
+		if _title_mode else _box(COL_PANEL, COL_BORDER, 4)
+	)
 	_panel.custom_minimum_size = Vector2.ZERO
 	_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -324,6 +347,14 @@ func _fit_panel_to_viewport() -> void:
 	if not _panel or not is_instance_valid(_panel):
 		return
 	var viewport_size := get_viewport().get_visible_rect().size
+	if _title_mode:
+		_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_panel.custom_minimum_size = viewport_size
+		_panel.reset_size()
+		_panel.position = Vector2.ZERO
+		_panel_rest_position = Vector2.ZERO
+		_update_category_indicator(false)
+		return
 	_panel.custom_minimum_size = Vector2(
 		maxf(0.0, minf(1160.0, viewport_size.x - 40.0)),
 		maxf(0.0, minf(700.0, viewport_size.y - 40.0))
@@ -350,6 +381,8 @@ func _setup_tooltip_style() -> void:
 
 
 func _setup_background_blur() -> void:
+	if _title_mode:
+		return
 	_background_blur_layer = CanvasLayer.new()
 	_background_blur_layer.name = "SettingsBackgroundBlurLayer"
 	_background_blur_layer.layer = 19
@@ -383,7 +416,7 @@ func _build_header(parent: Control) -> void:
 	header.add_child(titles)
 	var title := Label.new()
 	title.text = SettingsText.SETTINGS_TITLE
-	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_font_size_override("font_size", 30 if _title_mode else 24)
 	title.add_theme_color_override("font_color", COL_TEXT)
 	titles.add_child(title)
 	var subtitle := Label.new()
@@ -395,7 +428,7 @@ func _build_header(parent: Control) -> void:
 
 func _build_sidebar(parent: Control) -> void:
 	var sidebar_layer := Control.new()
-	sidebar_layer.custom_minimum_size = Vector2(170, 0)
+	sidebar_layer.custom_minimum_size = Vector2(210 if _title_mode else 170, 0)
 	sidebar_layer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	parent.add_child(sidebar_layer)
 	_sidebar_layer = sidebar_layer
@@ -529,6 +562,8 @@ func _rebuild_category_content(category: String) -> void:
 			_build_controls_page()
 		"video":
 			_build_video_page()
+		"audio":
+			_build_audio_page()
 		_:
 			_build_placeholder_page(category)
 	_play_content_enter()
@@ -583,6 +618,15 @@ func _build_controls_page() -> void:
 	_add_slider_row(SettingsText.CONTROL_SENSITIVITY, SettingsText.CONTROL_SENSITIVITY_HINT, "controls/sensitivity", 0.10, 3.00, 0.05)
 	_add_slider_row(SettingsText.CONTROL_RADIAL_MENU_HOLD, SettingsText.CONTROL_RADIAL_MENU_HOLD_HINT, "controls/radial_menu_hold_threshold", 0.10, 1.00, 0.05)
 	_add_toggle_row(SettingsText.CONTROL_INVERT_Y, SettingsText.CONTROL_INVERT_Y_HINT, "controls/invert_y")
+	_add_option_row(
+		SettingsText.CONTROL_ADS_INPUT_MODE,
+		SettingsText.CONTROL_ADS_INPUT_MODE_HINT,
+		"controls/ads_input_mode",
+		[
+			{"label": SettingsText.ADS_INPUT_HOLD, "value": "hold"},
+			{"label": SettingsText.ADS_INPUT_TOGGLE, "value": "toggle"},
+		]
+	)
 	_add_section(SettingsText.SECTION_KEYBINDS, SettingsText.SECTION_KEYBINDS_HINT)
 	_add_binding_header()
 	var current_category := ""
@@ -601,6 +645,16 @@ func _build_video_page() -> void:
 	_content_subtitle.text = "调整窗口显示方式、视觉特效和血腥内容显示。"
 	_add_section(SettingsText.SECTION_DISPLAY)
 	_add_window_mode_row()
+	_add_section(SettingsText.SECTION_OPTICS)
+	_add_option_row(
+		SettingsText.VIDEO_MAGNIFIED_SCOPE_MODE,
+		SettingsText.VIDEO_MAGNIFIED_SCOPE_MODE_HINT,
+		"graphics/magnified_scope_mode",
+		[
+			{"label": SettingsText.SCOPE_MODE_PIXEL_ZOOM, "value": "pixel_zoom"},
+			{"label": SettingsText.SCOPE_MODE_DUAL_CAMERA, "value": "dual_camera"},
+		]
+	)
 	_add_section(SettingsText.SECTION_COMFORT)
 	_add_slider_row(SettingsText.VIDEO_HIT_CAMERA_IMPACT, SettingsText.VIDEO_HIT_CAMERA_IMPACT_HINT, "graphics/hit_camera_impact", 0.0, 1.0, 0.05)
 	_add_slider_row(SettingsText.VIDEO_DAMAGE_BLUR, SettingsText.VIDEO_DAMAGE_BLUR_HINT, "graphics/damage_blur", 0.0, 1.0, 0.05)
@@ -628,6 +682,15 @@ func _build_video_page() -> void:
 	)
 	_add_section(SettingsText.SECTION_BLOOD_EFFECTS)
 	_add_toggle_row(SettingsText.VIDEO_BLOOD_EFFECTS, SettingsText.VIDEO_BLOOD_EFFECTS_HINT, "graphics/blood_effects")
+
+
+func _build_audio_page() -> void:
+	_content_title.text = SettingsText.CATEGORY_AUDIO
+	_content_subtitle.text = SettingsText.AUDIO_SUBTITLE
+	_add_section(SettingsText.SECTION_AUDIO_MUSIC)
+	_add_slider_row(SettingsText.AUDIO_MENU_MUSIC_VOLUME, SettingsText.AUDIO_MENU_MUSIC_VOLUME_HINT, "audio/menu_music_volume", 0.0, 1.0, 0.05)
+	_add_slider_row(SettingsText.AUDIO_LOADING_MUSIC_VOLUME, SettingsText.AUDIO_LOADING_MUSIC_VOLUME_HINT, "audio/loading_music_volume", 0.0, 1.0, 0.05)
+	_add_slider_row(SettingsText.AUDIO_LOADING_MUFFLE, SettingsText.AUDIO_LOADING_MUFFLE_HINT, "audio/loading_muffle", 0.0, 1.0, 0.05)
 
 
 func _build_placeholder_page(category: String) -> void:
@@ -724,6 +787,7 @@ func _add_window_mode_row() -> void:
 	var option := OptionButton.new()
 	option.custom_minimum_size = Vector2(170, 34)
 	option.focus_mode = Control.FOCUS_ALL
+	_style_option_button(option)
 	option.add_item(SettingsText.WINDOW_MODE_WINDOWED)
 	option.set_item_metadata(0, "windowed")
 	option.add_item(SettingsText.WINDOW_MODE_FULLSCREEN)
@@ -743,6 +807,7 @@ func _add_option_row(title: String, description: String, key: String, items: Arr
 	var option := OptionButton.new()
 	option.custom_minimum_size = Vector2(170, 34)
 	option.focus_mode = Control.FOCUS_ALL
+	_style_option_button(option)
 	var current_value := String(_settings_service.get_value(key))
 	var selected_index := 0
 	for index in items.size():
@@ -890,9 +955,10 @@ func _add_bind_row(entry: Dictionary) -> void:
 
 func _new_row() -> HBoxContainer:
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _box(Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), 3))
-	panel.mouse_entered.connect(func(): panel.add_theme_stylebox_override("panel", _box(COL_HOVER, Color(1, 1, 1, 0.0), 3)) )
-	panel.mouse_exited.connect(func(): panel.add_theme_stylebox_override("panel", _box(Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), 3)) )
+	panel.add_theme_stylebox_override("panel", _box(Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), 0))
+	if not _title_mode:
+		panel.mouse_entered.connect(func(): panel.add_theme_stylebox_override("panel", _box(COL_HOVER, Color(1, 1, 1, 0.0), 3)) )
+		panel.mouse_exited.connect(func(): panel.add_theme_stylebox_override("panel", _box(Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), 3)) )
 	_content_rows.add_child(panel)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -990,6 +1056,8 @@ func _reset_current_page() -> void:
 			KeybindStore.reset_all(false)
 		"video":
 			_settings_service.reset_video()
+		"audio":
+			_settings_service.reset_audio()
 		_:
 			return
 	_mark_dirty()
@@ -1047,6 +1115,14 @@ func _button_id(action: String, slot: int) -> String:
 
 
 func _style_category(button: Button, selected: bool) -> void:
+	if _title_mode:
+		button.add_theme_stylebox_override("normal", _box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 0))
+		button.add_theme_stylebox_override("hover", _box(Color(1, 1, 1, 0.06), Color(1, 1, 1, 0.25), 0, 1))
+		button.add_theme_stylebox_override("focus", _box(Color(1, 1, 1, 0.08), COL_VALUE_HIGHLIGHT, 0, 1))
+		button.add_theme_color_override("font_color", COL_VALUE_HIGHLIGHT if selected else COL_MUTED)
+		button.add_theme_color_override("font_hover_color", COL_TEXT)
+		button.add_theme_color_override("font_focus_color", COL_VALUE_HIGHLIGHT)
+		return
 	button.add_theme_stylebox_override("normal", _box(Color(1, 1, 1, 0.07) if selected else Color(1, 1, 1, 0.0), Color(1, 1, 1, 0.0), 2))
 	button.add_theme_stylebox_override("hover", _box(COL_HOVER, Color(1, 1, 1, 0.35), 2))
 	button.add_theme_stylebox_override("focus", _box(COL_HOVER, Color.WHITE, 2, 2))
@@ -1099,6 +1175,16 @@ func _sync_category_indicator() -> void:
 
 
 func _style_key_button(button: Button, listening: bool, conflict: bool) -> void:
+	if _title_mode:
+		var text_color := COL_DANGER if conflict else COL_TEXT
+		var active_color := COL_VALUE_HIGHLIGHT if listening else Color(1, 1, 1, 0.06)
+		button.add_theme_stylebox_override("normal", _box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 0))
+		button.add_theme_stylebox_override("hover", _box(active_color, Color(1, 1, 1, 0.32), 0, 1))
+		button.add_theme_stylebox_override("focus", _box(Color(1, 1, 1, 0.08), COL_VALUE_HIGHLIGHT, 0, 1))
+		button.add_theme_color_override("font_color", text_color)
+		button.add_theme_color_override("font_hover_color", COL_VALUE_HIGHLIGHT)
+		button.add_theme_color_override("font_focus_color", COL_VALUE_HIGHLIGHT)
+		return
 	var background := COL_SURFACE
 	var border := COL_BORDER
 	var text := COL_TEXT
@@ -1115,7 +1201,26 @@ func _style_key_button(button: Button, listening: bool, conflict: bool) -> void:
 	button.add_theme_color_override("font_color", text)
 
 
+func _style_option_button(option: OptionButton) -> void:
+	if not _title_mode:
+		return
+	option.add_theme_stylebox_override("normal", _box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 0))
+	option.add_theme_stylebox_override("hover", _box(Color(1, 1, 1, 0.06), Color(1, 1, 1, 0.3), 0, 1))
+	option.add_theme_stylebox_override("focus", _box(Color(1, 1, 1, 0.08), COL_VALUE_HIGHLIGHT, 0, 1))
+	option.add_theme_color_override("font_color", COL_TEXT)
+	option.add_theme_color_override("font_hover_color", COL_VALUE_HIGHLIGHT)
+	option.add_theme_color_override("font_focus_color", COL_VALUE_HIGHLIGHT)
+
+
 func _style_ghost(button: Button) -> void:
+	if _title_mode:
+		button.add_theme_stylebox_override("normal", _box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 0))
+		button.add_theme_stylebox_override("hover", _box(Color(1, 1, 1, 0.06), Color(1, 1, 1, 0.3), 0, 1))
+		button.add_theme_stylebox_override("focus", _box(Color(1, 1, 1, 0.08), COL_VALUE_HIGHLIGHT, 0, 1))
+		button.add_theme_color_override("font_color", COL_MUTED)
+		button.add_theme_color_override("font_hover_color", COL_TEXT)
+		button.add_theme_color_override("font_focus_color", COL_VALUE_HIGHLIGHT)
+		return
 	button.add_theme_stylebox_override("normal", _box(Color(1, 1, 1, 0.0), COL_BORDER, 3))
 	button.add_theme_stylebox_override("hover", _box(COL_HOVER, Color(1, 1, 1, 0.38), 3))
 	button.add_theme_stylebox_override("focus", _box(COL_HOVER, Color.WHITE, 3, 2))
@@ -1123,6 +1228,14 @@ func _style_ghost(button: Button) -> void:
 
 
 func _style_primary(button: Button) -> void:
+	if _title_mode:
+		button.add_theme_stylebox_override("normal", _box(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0, 0))
+		button.add_theme_stylebox_override("hover", _box(Color(0.85, 0.72, 0.2, 0.14), Color(0.85, 0.72, 0.2, 0.75), 0, 1))
+		button.add_theme_stylebox_override("focus", _box(Color(0.85, 0.72, 0.2, 0.18), COL_VALUE_HIGHLIGHT, 0, 1))
+		button.add_theme_color_override("font_color", COL_VALUE_HIGHLIGHT)
+		button.add_theme_color_override("font_hover_color", COL_VALUE_HIGHLIGHT)
+		button.add_theme_color_override("font_focus_color", COL_VALUE_HIGHLIGHT)
+		return
 	button.add_theme_stylebox_override("normal", _box(Color(1, 1, 1, 0.94), Color.WHITE, 3))
 	button.add_theme_stylebox_override("hover", _box(Color.WHITE, Color.WHITE, 3))
 	button.add_theme_stylebox_override("focus", _box(Color.WHITE, Color.WHITE, 3, 2))

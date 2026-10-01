@@ -92,6 +92,11 @@ var _pending_death_type: DeathType = DeathType.GENERIC
 ## 布娃娃激活前保存的骨骼全局变换（用于复活恢复）
 var _saved_bone_poses: Dictionary = {}  # int (bone_idx) → Transform3D
 
+## 可选的力提供者。设置后，命中致死时优先采用力系统缓存的方向与冲量，
+## 保证“存活姿态受力”与“死亡倒下受力”同源。为空时完全回退到
+## 现有的 energy→impulse 路径，控制台 die()/失血死亡行为不变。
+var _force_provider: ForceReceiver = null
+
 # 动画路径映射 ────────────────────────────────────────────────
 
 ## DeathType → AnimationPlayer 动画路径
@@ -237,6 +242,12 @@ func _collect_physical_bones(root: Node) -> Array[PhysicalBone3D]:
 ## 挂载点在 initialize() 之后才由 BasePlayer 查找到，因此单独提供设置入口
 func set_weapon_mount(weapon_mount: Node3D) -> void:
 	_weapon_mount = weapon_mount
+
+
+## 设置可选的力提供者（ForceReceiver）。命中致死时布娃娃会优先消费
+## 其中缓存的冲量，使死亡倒下方向与生前受击反馈同源。
+func set_force_provider(provider: ForceReceiver) -> void:
+	_force_provider = provider
 
 # 公开方法 ──────────────────────────────────────────────────
 
@@ -464,14 +475,26 @@ func _apply_impact_impulse(
 	var is_headshot: bool = death_type in [
 		DeathType.FRONT_HEADSHOT, DeathType.BACK_HEADSHOT, DeathType.CROUCHING_HEADSHOT
 	]
-	var transfer_ratio := _config.impact_energy_transfer
-	if is_headshot:
-		transfer_ratio = _config.headshot_energy_transfer
-	elif death_type == DeathType.EXPLOSION or impact_damage_type == MedicalEnums.DamageType.EXPLOSION:
-		transfer_ratio = _config.explosion_energy_transfer
-	transfer_ratio = clampf(transfer_ratio, 0.0, 1.0)
-
-	var total_impulse := sqrt(2.0 * effective_mass * impact_energy_j) * transfer_ratio
+	# 布娃娃优先消费力系统缓存的冲量：死亡倒下方向与生前受击反馈同源。
+	# 无提供者或无待用冲量时完全回退到下面的 energy→impulse 路径。
+	var pending := _consume_pending_impulse()
+	var total_impulse := 0.0
+	var transfer_ratio := 0.0
+	var impulse_from_force_system := false
+	if not pending.is_empty():
+		var pending_direction: Vector3 = pending.get("direction", Vector3.ZERO)
+		if pending_direction.length_squared() > 0.0:
+			direction = pending_direction
+		total_impulse = float(pending.get("impulse_ns", 0.0))
+		impulse_from_force_system = total_impulse > 0.0
+	else:
+		transfer_ratio = _config.impact_energy_transfer
+		if is_headshot:
+			transfer_ratio = _config.headshot_energy_transfer
+		elif death_type == DeathType.EXPLOSION or impact_damage_type == MedicalEnums.DamageType.EXPLOSION:
+			transfer_ratio = _config.explosion_energy_transfer
+		transfer_ratio = clampf(transfer_ratio, 0.0, 1.0)
+		total_impulse = sqrt(2.0 * effective_mass * impact_energy_j) * transfer_ratio
 	if total_impulse <= 0.0:
 		return
 
@@ -520,8 +543,15 @@ func _apply_impact_impulse(
 				GlobalLogger.debug("RagdollSystem", "Headshot extra impulse on %s: %.2f kg*m/s" % [pb.bone_name, extra_impulse])
 				break
 
-	GlobalLogger.info("RagdollSystem", "Applied kinetic impulse %.2f kg*m/s (E=%.1f J, m=%.5f kg, transfer=%.2f) across %d bones (dir: %s)" % \
-		[total_impulse, impact_energy_j, effective_mass, transfer_ratio, targets.size(), dir_normalized])
+	GlobalLogger.info("RagdollSystem", "Applied kinetic impulse %.2f kg*m/s (%s, E=%.1f J, m=%.5f kg, transfer=%.2f) across %d bones (dir: %s)" % \
+		[total_impulse, "force_system" if impulse_from_force_system else "energy", impact_energy_j, effective_mass, transfer_ratio, targets.size(), dir_normalized])
+
+
+## 从力提供者取走待用冲量；未接入或无缓存时返回空字典。
+func _consume_pending_impulse() -> Dictionary:
+	if not is_instance_valid(_force_provider):
+		return {}
+	return _force_provider.consume_pending_impulse()
 
 ## 根据死亡类型推断默认的冲击力方向（世界空间）
 func _get_default_impact_direction(death_type: DeathType) -> Vector3:

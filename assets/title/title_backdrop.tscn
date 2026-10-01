@@ -1,0 +1,149 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://classes/ui/title_backdrop_controller.gd" id="1_controller"]
+
+[sub_resource type="ProceduralSkyMaterial" id="SkyMat"]
+sky_top_color = Color(0.018, 0.027, 0.045, 1)
+sky_horizon_color = Color(0.17, 0.20, 0.24, 1)
+ground_bottom_color = Color(0.008, 0.012, 0.018, 1)
+ground_horizon_color = Color(0.10, 0.12, 0.14, 1)
+
+[sub_resource type="Sky" id="Sky"]
+sky_material = SubResource("SkyMat")
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 2
+sky = SubResource("Sky")
+ambient_light_source = 3
+ambient_light_color = Color(0.26, 0.31, 0.38, 1)
+ambient_light_energy = 0.55
+tonemap_mode = 2
+glow_enabled = true
+fog_enabled = true
+fog_light_color = Color(0.12, 0.15, 0.19, 1)
+fog_density = 0.012
+fog_height = 1.5
+fog_height_density = 0.08
+
+[sub_resource type="StandardMaterial3D" id="GroundMat"]
+albedo_color = Color(0.075, 0.085, 0.095, 1)
+roughness = 0.92
+
+[sub_resource type="BoxMesh" id="Ground"]
+material = SubResource("GroundMat")
+size = Vector3(120, 0.6, 120)
+
+[sub_resource type="StandardMaterial3D" id="WallMat"]
+albedo_color = Color(0.12, 0.13, 0.14, 1)
+metallic = 0.15
+roughness = 0.8
+
+[sub_resource type="BoxMesh" id="Wall"]
+material = SubResource("WallMat")
+size = Vector3(2.0, 5.0, 14.0)
+
+[sub_resource type="BoxMesh" id="Tower"]
+material = SubResource("WallMat")
+size = Vector3(5.0, 12.0, 5.0)
+
+[sub_resource type="StandardMaterial3D" id="AccentMat"]
+albedo_color = Color(0.85, 0.72, 0.20, 1)
+emission_enabled = true
+emission = Color(0.85, 0.52, 0.08, 1)
+emission_energy_multiplier = 2.2
+
+[sub_resource type="BoxMesh" id="Accent"]
+material = SubResource("AccentMat")
+size = Vector3(0.12, 0.12, 8.0)
+
+[sub_resource type="Animation" id="AnimationReset"]
+resource_name = "RESET"
+length = 0.1
+tracks/0/type = "value"
+tracks/0/path = NodePath("../CameraRig:position")
+tracks/0/keys = {"times": PackedFloat32Array(0), "transitions": PackedFloat32Array(1), "update": 0, "values": [Vector3(14, 7, 18)]}
+
+[sub_resource type="Animation" id="AnimationDrift"]
+resource_name = "camera_drift"
+length = 18.0
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/path = NodePath("../CameraRig:position")
+tracks/0/interp = 2
+tracks/0/keys = {"times": PackedFloat32Array(0, 9, 18), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(14, 7, 18), Vector3(10, 6.5, 14), Vector3(14, 7, 18)]}
+tracks/1/type = "value"
+tracks/1/path = NodePath("../CameraRig:rotation")
+tracks/1/interp = 2
+tracks/1/keys = {"times": PackedFloat32Array(0, 9, 18), "transitions": PackedFloat32Array(1, 1, 1), "update": 0, "values": [Vector3(-0.22, 0.62, 0), Vector3(-0.2, 0.74, 0), Vector3(-0.22, 0.62, 0)]}
+
+[sub_resource type="Animation" id="AnimationCreditsOrbit"]
+resource_name = "credits_orbit"
+length = 24.0
+tracks/0/type = "value"
+tracks/0/path = NodePath("../CameraRig:position")
+tracks/0/interp = 2
+tracks/0/keys = {"times": PackedFloat32Array(0, 6, 12, 18, 24), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(14, 7, 18), Vector3(8, 6.5, 16), Vector3(5, 7.5, 8), Vector3(11, 6.8, 3), Vector3(14, 7, 18)]}
+tracks/1/type = "value"
+tracks/1/path = NodePath("../CameraRig:rotation")
+tracks/1/interp = 2
+tracks/1/keys = {"times": PackedFloat32Array(0, 6, 12, 18, 24), "transitions": PackedFloat32Array(1, 1, 1, 1, 1), "update": 0, "values": [Vector3(-0.22, 0.62, 0), Vector3(-0.18, 0.78, 0), Vector3(-0.2, 1.1, 0), Vector3(-0.2, 1.55, 0), Vector3(-0.22, 0.62, 0)]}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary"]
+_data = {"RESET": SubResource("AnimationReset"), "camera_drift": SubResource("AnimationDrift"), "credits_orbit": SubResource("AnimationCreditsOrbit")}
+
+[node name="TitleBackdrop" type="Node3D"]
+script = ExtResource("1_controller")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-48, -28, 0)
+light_color = Color(0.72, 0.78, 0.9, 1)
+light_energy = 1.15
+shadow_enabled = true
+
+[node name="WarmRimLight" type="OmniLight3D" parent="."]
+position = Vector3(2, 6, 2)
+light_color = Color(1, 0.55, 0.18, 1)
+light_energy = 7.0
+omni_range = 22.0
+
+[node name="Ground" type="MeshInstance3D" parent="."]
+position = Vector3(0, -0.3, 0)
+mesh = SubResource("Ground")
+
+[node name="WallLeft" type="MeshInstance3D" parent="."]
+position = Vector3(-7, 2.5, -2)
+rotation_degrees = Vector3(0, 18, 0)
+mesh = SubResource("Wall")
+
+[node name="WallRight" type="MeshInstance3D" parent="."]
+position = Vector3(7, 2.5, -7)
+rotation_degrees = Vector3(0, -24, 0)
+mesh = SubResource("Wall")
+
+[node name="Tower" type="MeshInstance3D" parent="."]
+position = Vector3(-1, 6, -12)
+mesh = SubResource("Tower")
+
+[node name="AccentLineA" type="MeshInstance3D" parent="."]
+position = Vector3(-3, 0.08, -4)
+rotation_degrees = Vector3(0, 28, 0)
+mesh = SubResource("Accent")
+
+[node name="AccentLineB" type="MeshInstance3D" parent="."]
+position = Vector3(5, 0.08, -10)
+rotation_degrees = Vector3(0, -18, 0)
+mesh = SubResource("Accent")
+
+[node name="CameraRig" type="Node3D" parent="."]
+position = Vector3(14, 7, 18)
+rotation = Vector3(-0.22, 0.62, 0)
+
+[node name="Camera3D" type="Camera3D" parent="CameraRig"]
+current = true
+fov = 48.0
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries = {&"": SubResource("AnimationLibrary")}

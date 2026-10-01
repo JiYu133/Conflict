@@ -41,6 +41,7 @@ var _camera_mount: Node3D
 var _model_camera: Camera3D
 var _active_camera: Camera3D
 var _model_manager: PlayerModelManager
+var _look_controller: PlayerLookController
 var _model_lookup_config: ModelLookupConfig
 var _camera_config: CameraConfig
 var _player: BasePlayer
@@ -48,8 +49,18 @@ var _settings_service
 var _bone_attachment: BoneAttachment3D
 
 var _mouse_sensitivity: float
-var _vertical_angle: float = 0.0
-var _view_yaw: float = 0.0
+var _vertical_angle: float:
+	get:
+		return _look_controller.get_view_pitch() if is_instance_valid(_look_controller) else 0.0
+	set(value):
+		if is_instance_valid(_look_controller):
+			_look_controller.set_base_pitch(value)
+var _view_yaw: float:
+	get:
+		return _look_controller.get_base_yaw() if is_instance_valid(_look_controller) else 0.0
+	set(value):
+		if is_instance_valid(_look_controller):
+			_look_controller.set_base_yaw(value)
 var _max_vertical_angle: float
 
 # 弹簧系统 - 3 轴独立弹簧，对头部位置在玩家局部空间做低通滤波
@@ -59,11 +70,21 @@ var _spring_z: CameraSpring1D
 var _stiffness_h: float = 500.0
 var _stiffness_v: float = 120.0
 
+# Visual-only weapon recoil. It receives angular velocity impulses from the
+# weapon but never writes back to PlayerLookController or player rotation.
+var _recoil_component: RecoilComponent = null
+var _recoil_pitch_spring := CameraSpring1D.new()
+var _recoil_yaw_spring := CameraSpring1D.new()
+
 var _sway_pivot: Node3D = null
+var _weapon_pose_root: Node3D = null
+var _weapon_pose_source: Node3D = null
 
 # 蹲下眼部高度插值
 var _eye_height: float = 1.6
 var _target_eye_height: float = 1.6
+var _turn_height_locked: bool = false
+var _turn_height_local_y: float = 0.0
 
 # 受击疼痛镜头冲击：独立于鼠标视角和武器后座的短促阻尼弹簧。
 # 位置是当前角度偏移，速度由受击瞬间注入，随后自动回到零，
@@ -91,6 +112,10 @@ var _ragdoll_bone_idx: int = -1
 var _ragdoll_head_bone: PhysicalBone3D = null  # 头部物理骨骼
 var _ragdoll_physics_active: bool = false
 var _head_spring_enabled: bool = true
+var _prone_roll_head_tracking: bool = false
+var _prone_roll_head_bone_idx: int = -1
+var _prone_roll_eye_offset: Vector3 = Vector3.ZERO
+var _prone_roll_head_to_camera_basis: Basis = Basis.IDENTITY
 ## 头部没有对应 PhysicalBone3D 时，使用颈部等最近物理父骨骼，
 ## 该变换把物理骨骼坐标转换为头部坐标，因此仍能保持头部位置/滚转。
 var _ragdoll_head_from_physical: Transform3D = Transform3D.IDENTITY
@@ -103,10 +128,12 @@ var _ragdoll_camera_original_transform: Transform3D = Transform3D.IDENTITY
 # ADS
 var _is_ads: bool = false
 var _ads_progress: float = 0.0
+var _ads_blend: float = 0.0
 var _ads_transition_time: float = 0.25
 var _hip_fov: float = 90.0
 var _ads_fov: float = 60.0
 var _ads_center_offset: Vector3 = Vector3.ZERO
+var _ads_anchor: Node3D = null
 
 
 # ============================================================
@@ -118,20 +145,26 @@ func initialize(
 	model_lookup_config: ModelLookupConfig,
 	camera_config: CameraConfig,
 	settings_service,
-	create_local_camera: bool = true
+	create_local_camera: bool = true,
+	look_controller: PlayerLookController = null
 ) -> void:
 	_model_manager = model_manager
+	if is_instance_valid(_model_manager) and not _model_manager.model_unloaded.is_connected(_on_model_unloaded):
+		_model_manager.model_unloaded.connect(_on_model_unloaded)
 	_model_lookup_config = model_lookup_config if model_lookup_config else ModelLookupConfig.new()
 	_camera_config = camera_config if camera_config else CameraConfig.new()
+	_look_controller = look_controller
 	_settings_service = settings_service
 	_player = player
-	_view_yaw = player.rotation.y if player else 0.0
+	if not is_instance_valid(_look_controller):
+		_view_yaw = player.rotation.y if player else 0.0
 
 	_spring_x = CameraSpring1D.new()
 	_spring_y = CameraSpring1D.new()
 	_spring_z = CameraSpring1D.new()
 	_update_spring_params()
 	_pain_rng.randomize()
+	_reset_recoil_camera()
 
 	_hip_fov = _camera_config.fov
 	# 眼部高度从 camera_config 头部偏移 Y 初始化（fallback 用）
@@ -163,6 +196,7 @@ func enable_camera() -> void:
 	_head_spring_enabled = true
 	_ragdoll_physics_active = false
 	set_ragdoll_camera_shake(false)
+	_reset_recoil_camera()
 
 	if _ragdoll_skeleton:
 		_ragdoll_skeleton = null
@@ -172,7 +206,9 @@ func enable_camera() -> void:
 		_ragdoll_head_conversion_valid = false
 		_ragdoll_head_to_camera_basis = Basis.IDENTITY
 		# 恢复死亡前的真实父节点；部分模型使用自带 Camera3D，并没有 CameraMount。
-		var restore_parent := _camera_mount if is_instance_valid(_camera_mount) else _ragdoll_camera_original_parent
+		# The live camera is kept under the player so model-root stance offsets do
+		# not move it after the controller has written its global transform.
+		var restore_parent := _player if is_instance_valid(_player) else _ragdoll_camera_original_parent
 		if is_instance_valid(_active_camera) and is_instance_valid(restore_parent):
 			if _active_camera.get_parent():
 				_active_camera.get_parent().remove_child(_active_camera)
@@ -194,6 +230,7 @@ func enable_camera() -> void:
 	elif _model_camera:
 		_model_camera.current = true
 		_active_camera = _model_camera
+		_reparent_camera_to_player(_active_camera)
 	else:
 		_create_mount_from_skeleton(viewport_camera)
 
@@ -210,6 +247,7 @@ func enable_camera() -> void:
 
 
 func disable_camera(skeleton: Skeleton3D = null) -> void:
+	_reset_recoil_camera()
 	if not skeleton:
 		return
 	var head_idx: int = _find_head_bone_index(skeleton)
@@ -351,6 +389,20 @@ func _on_model_loaded() -> void:
 	_find_camera_nodes()
 
 
+func _on_model_unloaded() -> void:
+	# Authored cameras are detached from the model while active so stance/root
+	# offsets cannot move them. They therefore need explicit cleanup on reload.
+	if is_instance_valid(_model_camera):
+		_model_camera.queue_free()
+	_model_camera = null
+	_active_camera = null
+	_camera_mount = null
+	_bone_attachment = null
+	_sway_pivot = null
+	_weapon_pose_root = null
+	_weapon_pose_source = null
+
+
 func _find_camera_nodes() -> void:
 	if not _model_manager.model_node:
 		return
@@ -371,6 +423,7 @@ func _find_camera_nodes() -> void:
 	elif _model_camera:
 		_model_camera.current = true
 		_active_camera = _model_camera
+		_reparent_camera_to_player(_active_camera)
 	else:
 		push_warning("未找到摄像机挂载点")
 
@@ -388,6 +441,19 @@ func _attach_to_mount(camera: Camera3D, mount: Node3D) -> void:
 		camera.rotation = Vector3.ZERO
 		camera.current = true
 		_active_camera = camera
+		_reparent_camera_to_player(camera)
+
+
+func _reparent_camera_to_player(camera: Camera3D) -> void:
+	if not is_instance_valid(camera) or not is_instance_valid(_player):
+		return
+	if camera.get_parent() == _player:
+		return
+	var saved_global := camera.global_transform
+	if camera.get_parent():
+		camera.get_parent().remove_child(camera)
+	_player.add_child(camera)
+	camera.global_transform = saved_global
 
 
 func _create_mount_from_skeleton(camera: Camera3D) -> void:
@@ -427,43 +493,6 @@ func _find_bone_attachment() -> BoneAttachment3D:
 
 
 # ============================================================
-# 鼠标输入
-# ============================================================
-func _input(event: InputEvent) -> void:
-	if event is not InputEventMouseMotion:
-		return
-	if not is_instance_valid(_player) or not controllable:
-		return
-	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
-		return
-	var unified_multiplier := float(_settings_service.get_value("controls/sensitivity", 1.0)) if _settings_service else 1.0
-	var invert_sign := -1.0 if _settings_service and bool(_settings_service.get_value("controls/invert_y", false)) else 1.0
-	var input_yaw : float = -event.relative.x * _mouse_sensitivity * unified_multiplier
-	var body_offset := get_body_yaw_offset()
-	var movement_config := _player.player_config.movement_config if _player and _player.player_config else null
-	if movement_config and movement_config.turn_in_place_enabled:
-		var moving := _is_moving()
-		if moving:
-			# Turn-in-place limits only apply while stationary. Moving keeps the
-			# body aligned to the view so locomotion and the model turn together.
-			_view_yaw += input_yaw
-			_sync_moving_body_yaw()
-		else:
-			var trigger := deg_to_rad(movement_config.turn_trigger_angle_degrees)
-			var limit := deg_to_rad(movement_config.turn_view_limit_degrees)
-			var ratio := 1.0
-			if absf(body_offset) > trigger:
-				var t := inverse_lerp(trigger, maxf(limit * 2.0, limit + 0.001), absf(body_offset))
-				ratio = lerpf(1.0, movement_config.turn_view_min_sensitivity_ratio, clampf(t, 0.0, 1.0))
-			var desired_yaw := _view_yaw + input_yaw * ratio
-			_view_yaw = _player.rotation.y + clampf(angle_difference(_player.rotation.y, desired_yaw), -limit, limit)
-	else:
-		_view_yaw += input_yaw
-	_vertical_angle -= event.relative.y * _mouse_sensitivity * unified_multiplier * invert_sign
-	_vertical_angle = clamp(_vertical_angle, -_max_vertical_angle, _max_vertical_angle)
-
-
-# ============================================================
 # 每帧更新（核心）
 # ============================================================
 func _process(delta: float) -> void:
@@ -473,6 +502,7 @@ func _process(delta: float) -> void:
 	# 即使暂时失去输入控制，也让受击镜头继续回正，避免打开菜单后
 	# 冲击被冻结，关闭菜单时突然恢复一个过期的歪斜角度。
 	_update_pain_impulse(delta)
+	_update_recoil_camera(delta)
 
 	# 眼部高度平滑插值（蹲下/起立时移动摄像机 fallback 高度）
 	if _eye_height != _target_eye_height:
@@ -505,8 +535,14 @@ func _process(delta: float) -> void:
 	if not _head_spring_enabled:
 		return
 
-	if not controllable:
+	if _update_prone_roll_head_camera():
+		_update_ads(delta)
+		_update_weapon_spring(delta)
 		return
+	if controllable and (
+		not is_instance_valid(_look_controller) or not _look_controller.is_free_look_active()
+	):
+		_sync_moving_body_yaw(delta)
 
 	# 1. 读取头部在玩家局部空间的位置（弹簧不感知玩家旋转，只过滤动画位移）
 	var head_local := _get_head_local_position()
@@ -524,23 +560,51 @@ func _process(delta: float) -> void:
 	_spring_y.stiffness = _stiffness_v * stiffness_mult * stability
 	_spring_z.stiffness = _stiffness_h * stiffness_mult * stability
 
+	var lock_turn_height := _should_lock_turn_in_place_height()
+	if lock_turn_height and not _turn_height_locked:
+		# Capture the already rendered eye height on the first turn frame. The
+		# imported turn clips move the head vertically; letting that motion enter
+		# the camera spring produces a visible crouch/prone view bump.
+		_turn_height_local_y = (
+			_player.global_transform.affine_inverse() * _active_camera.global_position
+		).y
+		_spring_y.position = _turn_height_local_y
+		_spring_y.velocity = 0.0
+		_turn_height_locked = true
+	elif not lock_turn_height and _turn_height_locked:
+		# Resume from the locked value so releasing the turn cannot snap to the
+		# current animation frame.
+		_spring_y.position = _turn_height_local_y
+		_spring_y.velocity = 0.0
+		_turn_height_locked = false
+
 	var filtered_local := Vector3(
 		_spring_x.update(delta, head_local.x),
-		_spring_y.update(delta, head_local.y),
+		_turn_height_local_y if _turn_height_locked
+		else _spring_y.update(delta, head_local.y),
 		_spring_z.update(delta, head_local.z)
 	)
 
-	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧
+	# 3. 局部空间转全局——玩家旋转正确携带，鼠标转头不触发弹簧。
+	# The roll animation may rotate the head bone through arbitrary imported
+	# axes. Keep the first-person view driven by look input and add only a small
+	# cosmetic bank, otherwise the camera can reverse or point at the ground.
 	_active_camera.global_position = _player.global_transform * filtered_local
-
 	_active_camera.global_rotation = Vector3(
-		_vertical_angle + _pain_pitch,
-		_view_yaw + _pain_yaw,
+		get_vertical_angle() + _pain_pitch + _recoil_pitch_spring.position,
+		get_view_yaw() + _recoil_yaw_spring.position,
 		_pain_roll
 	)
 
 	_update_ads(delta)
 	_update_weapon_spring(delta)
+
+
+func _should_lock_turn_in_place_height() -> bool:
+	if not is_instance_valid(_player) or not _player.turn_controller:
+		return false
+	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+	return _player.turn_controller.is_turning() and horizontal_velocity.length_squared() < 0.0001
 
 
 # ============================================================
@@ -556,7 +620,8 @@ func _get_head_local_position() -> Vector3:
 
 
 ## 响应姿态变化，更新摄像机眼部目标高度
-func _on_stance_changed(value: float) -> void:
+## Public value interface; the camera does not retain a stance component.
+func apply_stance_value(value: float) -> void:
 	if not _player or not _player.player_config:
 		return
 	var config = _player.player_config
@@ -573,25 +638,133 @@ func _on_stance_changed(value: float) -> void:
 func _update_ads(delta: float) -> void:
 	var target: float = 1.0 if _is_ads else 0.0
 	_ads_progress = move_toward(_ads_progress, target, delta / max(_ads_transition_time, 0.001))
-	_active_camera.fov = lerp(_hip_fov, _ads_fov, _ads_progress)
+	# Keep timing deterministic while removing the hard linear start/stop from
+	# the visible weapon and FOV transition.
+	_ads_blend = _smoothstep(_ads_progress)
+	_active_camera.fov = lerp(_hip_fov, _ads_fov, _ads_blend)
 
 
-func set_ads_state(ads: bool, ads_time: float, zoom_fov: float, center_offset: Vector3) -> void:
+func _smoothstep(value: float) -> float:
+	var t := clampf(value, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+
+func set_ads_state(
+	ads: bool,
+	ads_time: float,
+	zoom_fov: float,
+	center_offset: Vector3,
+	ads_anchor: Node3D = null
+) -> void:
 	_is_ads = ads
 	_ads_transition_time = ads_time
 	_ads_fov = zoom_fov if zoom_fov > 0.0 else _hip_fov
 	_ads_center_offset = center_offset
+	_ads_anchor = ads_anchor if is_instance_valid(ads_anchor) else null
+
+
+func reset_weapon_pose_to_hip() -> void:
+	_is_ads = false
+	_ads_progress = 0.0
+	_ads_blend = 0.0
+	if is_instance_valid(_active_camera):
+		_active_camera.fov = _hip_fov
+	refresh_weapon_pose()
 
 
 # ============================================================
 # 武器 ADS 居中偏移
 # ============================================================
 func _update_weapon_spring(_delta: float) -> void:
-	if not _sway_pivot:
+	refresh_weapon_pose()
+
+
+## Update the independent weapon rig from the animated hand pose, then blend
+## it toward the camera-centred ADS pose. This is also called from the hand IK
+## modifier so both arm targets consume the current weapon transform.
+func refresh_weapon_pose() -> void:
+	if not is_instance_valid(_weapon_pose_root) or not is_instance_valid(_weapon_pose_source):
 		return
-	var pos_target := _ads_center_offset * _ads_progress
-	_sway_pivot.position.x = pos_target.x
-	_sway_pivot.position.y = pos_target.y
+	_refresh_pose_source_attachment()
+	var hip_global := _weapon_pose_source.global_transform
+	if is_instance_valid(_ads_anchor) and is_instance_valid(_active_camera):
+		var anchor_from_pose := _weapon_pose_root.global_transform.affine_inverse() \
+					* _ads_anchor.global_transform
+		var ads_global := _active_camera.global_transform * anchor_from_pose.affine_inverse()
+		_weapon_pose_root.global_transform = hip_global.interpolate_with(ads_global, _ads_blend)
+		return
+	var fallback_ads := hip_global * Transform3D(Basis.IDENTITY, _ads_center_offset)
+	_weapon_pose_root.global_transform = hip_global.interpolate_with(fallback_ads, _ads_blend)
+
+
+func _refresh_pose_source_attachment() -> void:
+	var node: Node = _weapon_pose_source
+	while is_instance_valid(node):
+		if node is BoneAttachment3D:
+			(node as BoneAttachment3D).on_skeleton_update()
+			return
+		node = node.get_parent()
+
+
+func set_recoil_component(component: RecoilComponent) -> void:
+	if _recoil_component and is_instance_valid(_recoil_component):
+		if _recoil_component.physical_recoil_applied.is_connected(_on_physical_recoil_applied):
+			_recoil_component.physical_recoil_applied.disconnect(_on_physical_recoil_applied)
+	_recoil_component = component if is_instance_valid(component) else null
+	_reset_recoil_camera()
+	if _recoil_component:
+		_recoil_component.physical_recoil_applied.connect(_on_physical_recoil_applied)
+
+
+func clear_recoil_component() -> void:
+	set_recoil_component(null)
+
+
+func get_recoil_component() -> RecoilComponent:
+	return _recoil_component
+
+
+func _on_physical_recoil_applied(recoil_data: Dictionary) -> void:
+	if not recoil_data.has("angular_velocity"):
+		return
+	var angular_velocity: Vector2 = recoil_data["angular_velocity"]
+	if not angular_velocity.is_finite():
+		return
+	_recoil_pitch_spring.velocity += angular_velocity.x
+	_recoil_yaw_spring.velocity += angular_velocity.y
+
+
+func _update_recoil_camera(delta: float) -> void:
+	if not _camera_config:
+		return
+	var ads_multiplier := lerpf(
+		1.0,
+		maxf(_camera_config.recoil_ads_stiffness_multiplier, 0.01),
+		_ads_progress
+	)
+	_recoil_pitch_spring.stiffness = _camera_config.recoil_pitch_stiffness * ads_multiplier
+	_recoil_pitch_spring.damping = _camera_config.recoil_pitch_damping
+	_recoil_yaw_spring.stiffness = _camera_config.recoil_yaw_stiffness * ads_multiplier
+	_recoil_yaw_spring.damping = _camera_config.recoil_yaw_damping
+	_recoil_pitch_spring.update(delta, 0.0)
+	_recoil_yaw_spring.update(delta, 0.0)
+	_recoil_pitch_spring.position = clampf(
+		_recoil_pitch_spring.position,
+		-_camera_config.recoil_max_pitch_rad,
+		_camera_config.recoil_max_pitch_rad
+	)
+	_recoil_yaw_spring.position = clampf(
+		_recoil_yaw_spring.position,
+		-_camera_config.recoil_max_yaw_rad,
+		_camera_config.recoil_max_yaw_rad
+	)
+
+
+func _reset_recoil_camera() -> void:
+	_recoil_pitch_spring.position = 0.0
+	_recoil_pitch_spring.velocity = 0.0
+	_recoil_yaw_spring.position = 0.0
+	_recoil_yaw_spring.velocity = 0.0
 
 
 # ============================================================
@@ -677,14 +850,23 @@ func _update_ragdoll_camera_shake(delta: float) -> Dictionary:
 # ============================================================
 # 公开 API
 # ============================================================
-func setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D:
+func setup_weapon_sway_pivot(weapon_mount: Node3D, pose_parent: Node3D = null) -> Node3D:
 	if not weapon_mount:
 		return null
 	if _sway_pivot and is_instance_valid(_sway_pivot):
 		return _sway_pivot
+	_weapon_pose_source = weapon_mount
+	_weapon_pose_root = Node3D.new()
+	_weapon_pose_root.name = "WeaponPoseRoot"
+	var root_parent := pose_parent if is_instance_valid(pose_parent) else weapon_mount.get_parent() as Node3D
+	if not is_instance_valid(root_parent):
+		return null
+	root_parent.add_child(_weapon_pose_root)
+	_refresh_pose_source_attachment()
+	_weapon_pose_root.global_transform = weapon_mount.global_transform
 	var pivot: Node3D = Node3D.new()
 	pivot.name = "WeaponSwayPivot"
-	weapon_mount.add_child(pivot)
+	_weapon_pose_root.add_child(pivot)
 	_sway_pivot = pivot
 	return pivot
 
@@ -693,27 +875,174 @@ func get_active_camera() -> Camera3D:
 	return _active_camera
 
 
+func get_ads_progress() -> float:
+	return _ads_progress
+
+
+func get_ads_blend() -> float:
+	return _ads_blend
+
+
+func get_weapon_pose_root() -> Node3D:
+	return _weapon_pose_root
+
+
+func get_weapon_pose_source() -> Node3D:
+	return _weapon_pose_source
+
+func _update_prone_roll_head_camera() -> bool:
+	var rolling := is_instance_valid(_player) \
+		and _player.movement_controller \
+		and _player.movement_controller.is_prone_rolling()
+	if not rolling:
+		if _prone_roll_head_tracking and is_instance_valid(_player):
+			var rendered_local := (
+				_player.global_transform.affine_inverse() * _active_camera.global_position
+			)
+			_spring_x.position = rendered_local.x
+			_spring_y.position = rendered_local.y
+			_spring_z.position = rendered_local.z
+			_spring_x.velocity = 0.0
+			_spring_y.velocity = 0.0
+			_spring_z.velocity = 0.0
+		_prone_roll_head_tracking = false
+		_prone_roll_head_bone_idx = -1
+		return false
+	var skeleton: Skeleton3D = _model_manager.skeleton if _model_manager else null
+	if not is_instance_valid(skeleton):
+		return false
+	if _prone_roll_head_bone_idx < 0:
+		_prone_roll_head_bone_idx = _find_head_bone_index(skeleton)
+	if _prone_roll_head_bone_idx < 0:
+		return false
+	var head_xform := skeleton.global_transform * skeleton.get_bone_global_pose(_prone_roll_head_bone_idx)
+	if not _prone_roll_head_tracking:
+		# Cache the rendered eye point relative to the skull so takeover has no
+		# positional or rotational jump, then follow the animated skull rigidly.
+		_prone_roll_eye_offset = head_xform.affine_inverse() * _active_camera.global_position
+		_prone_roll_head_to_camera_basis = (
+			head_xform.basis.orthonormalized().inverse()
+			* _active_camera.global_basis.orthonormalized()
+		).orthonormalized()
+		_prone_roll_head_tracking = true
+	_active_camera.global_position = head_xform * _prone_roll_eye_offset
+	_active_camera.global_basis = (
+		head_xform.basis.orthonormalized() * _prone_roll_head_to_camera_basis
+	).orthonormalized()
+	return true
+
+
 func get_base_mouse_sensitivity() -> float:
 	return _mouse_sensitivity
 
 
 func get_vertical_angle() -> float:
-	return _vertical_angle
+	return _look_controller.get_view_pitch() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_base_vertical_angle() -> float:
+	return _look_controller.get_base_pitch() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_free_pitch_offset() -> float:
+	return _look_controller.get_free_pitch_offset() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_free_yaw_offset() -> float:
+	return _look_controller.get_free_yaw_offset() if is_instance_valid(_look_controller) else 0.0
+
 
 func get_view_yaw() -> float:
-	return _view_yaw
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return _player.rotation.y
+	return _look_controller.get_view_yaw() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_base_view_yaw() -> float:
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return _player.rotation.y
+	return _look_controller.get_base_yaw() if is_instance_valid(_look_controller) else _view_yaw
 
 func get_body_yaw_offset() -> float:
-	return angle_difference(_player.rotation.y, _view_yaw) if is_instance_valid(_player) else 0.0
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return 0.0
+	return _look_controller.get_body_yaw_offset() if is_instance_valid(_look_controller) else 0.0
+
+
+func get_visual_body_yaw_offset() -> float:
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return 0.0
+	return _look_controller.get_visual_body_yaw_offset() if is_instance_valid(_look_controller) else get_body_yaw_offset()
 
 func get_view_basis() -> Basis:
-	return Basis(Vector3.UP, _view_yaw)
+	if is_instance_valid(_player) and _player.is_ai_player:
+		return Basis(Vector3.UP, _player.rotation.y)
+	return _look_controller.get_movement_basis() if is_instance_valid(_look_controller) else Basis(Vector3.UP, _view_yaw)
 
 
-func _sync_moving_body_yaw() -> void:
-	if is_instance_valid(_player) and _is_moving():
-		if _body_yaw_blend_remaining <= 0.0:
-			_player.rotation.y = _view_yaw
+## AI has no active camera, but its procedural skeleton still consumes view state.
+func set_ai_view_angles(yaw: float, pitch: float) -> void:
+	if not is_instance_valid(_player) or not _player.is_ai_player:
+		return
+	_view_yaw = yaw
+	var pitch_limit := _camera_config.max_vertical_angle if _camera_config else 1.4
+	_vertical_angle = clampf(pitch, -pitch_limit, pitch_limit)
+	_body_yaw_blend_remaining = 0.0
+
+
+func _sync_moving_body_yaw(delta: float) -> void:
+	if not is_instance_valid(_player) or not _player.is_on_floor() or not _is_moving():
+		return
+	# Standing/crouched locomotion follows actual horizontal velocity. The spine
+	# aim modifier then carries the remaining view offset into the upper body.
+	# Prone locomotion must pass through the authored turn clip, including while
+	# crawling.
+	if _player.stance_controller and (
+			_player.stance_controller.is_prone()
+			or _player.stance_controller.is_prone_transitioning()
+	):
+		return
+	# Landing keeps horizontal velocity for a few frames. Do not let the
+	# locomotion follow path snap the body before TurnController evaluates the
+	# pending view offset and starts the authored turn clip.
+	if _player.turn_controller and _player.turn_controller.is_turning():
+		return
+	if _player.animation_controller and _player.animation_controller.get_current_state() == PlayerAnimationController.State.LAND:
+		return
+	if is_instance_valid(_look_controller) and _look_controller.is_free_look_active():
+		return
+	if _body_yaw_blend_remaining > 0.0:
+		return
+
+	var movement_config := _player.player_config.movement_config if _player.player_config else null
+	var target_yaw := _get_moving_body_target_yaw(movement_config)
+	var turn_speed_degrees := movement_config.moving_body_turn_speed_degrees \
+		if movement_config else 360.0
+	var max_step := deg_to_rad(maxf(turn_speed_degrees, 0.0)) * maxf(delta, 0.0)
+	var yaw_delta := angle_difference(_player.rotation.y, target_yaw)
+	_player.rotation.y += clampf(yaw_delta, -max_step, max_step)
+
+
+func _get_horizontal_velocity_yaw() -> float:
+	if not is_instance_valid(_player):
+		return _view_yaw
+	var horizontal_velocity := Vector2(_player.velocity.x, _player.velocity.z)
+	if horizontal_velocity.length_squared() <= 0.0001:
+		return get_base_view_yaw()
+	# Godot's forward axis is -Z. Convert the world-space velocity vector into
+	# the yaw whose forward direction points along that velocity.
+	return atan2(-horizontal_velocity.x, -horizontal_velocity.y)
+
+
+func _get_moving_body_target_yaw(movement_config: MovementConfig = null) -> float:
+	var view_yaw := get_base_view_yaw()
+	var velocity_yaw := _get_horizontal_velocity_yaw()
+	var threshold_degrees := movement_config.moving_body_velocity_yaw_threshold_degrees \
+		if movement_config else 120.0
+	var velocity_view_offset := absf(angle_difference(view_yaw, velocity_yaw))
+	if velocity_view_offset > deg_to_rad(clampf(threshold_degrees, 0.0, 180.0)):
+		return view_yaw
+	return velocity_yaw
 
 
 var _body_yaw_blend_remaining: float = 0.0
@@ -726,7 +1055,9 @@ func begin_moving_body_yaw_blend(duration: float) -> void:
 	_body_yaw_blend_duration = maxf(duration, 0.001)
 	_body_yaw_blend_remaining = _body_yaw_blend_duration
 	_body_yaw_blend_start = _player.rotation.y if is_instance_valid(_player) else _view_yaw
-	_body_yaw_blend_target = _view_yaw
+	var movement_config := _player.player_config.movement_config \
+		if is_instance_valid(_player) and _player.player_config else null
+	_body_yaw_blend_target = _get_moving_body_target_yaw(movement_config)
 
 
 func process_moving_body_yaw_blend(delta: float) -> void:
@@ -740,6 +1071,10 @@ func process_moving_body_yaw_blend(delta: float) -> void:
 	_player.rotation.y = lerp_angle(_body_yaw_blend_start, _body_yaw_blend_target, clampf(weight, 0.0, 1.0))
 	if _body_yaw_blend_remaining <= 0.0:
 		_player.rotation.y = _body_yaw_blend_target
+
+
+func is_body_yaw_blending() -> bool:
+	return _body_yaw_blend_remaining > 0.0
 
 
 func _is_moving() -> bool:

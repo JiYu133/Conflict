@@ -41,6 +41,11 @@ extends Resource
 ## 布娃娃物理配置
 @export var ragdoll_config: RagdollConfig
 
+# 力系统配置 ────────────────────────────────────────────────
+@export_group("力系统配置")
+## 通用力系统配置（受击反馈的传播/衰减/上限；不挂载时使用默认值）
+@export var force_config: ForceConfig
+
 # 手部 IK 配置 ──────────────────────────────────────────────
 @export_group("手部 IK 配置")
 ## 左手 IK 参数
@@ -111,6 +116,12 @@ var stop_brake_strength: float:
 	get: return movement_config.stop_brake_strength if movement_config else 5.0
 var turn_decel_factor: float:
 	get: return movement_config.turn_decel_factor if movement_config else 0.85
+var forced_turn_angle_degrees: float:
+	get: return movement_config.forced_turn_angle_degrees if movement_config else 120.0
+var moving_body_turn_speed_degrees: float:
+	get: return movement_config.moving_body_turn_speed_degrees if movement_config else 360.0
+var moving_body_velocity_yaw_threshold_degrees: float:
+	get: return movement_config.moving_body_velocity_yaw_threshold_degrees if movement_config else 120.0
 var burst_strength: float:
 	get: return movement_config.burst_strength if movement_config else 1.2
 var burst_duration: float:
@@ -141,5 +152,45 @@ var collision_shape_radius: float:
 	get: return movement_config.collision_shape_radius if movement_config else 0.4
 var collision_shape_y_offset: float:
 	get: return movement_config.collision_shape_y_offset if movement_config else 0.0
+var hitbox_driven_collision: bool:
+	get: return movement_config.hitbox_driven_collision if movement_config else false
+var collision_bounds_margin: float:
+	get: return movement_config.collision_bounds_margin if movement_config else 0.025
+var collision_bounds_follow_speed: float:
+	get: return movement_config.collision_bounds_follow_speed if movement_config else 2.0
+var collision_bounds_min_height: float:
+	get: return movement_config.collision_bounds_min_height if movement_config else 0.6
+var collision_bounds_max_height: float:
+	get: return movement_config.collision_bounds_max_height if movement_config else 3.0
+var collision_bounds_max_radius: float:
+	get: return movement_config.collision_bounds_max_radius if movement_config else 0.75
+var collision_axis_switch_ratio: float:
+	get: return movement_config.collision_axis_switch_ratio if movement_config else 1.15
+var collision_axis_switch_stability_frames: int:
+	get: return movement_config.collision_axis_switch_stability_frames if movement_config else 4
+var collision_axis_follow_speed_degrees: float:
+	get: return movement_config.collision_axis_follow_speed_degrees if movement_config else 240.0
 var model_y_offset: float:
 	get: return movement_config.model_y_offset if movement_config else -0.5
+var prone_forward_speed: float:
+	get: return movement_config.prone_forward_speed if movement_config else 0.8
+var prone_backward_speed: float:
+	get: return movement_config.prone_backward_speed if movement_config else 0.55
+var prone_lateral_speed: float:
+	get: return movement_config.prone_lateral_speed if movement_config else 0.65
+var prone_roll_speed: float:
+	get: return movement_config.prone_roll_speed if movement_config else 3.2
+var prone_roll_cooldown: float:
+	get: return movement_config.prone_roll_cooldown if movement_config else 0.15
+var prone_roll_chain_reset_time: float:
+	get: return movement_config.prone_roll_chain_reset_time if movement_config else 1.0
+var prone_roll_duration: float:
+	get: return movement_config.prone_roll_duration if movement_config else 0.45
+var prone_roll_acceleration: float:
+	get: return movement_config.prone_roll_acceleration if movement_config else 18.0
+var prone_capsule_height: float:
+	get: return movement_config.prone_capsule_height if movement_config else 0.6
+var prone_collision_y_offset: float:
+	get: return movement_config.prone_collision_y_offset if movement_config else -0.6
+var prone_model_y_offset: float:
+	get: return movement_config.prone_model_y_offset if movement_config else -1.35

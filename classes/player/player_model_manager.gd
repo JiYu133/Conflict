@@ -4,7 +4,8 @@ extends Node
 # ============================================================
 # 玩家模型管理器
 # 功能：负责加载/卸载玩家的 3D 模型场景，查找并缓存模型中的
-#       关键组件（骨骼系统、动画播放器），以及创建碰撞体。
+#       关键组件（骨骼系统、动画播放器）。玩家主碰撞体由
+#       PlayerCollisionController 单独拥有。
 # 用法：
 #   1. 在 BasePlayer 中作为子节点存在
 #   2. 调用 load_model(player_config) 传入 PlayerConfig 资源
@@ -40,7 +41,6 @@ var _model_node: Node3D               # 当前加载的模型实例
 var _skeleton: Skeleton3D             # 缓存的骨骼系统引用
 var _animator: AnimationPlayer        # 缓存的动画播放器引用
 var _animation_tree: AnimationTree    # 缓存的动画树引用
-var _collision_shape: CollisionShape3D # Player 下由本管理器创建的碰撞体
 var _model_lookup_config: ModelLookupConfig  # 节点查找规则配置
 var _player_config: PlayerConfig             # 玩家配置（碰撞体参数等）
 
@@ -51,7 +51,7 @@ var _player_config: PlayerConfig             # 玩家配置（碰撞体参数等
 
 ## 加载模型
 ## 从 PlayerConfig 中读取 model_scene（PackedScene）并实例化，
-## 然后自动查找骨骼和动画系统，最后创建碰撞体。
+## 然后自动查找骨骼和动画系统。
 func load_model(player_config: PlayerConfig = null) -> void:
 	var scene = player_config.model_scene
 	var model_lookup_config = player_config.model_config
@@ -94,9 +94,6 @@ func load_model(player_config: PlayerConfig = null) -> void:
 	model_loaded.emit(_model_node)
 	print("模型加载完成: ", _model_node.name)
 
-	# 创建碰撞体
-	_create_collision_body()
-
 ## 卸载模型
 ## 清除模型实例和相关缓存的引用
 func unload_model() -> void:
@@ -107,6 +104,13 @@ func unload_model() -> void:
 		_animator = null
 		_animation_tree = null
 		model_unloaded.emit()
+
+
+## Public value interface used by the BasePlayer composition root. The model
+## manager does not know which stance or animation produced this offset.
+func set_model_vertical_offset(value: float) -> void:
+	if is_instance_valid(_model_node):
+		_model_node.position.y = value
 
 
 # ============================================================
@@ -160,17 +164,3 @@ func _find_unique_component(type_name: String) -> Node:
 	else:
 		push_error("模型中必须恰好存在一个 %s，实际找到 %d 个" % [type_name, components.size()])
 	return null
-
-## 为玩家创建碰撞体
-## 使用胶囊体碰撞形状（CapsuleShape3D），参数来自 PlayerConfig
-func _create_collision_body() -> void:
-	if not is_instance_valid(_collision_shape):
-		_collision_shape = CollisionShape3D.new()
-		_collision_shape.name = "PlayerCollisionShape"
-		var player = get_parent()
-		player.add_child(_collision_shape)
-	var shape = CapsuleShape3D.new()
-	shape.height = _player_config.collision_shape_height
-	shape.radius = _player_config.collision_shape_radius
-	_collision_shape.shape = shape
-	_collision_shape.position = Vector3(0, _player_config.collision_shape_y_offset, 0)

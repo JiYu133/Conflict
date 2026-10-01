@@ -34,6 +34,10 @@ var consciousness_level: float = 1.0
 
 ## 疼痛等级：0.0（无痛）~ 1.0（极度疼痛）
 var pain_level: float = 0.0
+var perfusion: float = 1.0
+var stress_level: float = 0.0
+var adrenaline_level: float = 0.0
+var stress_time_remaining: float = 0.0
 
 # ── 内部 ────────────────────────────────────────────────────
 
@@ -48,6 +52,10 @@ func initialize(config: HealthConfig) -> void:
 	oxygenation = 1.0
 	consciousness_level = 1.0
 	pain_level = 0.0
+	perfusion = 1.0
+	stress_level = 0.0
+	adrenaline_level = 0.0
+	stress_time_remaining = 0.0
 	_build_regions(config)
 
 

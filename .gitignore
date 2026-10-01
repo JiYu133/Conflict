@@ -12,9 +12,16 @@ user/
 
 # IDE/agent working files
 .continue/
+.appdata/
+.dotnet-cli-home/
+.nuget-http-cache/
+.nuget-packages/
+
+# Local GDExtension hot-reload copies
+addons/limboai/bin/~*.dll*
 
 Thumbs.db
 *.tmp
+*.TMP
 *.log
 *.uid
-

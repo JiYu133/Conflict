@@ -19,6 +19,10 @@ initialize(cfg: WeaponConfig, am: AttachmentManager = null) -> void
 
 ## 公开方法
 
+每次 `apply_recoil()` 会同时发出 `physical_recoil_applied(recoil_data)`。数据包含同一发使用的线性冲量、枪械角冲量和相应角速度，供玩家 `ForceReceiver` 按枪托、主手、辅手接触刚度分配到骨骼；镜头弹簧和骨骼受力复用同一发随机装药结果。
+
+`recoil_data` 字段：`linear_impulse_local`（N*s）、`angular_impulse_local`（N*m*s）、`angular_velocity`（rad/s）。
+
 ```gdscript
 rebuild_physics() -> void
 ```

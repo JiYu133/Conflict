@@ -59,6 +59,11 @@ var is_tourniqueted: bool = false
 ## 是否已填塞
 var is_packed: bool = false
 
+var is_open_chest_wound: bool = false
+var is_chest_sealed: bool = false
+var is_packable: bool = false
+var packing_stops_internal_bleed: bool = false
+
 ## 疼痛贡献值（0.0–1.0），P4 神经系统使用
 var pain_contribution: float = 0.0
 
@@ -66,13 +71,13 @@ var pain_contribution: float = 0.0
 ## 返回当前有效的外部失血速率（ml/s）。
 ## 已包扎或已上止血带时返回 0。
 func get_bleed_ml_per_sec() -> float:
-	if is_bandaged or is_tourniqueted:
+	if is_bandaged or is_tourniqueted or is_packed:
 		return 0.0
 	return BLEED_RATE_ML_PER_SEC.get(bleed_rate, 0.0)
 
 
 ## 返回当前有效的内部失血速率（ml/s）。P2 启用。
 func get_internal_bleed_ml_per_sec() -> float:
-	if is_packed:
+	if is_packed and packing_stops_internal_bleed:
 		return 0.0
 	return BLEED_RATE_ML_PER_SEC.get(internal_bleed_rate, 0.0)

@@ -5,6 +5,7 @@ extends CanvasLayer
 const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
 const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
 const BLUR_SHADER_PATH := "res://assets/shaders/death_blur.gdshader"
+const TITLE_SCENE := "res://assets/title/title_screen.tscn"
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)
 const COL_PANEL := Color(0.063, 0.067, 0.075, 0.90)
 const COL_BORDER := Color(1.0, 1.0, 1.0, 0.11)
@@ -253,7 +254,17 @@ func _on_settings_closed() -> void:
 
 
 func _quit_game() -> void:
-	get_tree().quit()
+	if _transitioning:
+		return
+	_open = false
+	_play_close_animation(_return_to_title)
+
+
+func _return_to_title() -> void:
+	if _player:
+		_player.release_control_lock(BasePlayer.CONTROL_LOCK_PAUSE)
+		_player.release_mouse_mode(BasePlayer.CONTROL_LOCK_PAUSE)
+	get_tree().change_scene_to_file(TITLE_SCENE)
 
 
 func _box(background: Color, border: Color, radius: int, border_width: int = 1) -> StyleBoxFlat:

@@ -2,7 +2,7 @@ class_name HandIKConfig
 extends Resource
 
 # ============================================================
-# 左手 IK 配置资源（TwoBoneIK3D 版本）
+# 双手 IK 配置资源（TwoBoneIK3D 版本）
 #
 # 用法：
 #   1. 在编辑器中右键 → New Resource → 选择 HandIKConfig
@@ -45,8 +45,12 @@ extends Resource
 ## 冲刺（Sprint）时的 IK 权重
 @export_range(0.0, 1.0) var sprint_ik_weight: float = 0.1
 
-## ADS 时的 IK 权重
-@export_range(0.0, 1.0) var ads_ik_weight: float = 0.8
+## ADS 时的 IK 权重。建议保持 1，确保双手完整跟随独立武器姿态。
+@export_range(0.0, 1.0) var ads_ik_weight: float = 1.0
+
+## 趴下及趴下过渡时的 IK 权重。
+## 趴下动画的左臂基姿态离握把较远，需要完整求解到腕骨目标。
+@export_range(0.0, 1.0) var prone_ik_weight: float = 1.0
 
 ## 状态切换时权重平滑过渡时间（秒）
 @export_range(0.0, 0.5) var weight_blend_time: float = 0.12
@@ -62,7 +66,6 @@ extends Resource
 ## true  = 自动标定（应急）。装备武器/更换配件时记录「动画手腕朝向 相对于 握把朝向」
 ##         的差值并每帧还原，手腕保持动画姿态。可临时救场，但会【完全忽略】
 ##         美术对 Marker 朝向的调整——调 Marker 没反应时先检查这里是不是开着。
-@export var auto_calibrate_wrist: bool = false
 
 ## 在上述基础上再叠加的手腕修正角（欧拉角，度）。若手腕仍有偏差，改这里。
 @export var wrist_rotation_offset: Vector3 = Vector3.ZERO
@@ -71,3 +74,9 @@ extends Resource
 ## 让手掌略微离开握把中心，避免手指穿进护木、看起来"焊"在枪上。
 ## 数值很小即可（1~2 cm）；X = 握把左右，Y = 上下，Z = 沿枪身前后。
 @export var grip_position_offset: Vector3 = Vector3(0.0, -0.015, 0.0)
+
+## 当武器资源缺少 LeftHandWristTarget 时，回退方案使用的腕骨到掌根偏移比例。
+@export_range(0.0, 1.0) var fallback_palm_contact_ratio: float = 1.0
+
+## 当武器资源缺少 LeftHandWristTarget 时，叠加在 LeftHandGrip 局部轴上的预设腕部偏移。
+@export var fallback_wrist_position_offset: Vector3 = Vector3.ZERO

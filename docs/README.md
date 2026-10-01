@@ -8,6 +8,9 @@
 
 - [Player 系统](#player-系统)
 - [医疗与伤害系统](#医疗与伤害系统)
+- [弹道与战斗系统](#弹道与战斗系统)
+- [AI 系统](#ai-系统)
+- [遭遇战系统](#遭遇战系统)
 - [UI 系统](#ui-系统)
 - [Weapon 核心](#weapon-核心)
 - [Weapon 配件](#weapon-配件)
@@ -25,9 +28,12 @@ BasePlayer (CharacterBody3D)
 │
 ├── PlayerModelManager         模型加载与骨骼缓存
 ├── PlayerMovementController   移动物理（起步/步态/转向/制动）
+├── PlayerCollisionController  hitbox 驱动的主环境碰撞体
 ├── PlayerCameraController     摄像机效果（5层叠加）
 ├── PlayerAnimationController  动画状态机
 ├── PlayerRagdollSystem        死亡布娃娃
+├── ForceReceiver              通用力反馈（受击姿态偏移 + 冲量缓存）
+│   └── ForceBodyModifier      SkeletonModifier3D：还原基准姿态后叠加力偏移
 ├── FootIKController           脚部 IK（预留）
 ├── HealthSystem               伤害、生理状态与医疗死亡
 │   ├── VitalsModel            血量、呼吸与身体部位状态
@@ -120,9 +126,12 @@ BaseWeapon
 | [ModelLookupConfig](player/ModelLookupConfig.md) | `Classes/Player/model_lookup_config.gd` | 模型节点自动查找规则 |
 | [PlayerModelManager](player/PlayerModelManager.md) | `Classes/Player/player_model_manager.gd` | 模型加载与骨骼缓存 |
 | [PlayerMovementController](player/PlayerMovementController.md) | `Classes/Player/player_movement_controller.gd` | 移动物理与信号发射 |
+| [PlayerCollisionController](player/PlayerCollisionController.md) | `classes/player/player_collision_controller.gd` | 主碰撞体唯一所有者、3D hitbox 包络动态拟合 |
 | [PlayerCameraController](player/PlayerCameraController.md) | `Classes/Player/player_camera_controller.gd` | 摄像机挂载与5层程序化效果 |
+| [ScreenPostProcess](player/ScreenPostProcess.md) | `classes/player/screen_post_process.gd` | 可独立挂载到 Camera3D 的多效果屏幕后处理模块 |
 | [PlayerAnimationController](player/PlayerAnimationController.md) | `Classes/Player/player_animation_controller.gd` | 信号驱动的动画状态机 |
 | [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `Classes/Player/player_ragdoll_system.gd` | 死亡布娃娃开关 |
+| [ForceSystem](player/ForceSystem.md) | `classes/player/force/` | 通用力反馈：骨骼链衰减传播、姿态偏移与冲量缓存 |
 | [FootIKController](player/FootIKController.md) | `Classes/Player/foot_ik_controller.gd` | 脚部 IK（存根，未实现） |
 | [WeaponObstructionDetector](player/WeaponObstructionDetector.md) | `Classes/Weapon/Weapon/weapon_obstruction_detector.gd` | 顶墙收枪射线检测 |
 
@@ -133,6 +142,60 @@ BaseWeapon
 | 文档 | 核心文件 | 说明 |
 |------|----------|------|
 | [Medical & Anatomy System](player/MedicalSystem.md) | `classes/player/medical/health_system.gd` | P1/P2 伤害管线、27 结构解剖模型、伤道、器官损伤、骨折、内外出血与调试工具 |
+
+---
+
+## 弹道与战斗系统
+
+| 文档 | 说明 |
+|------|------|
+| [弹道系统概览](combat/BallisticsSystemOverview.md) | 飞行时间弹丸、分段射线、穿透跳弹、动能驱动伤害 |
+
+| 类 | 文件 | 说明 |
+|---|---|---|
+| BallisticProjectileSystem | `classes/combat/ballistic_projectile_system.gd` | 在飞弹丸的统一模拟（阻力/重力/风偏/偏流） |
+| Ballistics | `classes/combat/ballistics.gd` | 纯静态弹道数学工具 |
+| Projectile | `classes/combat/projectile.gd` | 瞬时 hitscan 回退路径 |
+| BallisticEnvironmentConfig | `classes/combat/ballistic_environment_config.gd` | 大气参数与仿真上限 |
+| BallisticSurfaceConfig | `classes/combat/ballistic_surface_config.gd` | 材质穿透与跳弹参数 |
+| HitResolver | `classes/combat/hit_resolver.gd` | 命中结果 → DamageInfo（存活/尸体双路径） |
+| BodyHitbox | `classes/combat/body_hitbox.gd` | 存活时的身体部位命中区 |
+
+---
+
+## AI 系统
+
+| 文档 | 说明 |
+|------|------|
+| [AI 系统概览](ai/AISystemOverview.md) | 分层职责、状态机、感知模型、黑板通信 |
+| [AI 配置说明](ai_player_configuration.md) | AIPlayer 配置装载 |
+
+| 类 | 文件 | 说明 |
+|---|---|---|
+| AIPlayerManager | `classes/bot/ai_player_manager.gd` | 地图级工厂与注册表、分帧模型加载 |
+| AIPlayerBrain | `classes/bot/ai_player_brain.gd` | 个体状态机与感知-决策-执行循环 |
+| AISquadCommander | `classes/bot/ai_squad_commander.gd` | 队长选举与掩护/突击位分配 |
+| AIBlackboard | `classes/bot/ai_blackboard.gd` | 小队共享情报（唯一通信面） |
+| AIProfile | `classes/bot/ai_profile.gd` | 行为参数资源（感知/移动/火控/战术） |
+| AIConfig | `classes/bot/ai_config.gd` | 玩法配置包 |
+| AINavigationService | `classes/bot/ai_navigation_service.gd` | 导航外观层 |
+
+---
+
+## 遭遇战系统
+
+| 文档 | 说明 |
+|------|------|
+| [遭遇战系统概览](encounter/EncounterSystemOverview.md) | 对局状态机、目标点控制、撤离决策、与 AI 的接线 |
+
+| 类 | 文件 | 说明 |
+|---|---|---|
+| EncounterRules | `classes/encounter/encounter_rules.gd` | 纯规则状态机（无场景依赖） |
+| EncounterController | `classes/encounter/encounter_controller.gd` | 场景层接线（Zone / HUD / AI） |
+| EncounterConfig | `classes/encounter/encounter_config.gd` | 对局参数资源 |
+| EncounterZone | `classes/encounter/encounter_zone.gd` | 目标点/撤离点区域 |
+| EncounterAIDirector | `classes/encounter/encounter_ai_director.gd` | 对局状态 → AI 黑板 |
+| MedicalTreatmentComponent | `classes/encounter/medical_treatment_component.gd` | 队友互救动作 |
 
 ---
 
@@ -194,3 +257,9 @@ BaseWeapon
 | 类 | 文件 | 说明 |
 |---|---|---|
 | [GameLogger](utils/GameLogger.md) | `Classes/GameLogger/game_logger.gd` | 分级日志（DEBUG/INFO/WARN/ERROR） |
+
+## 调试
+
+| 文档 | 说明 |
+|---|---|
+| [DebugAPI](debug/DebugAPI.md) | 无头测试、AI 与控制台共用的进程内调试接口 |

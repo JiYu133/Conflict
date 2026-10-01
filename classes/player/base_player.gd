@@ -56,6 +56,7 @@ var _is_alive: bool = true
 @export var faction: Faction = Faction.None # 玩家阵营
 ## 布娃娃激活期间为 true，movement controller 据此跳过物理更新
 var is_ragdolled: bool = false
+var _prone_collision_sampling_pending_frames: int = 0
 
 const CONTROL_LOCK_PAUSE := "pause_menu"
 const CONTROL_LOCK_FREE_CAMERA := "free_camera"
@@ -77,9 +78,12 @@ var _controllable_fallback: bool = true
 
 var stance_controller: StanceController
 var model_manager: PlayerModelManager
+var look_controller: PlayerLookController
 var camera_controller: PlayerCameraController
+var optic_render_controller: OpticRenderController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
+var collision_controller: PlayerCollisionController
 var foot_ik_controller: FootIKController
 var hand_ik_controller: HandIKController
 var spine_aim_controller: SpineAimController
@@ -91,6 +95,8 @@ var health_system: HealthSystem
 var death_blood_effect: DeathBloodEffect
 var combat_effects: CombatEffects
 var stamina_system: StaminaSystem
+var audio_controller: PlayerAudioController
+var force_receiver: ForceReceiver
 var screen_effects
 var settings_service
 var settings_menu
@@ -101,11 +107,19 @@ var console_system: ConsoleSystem
 var radial_menu_service
 var medical_treatment_component: MedicalTreatmentComponent
 
+## AI models and loadouts can be queued by AIPlayerManager so several bots do
+## not all instantiate their expensive scene trees on the same frame.
+var defer_ai_model_load: bool = false
+var _ai_model_load_started: bool = false
+var _ai_runtime_ready: bool = false
+var _ai_test_fire_override: int = -1 # -1=AI control, 0=forced release, 1=forced press
+
 # 信号
 
 
 signal died
 signal revived
+signal ai_runtime_ready
 @warning_ignore("unused_signal")
 signal faction_changed(new_faction: Faction)
 
@@ -125,14 +139,28 @@ func _ready() -> void:
 	# 加载配置中的模型
 	if player_config and player_config.model_scene:
 		if is_ai_player:
-			_load_model_deferred.call_deferred()
+			if not defer_ai_model_load:
+				begin_deferred_model_load.call_deferred()
 		else:
 			model_manager.load_model(player_config)
+	elif is_ai_player:
+		_mark_ai_runtime_ready()
 
 
-func _load_model_deferred() -> void:
+func begin_deferred_model_load() -> void:
+	if _ai_model_load_started or _ai_runtime_ready:
+		return
+	_ai_model_load_started = true
 	if is_inside_tree() and player_config and player_config.model_scene:
 		model_manager.load_model(player_config)
+		if not model_manager.model_node:
+			_mark_ai_runtime_ready()
+	else:
+		_mark_ai_runtime_ready()
+
+
+func is_ai_runtime_ready() -> bool:
+	return _ai_runtime_ready
 	
 
 # 子系统初始化
@@ -145,10 +173,14 @@ func _initialize_subsystems() -> void:
 	control_state.set_base_enabled(_controllable_fallback)
 	settings_service = _create_subsystem(SETTINGS_SERVICE_SCRIPT.new(), "SettingsService")
 	model_manager = _create_subsystem(PlayerModelManager.new(), "ModelManager")
+	look_controller = _create_subsystem(PlayerLookController.new(), "LookController") as PlayerLookController
 	camera_controller = _create_subsystem(PlayerCameraController.new(),"CameraController")
+	if not is_ai_player:
+		optic_render_controller = _create_subsystem(OpticRenderController.new(), "OpticRenderController") as OpticRenderController
 	ragdoll_system = _create_subsystem(PlayerRagdollSystem.new(), "RagdollSystem")
 	stance_controller = _create_subsystem(StanceController.new(), "StanceController")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
+	collision_controller = _create_subsystem(PlayerCollisionController.new(), "CollisionController")
 	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
 	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
 	spine_aim_controller = _create_subsystem(SpineAimController.new(), "SpineAimController")
@@ -158,9 +190,16 @@ func _initialize_subsystems() -> void:
 	turn_controller = _create_subsystem(PlayerTurnController.new(), "TurnController")
 	health_system = _create_subsystem(HealthSystem.new(), "HealthSystem")
 	stamina_system = _create_subsystem(StaminaSystem.new(), "StaminaSystem")
+	audio_controller = _create_subsystem(PlayerAudioController.new(), "PlayerAudioController") as PlayerAudioController
+	force_receiver = _create_subsystem(ForceReceiver.new(), "ForceReceiver") as ForceReceiver
 
 	# 初始化子系统
 	settings_service.initialize()
+	look_controller.initialize(
+		self,
+		player_config.camera_config if player_config else null,
+		settings_service
+	)
 
 	stance_controller.initialize(self, player_config)
 
@@ -170,7 +209,8 @@ func _initialize_subsystems() -> void:
 		player_config.model_config if player_config else null,
 		player_config.camera_config if player_config else null,
 		settings_service,
-		not is_ai_player
+		not is_ai_player,
+		look_controller
 		)
 
 	movement_controller.initialize(
@@ -188,21 +228,42 @@ func _initialize_subsystems() -> void:
 		model_manager,
 		player_config.model_config if player_config else null
 		)
+	hand_ik_controller.set_weapon_pose_controller(camera_controller)
 
 
 	weapon_manager.set_camera_controller(camera_controller)
 	weapon_manager.set_settings_service(settings_service)
+	if optic_render_controller:
+		optic_render_controller.initialize(self, weapon_manager, camera_controller)
 	weapon_drop_system.initialize(self, weapon_manager)
 
 	health_system.initialize(
 		self,
 		player_config.health_config if player_config else null
 		)
+	# 力系统只做姿态叠加与冲量缓存，不参与伤害判定。
+	force_receiver.initialize(
+		self,
+		player_config.force_config if player_config else null
+		)
+	var movement_config := (
+		player_config.movement_config
+		if player_config and player_config.movement_config
+		else MovementConfig.new()
+	)
+	var envelope_provider := (
+		Callable(health_system, "get_collision_envelope")
+		if movement_config.hitbox_driven_collision
+		else Callable()
+	)
+	collision_controller.initialize(self, movement_config, envelope_provider)
+	_sync_pose_geometry()
 	death_blood_effect = _create_subsystem(DEATH_BLOOD_EFFECT_SCRIPT.new(), "DeathBloodEffect") as DeathBloodEffect
 	death_blood_effect.initialize(
 		self,
 		player_config.blood_effect_config if player_config else null,
-		settings_service
+		settings_service,
+		Callable(health_system, "get_major_external_bleed_world_position")
 		)
 
 	# 命中反馈只消费医疗系统结果：伤口、喷溅、滴落与血泊不反向影响伤害判定。
@@ -210,6 +271,7 @@ func _initialize_subsystems() -> void:
 	combat_effects.initialize(self)
 
 	stamina_system.initialize(self, player_config.stamina_config if player_config else null)
+	audio_controller.initialize(self, settings_service)
 
 	if not is_ai_player:
 		screen_effects = _create_subsystem(PlayerScreenEffects.new(), "ScreenEffects")
@@ -273,9 +335,13 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 func _connect_signals() -> void:
 	model_manager.model_loaded.connect(_on_model_loaded)
 	weapon_manager.weapon_changed.connect(_on_weapon_changed)
+	weapon_manager.aiming_changed.connect(hand_ik_controller.set_ads_state)
 	weapon_manager.weapon_stats_changed.connect(_sync_weapon_weight_to_stamina)
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
+	stance_controller.prone_geometry_changed.connect(_on_prone_geometry_changed)
+	stance_controller.prone_transition_changed.connect(_on_prone_transition_changed)
+	collision_controller.transition_blocked.connect(_on_collision_transition_blocked)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
 	# 运动状态 → 左手 IK 权重过渡
@@ -299,6 +365,9 @@ func _connect_signals() -> void:
 		health_system.damage_taken.connect(screen_effects._on_damage_taken)
 		health_system.pain_changed.connect(screen_effects._on_pain_changed)
 		stamina_system.stamina_changed.connect(screen_effects._on_stamina_changed)
+	# 受击反馈：本期唯一接入点。力系统消费 damage_taken，
+	# 姿态偏移由 ForceBodyModifier 叠加，冲量缓存供布娃娃消费。
+	health_system.damage_taken.connect(force_receiver.apply_impact)
 	GlobalLogger.debug("Player", "Signals have been connected. ")
 
 
@@ -322,6 +391,7 @@ func _on_model_loaded(_model: Node3D) -> void:
 	add_child(_model)
 	# 模型面朝+Z时需旋转180°对齐角色朝向(-Z = forward)
 	_model.rotation.y = PI
+	_sync_pose_geometry()
 
 	# 模型就位后再启用动画组件并初始化控制器。Bot 没有本地相机来间接驱动
 	# 模型动画，因此必须在读取 playback 和进入 Idle 前显式启用它们。
@@ -337,6 +407,11 @@ func _on_model_loaded(_model: Node3D) -> void:
 		camera_controller,
 		player_config.spine_aim_config if player_config else null
 	)
+	# 力系统在骨骼就绪后接管姿态叠加，并成为布娃娃的力提供者。
+	# 顺序：SpineAim → Force → HandIK/FootIK，保证 IK 拥有最终发言权。
+	force_receiver.set_skeleton(model_manager.skeleton)
+	_setup_force_modifier(model_manager.skeleton)
+	ragdoll_system.set_force_provider(force_receiver)
 	hand_ik_controller.setup(model_manager.skeleton, player_config.hand_ik_config if player_config else null)
 	if not is_ai_player:
 		camera_controller._find_camera_nodes()
@@ -353,27 +428,63 @@ func _on_model_loaded(_model: Node3D) -> void:
 
 	if weapon_mount:
 		GlobalLogger.info("Player", "Weapon mount has been set: " + weapon_mount.name)
-		# 武器直接挂在右手骨骼的 BoneAttachment3D 下（WeaponMount），随右手动画移动。
-		# 不要改挂到模型下的静态节点：那样只能在模型加载瞬间采样一次右手位置
-		# （此时骨骼仍是 rest/T-pose），武器会被焊死在体侧且不随视角俯仰。
-		# 左手再通过 IK 抓握武器上的 LeftHandGrip（见 HandIKController）。
-		ragdoll_system.set_weapon_mount(weapon_mount)
-		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(weapon_mount)
+		# WeaponMount remains an animation pose source only. The actual weapon is
+		# parented to an independent rig so both hands can solve toward its grips
+		# without the old right-hand -> weapon -> right-hand feedback loop.
+		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(weapon_mount, _model)
 		if sway_pivot:
 			weapon_manager.set_mount(sway_pivot)
+			ragdoll_system.set_weapon_mount(camera_controller.get_weapon_pose_root())
 			GlobalLogger.info("Player", "Weapon sway pivot created, weapons attach under: " + sway_pivot.name)
 		else:
 			weapon_manager.set_mount(weapon_mount)
+			ragdoll_system.set_weapon_mount(weapon_mount)
 	else:
 		GlobalLogger.error("Player", "Cannot find any weapon mount,the weapon will be not visible.")
 		GlobalLogger.error("Player", "If there's already a weapon mount,try to check if its name is \"WeaponMount\" ")
 
 	if player_config and player_config.starting_weapon:
 		GlobalLogger.debug("Player", "Initializing player's starting weapon...")
-		weapon_manager.load_and_equip(player_config.starting_weapon)
+		if is_ai_player:
+			_load_ai_starting_weapon.call_deferred(player_config.starting_weapon)
+		else:
+			weapon_manager.load_and_equip(player_config.starting_weapon)
+	elif is_ai_player:
+		_mark_ai_runtime_ready()
 
 	if OS.is_debug_build() and free_camera_controller:
 		free_camera_controller.initialize(self, camera_controller)
+
+
+## 创建力姿态修饰器，并插到 SpineAimModifier 之后、第一个 TwoBoneIK3D 之前。
+## SkeletonModifier3D 的兄弟顺序即执行顺序，因此 IK 会在力偏移之上求解，
+## 把被推开的左手拉回武器握把；摄像机不参与本期力系统。
+func _setup_force_modifier(skeleton: Skeleton3D) -> void:
+	if not is_instance_valid(skeleton) or not force_receiver:
+		return
+	var modifier := ForceBodyModifier.new()
+	modifier.name = "ForceBodyModifier"
+	skeleton.add_child(modifier)
+	modifier.setup(force_receiver)
+	for child in skeleton.get_children():
+		if child is TwoBoneIK3D:
+			skeleton.move_child(modifier, child.get_index())
+			break
+
+
+func _load_ai_starting_weapon(config: WeaponConfig) -> void:
+	# Separate the weapon scene from the model scene, then let WeaponManager
+	# spread default attachments over subsequent frames.
+	await get_tree().process_frame
+	await weapon_manager.load_and_equip_staggered(config)
+	_mark_ai_runtime_ready()
+
+
+func _mark_ai_runtime_ready() -> void:
+	if _ai_runtime_ready:
+		return
+	_ai_runtime_ready = true
+	ai_runtime_ready.emit()
 
 
 ## Bot 没有第一人称相机，模型的所有网格都必须能被世界相机看到。
@@ -404,10 +515,107 @@ func _is_medical_debug_mesh(mesh: MeshInstance3D, model: Node3D) -> bool:
 
 # 公共API
 
+## Distribute one weapon recoil wrench over the active stock and hand contacts.
+func apply_weapon_recoil(weapon: BaseWeapon, recoil_data: Dictionary) -> void:
+	if not is_instance_valid(weapon) or not force_receiver or is_ragdolled:
+		return
+	var model: RecoilPhysicsModel = weapon.recoil_component.physics_model if weapon.recoil_component else null
+	if not model:
+		return
+	var local_linear: Vector3 = recoil_data.get("linear_impulse_local", Vector3.ZERO)
+	var local_angular: Vector3 = recoil_data.get("angular_impulse_local", Vector3.ZERO)
+	if not local_linear.is_finite() or not local_angular.is_finite():
+		return
+	var config := force_receiver.get_config()
+	var skeleton := force_receiver.get_skeleton()
+	if not is_instance_valid(skeleton):
+		return
+	var contacts: Array[Dictionary] = []
+	var shoulder_bone := "mixamorig_RightShoulder"
+	if model.shoulder_contact.is_finite() and config.recoil_shoulder_stiffness > 0.0 \
+			and skeleton.find_bone(shoulder_bone) >= 0:
+		contacts.append({
+			"name": "shoulder",
+			"bone": shoulder_bone,
+			"point_local": model.shoulder_contact,
+			"stiffness": config.recoil_shoulder_stiffness,
+		})
+	_add_recoil_hand_contact(
+		weapon, contacts, "RightHandGrip", "mixamorig_RightHand",
+		config.recoil_primary_hand_stiffness
+	)
+	_add_recoil_hand_contact(
+		weapon, contacts, "LeftHandGrip", "mixamorig_LeftHand",
+		config.recoil_support_hand_stiffness
+	)
+	if contacts.is_empty():
+		return
+
+	var weapon_basis := weapon.global_basis.orthonormalized()
+	var impulse_world := weapon_basis * local_linear
+	var target_angular_world := weapon_basis * local_angular
+	var shoulder_world := weapon.global_transform * model.shoulder_contact
+	var recoil_duration := model.get_recoil_response_duration_s(config.decay_floor)
+	var total_stiffness := 0.0
+	for contact in contacts:
+		total_stiffness += float(contact["stiffness"])
+	if total_stiffness <= 0.0:
+		return
+
+	var contact_moments := Vector3.ZERO
+	for contact in contacts:
+		var share := float(contact["stiffness"]) / total_stiffness
+		var contact_impulse := impulse_world * share
+		var point_world: Vector3 = weapon.global_transform * (contact["point_local"] as Vector3)
+		contact_moments += (point_world - shoulder_world).cross(contact_impulse)
+	var residual_angular := target_angular_world - contact_moments
+	for contact in contacts:
+		var share := float(contact["stiffness"]) / total_stiffness
+		var contact_impulse := impulse_world * share
+		var point_world: Vector3 = weapon.global_transform * (contact["point_local"] as Vector3)
+		force_receiver.apply_recoil_impulse(
+			contact_impulse,
+			(point_world - shoulder_world).cross(contact_impulse) + residual_angular * share,
+			String(contact["bone"]),
+			recoil_duration
+		)
+
+
+func _add_recoil_hand_contact(
+	weapon: BaseWeapon,
+	contacts: Array[Dictionary],
+	marker_name: String,
+	bone_name: String,
+	stiffness: float
+) -> void:
+	var skeleton := force_receiver.get_skeleton()
+	if stiffness <= 0.0 or not is_instance_valid(skeleton):
+		return
+	if skeleton.find_bone(bone_name) < 0:
+		return
+	var marker := weapon.find_grip_node(marker_name)
+	if not is_instance_valid(marker):
+		return
+	var point_local := weapon.to_local(marker.global_position) if weapon.is_inside_tree() else marker.position
+	contacts.append({
+		"name": marker_name,
+		"bone": bone_name,
+		"point_local": point_local,
+		"stiffness": stiffness,
+	})
+
 
 func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
+	# A weapon's contact points and inertia may change, so discard the previous
+	# weapon's persistent recoil state before binding the new component.
+	if force_receiver:
+		force_receiver.clear_forces()
 	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
 	hand_ik_controller.set_weapon(new_weapon, weight)
+	if camera_controller:
+		camera_controller.set_recoil_component(
+			new_weapon.recoil_component if new_weapon else null
+		)
 	_sync_weapon_weight_to_stamina()
 
 
@@ -423,11 +631,44 @@ func _sync_weapon_weight_to_stamina() -> void:
 
 
 func _process(delta: float) -> void:
+	if weapon_manager and weapon_manager.is_aiming and (not is_alive or not controllable):
+		weapon_manager.cancel_aiming()
+	var stance_geometry_settled := not stance_controller \
+			or not stance_controller.is_stance_transitioning()
+	if _prone_collision_sampling_pending_frames > 0 \
+			and stance_controller \
+			and not stance_controller.is_prone_transitioning() \
+			and stance_geometry_settled:
+		_prone_collision_sampling_pending_frames -= 1
+		if _prone_collision_sampling_pending_frames == 0 and collision_controller:
+			collision_controller.set_envelope_sampling_enabled(true)
 	var procedural_animation_active := is_alive and not is_ragdolled
-	spine_aim_controller.process_aim(delta, procedural_animation_active)
+	var prone := stance_controller and (stance_controller.is_prone() or stance_controller.is_prone_transitioning())
+	if prone:
+		_sync_prone_mesh_floor_offset()
+	# Prone clips own the spine and lower body, but the left hand must continue
+	# following the weapon grip or the full-body clip lets it release the rifle.
+	spine_aim_controller.process_aim(delta, procedural_animation_active and not prone)
+	# The independent weapon rig still samples the authored hand pose when arm IK
+	# is disabled, including the pre-physics death-animation phase.
+	camera_controller.refresh_weapon_pose()
+	hand_ik_controller.set_prone_state(prone)
 	hand_ik_controller.process_ik(delta, procedural_animation_active)
-	if procedural_animation_active:
-		foot_ik_controller.process_ik(delta)
+	foot_ik_controller.set_active(procedural_animation_active and not prone, delta if procedural_animation_active else 0.0)
+
+
+func _sync_prone_mesh_floor_offset() -> void:
+	if not model_manager or not player_config or not player_config.movement_config:
+		return
+	var config := player_config.movement_config
+	var stance_value := stance_controller.get_stance_value() if stance_controller else 0.0
+	var prone_blend := stance_controller.get_prone_geometry_blend() if stance_controller else 0.0
+	var non_prone_model_y := lerpf(config.model_y_offset, config.crouch_y_offset, stance_value)
+	var target_offset := lerpf(non_prone_model_y, config.prone_model_y_offset, prone_blend)
+	# Keep one mesh-root reference for every prone locomotion clip. Per-frame
+	# hitbox bounds vary with the animation and would move the head-mounted
+	# camera when idle/forward/lateral clips cross-fade.
+	model_manager.set_model_vertical_offset(target_offset)
 
 
 func _input(event: InputEvent) -> void:
@@ -438,6 +679,13 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if is_alive and controllable:
+		# 瞄准：按住与切换模式共享同一个可重绑定动作。
+		if event.is_action_pressed("aim"):
+			var ads_mode := String(settings_service.get_value("controls/ads_input_mode", "hold"))
+			_request_aim(not weapon_manager.is_aiming if ads_mode == "toggle" else true)
+		elif event.is_action_released("aim") \
+				and String(settings_service.get_value("controls/ads_input_mode", "hold")) == "hold":
+			_request_aim(false)
 		# 换弹
 		if event.is_action_pressed("reload"):
 			weapon_manager.reload()
@@ -594,15 +842,82 @@ func _debug_trigger_pain_feedback(world_direction: Vector3) -> void:
 func _on_started_sprinting() -> void:
 	hand_ik_controller.set_movement_state(true, true)
 	weapon_manager.release_trigger()
-	weapon_manager.set_aiming(false)
+	weapon_manager.cancel_aiming()
+
+
+func _request_aim(enabled: bool) -> void:
+	if enabled and movement_controller and movement_controller.is_sprinting():
+		movement_controller.suppress_sprint_until_release()
+	weapon_manager.set_aiming(enabled)
 
 
 func _on_stance_changed(value: float) -> void:
 	"""协调所有受姿态影响的子系统"""
 	if movement_controller:
-		movement_controller._on_stance_changed(value)
+		movement_controller.apply_stance_value(value)
 	if camera_controller:
-		camera_controller._on_stance_changed(value)
+		camera_controller.apply_stance_value(value)
+	_sync_pose_geometry()
+
+
+func _on_prone_geometry_changed(_blend: float) -> void:
+	_sync_pose_geometry()
+
+
+func _on_prone_transition_changed(_active: bool) -> void:
+	if collision_controller:
+		if _active:
+			_prone_collision_sampling_pending_frames = 0
+			collision_controller.set_envelope_sampling_enabled(false)
+		elif stance_controller and stance_controller.is_prone():
+			# Keep the prone capsule on the same authored fallback path used by
+			# crouch. Re-enabling animation-envelope fitting while prone would let
+			# an idle/roll pose replace the interpolated target and move the body
+			# root, which is visible immediately through the head-mounted camera.
+			_prone_collision_sampling_pending_frames = 0
+			collision_controller.set_envelope_sampling_enabled(false)
+		else:
+			# AnimationPlayer applies the post-transition clip on the next frame.
+			# Keep envelope fitting disabled until that pose is visible, otherwise
+			# the old prone skeleton is sampled as the new standing state begins.
+			_prone_collision_sampling_pending_frames = 2
+	_sync_pose_geometry()
+
+
+## Collision owns world-clearance policy; stance owns pose state. BasePlayer is
+## the only place that translates the value-only rejection signal between them.
+func _on_collision_transition_blocked() -> void:
+	if stance_controller:
+		stance_controller.reject_collision_transition()
+
+
+## BasePlayer is the composition root for pose presentation. Components receive
+## primitive values through public interfaces and never retain one another.
+func _sync_pose_geometry() -> void:
+	if not player_config or not player_config.movement_config:
+		return
+	var config := player_config.movement_config
+	var stance_value := stance_controller.get_stance_value() if stance_controller else 0.0
+	var prone_blend := stance_controller.get_prone_geometry_blend() if stance_controller else 0.0
+	var non_prone_height := lerpf(
+		config.collision_shape_height,
+		config.crouch_capsule_height,
+		stance_value
+	)
+	var fallback_height := lerpf(non_prone_height, config.prone_capsule_height, prone_blend)
+	var non_prone_center := config.collision_shape_y_offset \
+		+ (non_prone_height - config.collision_shape_height) * 0.5
+	var fallback_center_y := lerpf(
+		non_prone_center,
+		config.prone_collision_y_offset,
+		prone_blend
+	)
+	if collision_controller:
+		collision_controller.set_fallback_geometry(fallback_height, fallback_center_y)
+	var non_prone_model_y := lerpf(config.model_y_offset, config.crouch_y_offset, stance_value)
+	var model_y := lerpf(non_prone_model_y, config.prone_model_y_offset, prone_blend)
+	if model_manager:
+		model_manager.set_model_vertical_offset(model_y)
 
 
 func go_unconscious(
@@ -653,7 +968,12 @@ func die(
 	if not is_alive:
 		return
 	var inherited_velocity := velocity
+	weapon_manager.cancel_aiming()
 	is_alive = false
+	# Recoil and hit pose state must not leak into the ragdoll lifecycle. The
+	# pending impact impulse is kept separately for PlayerRagdollSystem.
+	if force_receiver:
+		force_receiver.clear_recoil_state()
 	_activate_ragdoll(
 		death_type, impact_direction,
 		impact_energy_j, impact_mass_kg, impact_damage_type, inherited_velocity
@@ -677,8 +997,13 @@ func _activate_ragdoll(
 	if camera_controller:
 		camera_controller.clear_pain_impulse()
 		camera_controller.set_ragdoll_camera_shake(false)
+		camera_controller.reset_weapon_pose_to_hip()
 	is_ragdolled = true
+	spine_aim_controller.process_aim(0.0, false)
+	hand_ik_controller.process_ik(0.0, false)
+	foot_ik_controller.set_active(false)
 	velocity = Vector3.ZERO
+	clear_ai_player_test_fire()
 	_set_collision_enabled(false)
 	# 轻微上移玩家原点，给物理骨骼初始位置留出与地面的间隙，
 	# 防止 Jolt 检测到初始穿插后将骨骼向下弹出
@@ -719,6 +1044,10 @@ func revive() -> void:
 
 	# 清理仅属于昏迷生命周期的锁；菜单等外部组件的锁由其自身释放。
 	release_control_lock(CONTROL_LOCK_UNCONSCIOUS)
+	# 复活后不保留旧受力与旧冲量，避免下一帧姿态突变或误用死亡前的动量。
+	if force_receiver:
+		force_receiver.clear_forces()
+		force_receiver.clear_pending_impulse()
 	is_alive = true
 
 	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
@@ -734,6 +1063,10 @@ func prepare_for_encounter_spawn(spawn_transform: Transform3D) -> void:
 	if ragdoll_system and is_ragdolled:
 		ragdoll_system.disable()
 	is_ragdolled = false
+	# 重生同样不继承上一局的受力与冲量。
+	if force_receiver:
+		force_receiver.clear_forces()
+		force_receiver.clear_pending_impulse()
 	velocity = Vector3.ZERO
 	clear_ai_motion()
 	clear_ai_input()
@@ -798,9 +1131,69 @@ func clear_ai_input() -> void:
 		movement_controller.clear_ai_input()
 
 
+## AI owns body yaw; elevation is consumed by the same spine aim as local view input.
+func set_ai_aim_direction(world_direction: Vector3) -> bool:
+	if not is_ai_player or not is_alive or is_ragdolled or not camera_controller:
+		return false
+	if not world_direction.is_finite() or world_direction.is_zero_approx():
+		return false
+	var direction := world_direction.normalized()
+	var horizontal := Vector3(direction.x, 0.0, direction.z)
+	if horizontal.length_squared() > 0.000001:
+		look_at(global_position + horizontal, Vector3.UP)
+	var pitch := atan2(direction.y, horizontal.length())
+	camera_controller.set_ai_view_angles(rotation.y, pitch)
+	return true
+
+
 func set_ai_fire_input(pressed: bool) -> void:
 	if not is_ai_player or not weapon_manager:
 		return
+	if _ai_test_fire_override != -1:
+		return
+	_apply_ai_fire_input(pressed)
+
+
+## Debug-only trigger override used by console commands. "auto" returns
+## ownership to the tactical brain; the other actions keep it overridden.
+func set_ai_player_test_fire(action: String) -> bool:
+	if not is_ai_player or not is_alive or not weapon_manager \
+			or not weapon_manager.current_weapon:
+		return false
+	match action.to_lower():
+		"press":
+			if _ai_test_fire_override != 1:
+				_apply_ai_fire_input(false)
+			_ai_test_fire_override = 1
+			_apply_ai_fire_input(true)
+		"release":
+			_ai_test_fire_override = 0
+			_apply_ai_fire_input(false)
+		"tap":
+			_ai_test_fire_override = 0
+			_apply_ai_fire_input(false)
+			_apply_ai_fire_input(true)
+			_finish_ai_test_fire_tap.call_deferred()
+		"auto":
+			_apply_ai_fire_input(false)
+			_ai_test_fire_override = -1
+		_:
+			return false
+	return true
+
+
+func clear_ai_player_test_fire() -> void:
+	if weapon_manager:
+		weapon_manager.release_trigger()
+	_ai_test_fire_override = -1
+
+
+func _finish_ai_test_fire_tap() -> void:
+	if _ai_test_fire_override == 0:
+		_apply_ai_fire_input(false)
+
+
+func _apply_ai_fire_input(pressed: bool) -> void:
 	if pressed:
 		weapon_manager.press_trigger()
 	else:
@@ -811,7 +1204,7 @@ func set_ai_fire_input(pressed: bool) -> void:
 func set_ai_stance(crouching: bool) -> bool:
 	if not is_ai_player or not stance_controller or not is_alive:
 		return false
-	stance_controller.set_stance(1.0 if crouching else 0.0)
+	stance_controller.transition_to_stance(1.0 if crouching else 0.0)
 	return true
 
 

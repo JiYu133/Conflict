@@ -23,7 +23,8 @@ static func fire_hitscan(
 	config: BarrelConfig,
 	source: Node,
 	world: World3D,
-	exclude: Array[RID] = []
+	exclude: Array[RID] = [],
+	spread_degrees: float = 0.0
 ) -> void:
 	# 弹道参数
 	if not config:
@@ -38,9 +39,10 @@ static func fire_hitscan(
 	# 射线查询（最大 2000m）
 	# mask 含 layer 1（环境）+ layer 2（hitbox/布娃娃骨骼）：
 	# 墙体等环境命中在先时子弹被阻挡，不能隔墙伤人
+	var shot_direction := _apply_random_spread(target_dir.normalized(), spread_degrees)
 	var query := PhysicsRayQueryParameters3D.create(
 		origin,
-		origin + target_dir.normalized() * 2000.0,
+		origin + shot_direction * 2000.0,
 		PhysicsLayers.BALLISTIC_TARGETS,
 		exclude
 	)
@@ -67,8 +69,8 @@ static func fire_hitscan(
 		ENVIRONMENT_IMPACT_EFFECT.spawn(
 			source.get_tree().current_scene if is_instance_valid(source) else null,
 			result.get("position", Vector3.ZERO),
-			result.get("normal", -target_dir.normalized()),
-			target_dir.normalized(),
+			result.get("normal", -shot_direction),
+			shot_direction,
 			ENVIRONMENT_IMPACT_EFFECT.ImpactKind.STOP,
 			energy,
 			surface.material_name
@@ -80,7 +82,7 @@ static func fire_hitscan(
 
 	# 构建 DamageInfo 并提交
 	var info := HitResolver.resolve(
-		result, energy, MedicalEnums.DamageType.BULLET, source, target_dir.normalized()
+		result, energy, MedicalEnums.DamageType.BULLET, source, shot_direction
 	)
 	info.impact_velocity = velocity
 	info.impact_mass_kg = mass_kg
@@ -96,3 +98,16 @@ static func find_player(node: Object) -> BasePlayer:
 			return current as BasePlayer
 		current = current.get_parent()
 	return null
+
+
+static func _apply_random_spread(direction: Vector3, spread_degrees: float) -> Vector3:
+	if spread_degrees <= 0.0:
+		return direction
+	var right := direction.cross(Vector3.UP)
+	if right.length_squared() < 0.000001:
+		right = direction.cross(Vector3.RIGHT)
+	right = right.normalized()
+	var up := right.cross(direction).normalized()
+	var angle := deg_to_rad(spread_degrees) * sqrt(randf())
+	var phase := randf() * TAU
+	return (direction + right * cos(phase) * angle + up * sin(phase) * angle).normalized()
