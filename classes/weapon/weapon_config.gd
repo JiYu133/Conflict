@@ -64,11 +64,12 @@ extends Resource
 ## Legacy random yaw kick in degrees retained for compatibility.
 @export_storage var kick_yaw_random_deg: float = 0.35
 
-# 散布旧字段（兼容）──────────────────────────────────────
-## Deprecated serialized values. Live projectiles follow the authored muzzle
-## axis and never select a different accuracy value while ADS.
-@export_storage var hipfire_spread: float = 3.0
-@export_storage var ads_spread: float = 0.1
+# 散布（机匣基准值）──────────────────────────────────────
+@export_group("散布")
+## Base hip-fire spread in degrees.
+@export var hipfire_spread: float = 3.0
+## Base ADS spread in degrees.
+@export var ads_spread: float = 0.1
 
 # 重量（机匣自身重量）────────────────────────────────────
 @export_group("重量")
@@ -112,8 +113,6 @@ extends Resource
 @export var ads_center_offset: Vector3 = Vector3(0.0, -0.1, -0.05)
 ## Optional ADS FOV override; negative keeps the default.
 @export var ads_fov_override: float = -1.0
-## Procedural hip/ADS motion, view inertia, breathing and obstruction pose.
-@export var presentation_config: WeaponPresentationConfig
 
 # 掉落物理 ─────────────────────────────────────────────────
 @export_group("掉落物理")

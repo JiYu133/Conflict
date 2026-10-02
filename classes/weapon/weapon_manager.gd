@@ -141,7 +141,7 @@ func release_trigger() -> void:
 
 func reload() -> void:
 	if current_weapon:
-		set_aiming(false)
+		cancel_aiming()
 		current_weapon.reload()
 
 func cycle_fire_mode() -> bool:
@@ -163,7 +163,7 @@ func set_fire_mode(mode: String) -> bool:
 
 func attempt_malfunction_clearance() -> void:
 	if current_weapon:
-		set_aiming(false)
+		cancel_aiming()
 		current_weapon.attempt_malfunction_clearance()
 
 func set_aiming(aiming: bool) -> void:
@@ -280,9 +280,7 @@ func _apply_ads_state() -> void:
 	camera_controller.set_ads_state(
 		is_aiming,
 		current_weapon.get_effective_ads_time(),
-		current_weapon.get_effective_fov_override(),
-		current_weapon.config.ads_center_offset,
-		current_weapon.get_ads_anchor()
+		current_weapon.get_effective_fov_override()
 	)
 
 

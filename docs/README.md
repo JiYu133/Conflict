@@ -77,8 +77,8 @@ BasePlayer._ready()
               ├── ragdoll_system.initialize()
               ├── animation_controller.initialize()
               ├── camera_controller._find_camera_nodes()
-              ├── setup_weapon_sway_pivot()
-              ├── obstruction_detector.initialize()
+              ├── setup_weapon_mount()
+              ├── initialize spine aim and hand IK
               └── weapon_manager.load_and_equip()
 ```
 
@@ -133,7 +133,7 @@ BaseWeapon
 | [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `Classes/Player/player_ragdoll_system.gd` | 死亡布娃娃开关 |
 | [ForceSystem](player/ForceSystem.md) | `classes/player/force/` | 通用力反馈：骨骼链衰减传播、姿态偏移与冲量缓存 |
 | [FootIKController](player/FootIKController.md) | `Classes/Player/foot_ik_controller.gd` | 脚部 IK（存根，未实现） |
-| [WeaponObstructionDetector](player/WeaponObstructionDetector.md) | `Classes/Weapon/Weapon/weapon_obstruction_detector.gd` | 顶墙收枪射线检测 |
+| [WeaponObstructionDetector](player/WeaponObstructionDetector.md) | `Classes/Weapon/Weapon/weapon_obstruction_detector.gd` | 可选的顶墙收枪射线检测 |
 
 ---
 

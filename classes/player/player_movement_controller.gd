@@ -46,7 +46,6 @@ var _had_input: bool = false
 
 var _shift_held_time: float = 0.0
 var _shift_was_held: bool = false
-var _sprint_suppressed_until_release: bool = false
 
 var _camera_controller: PlayerCameraController = null
 var _turn_constraint_active: bool = false
@@ -80,13 +79,6 @@ func is_running() -> bool:
 
 func is_sprinting() -> bool:
 	return _is_sprinting
-
-
-func suppress_sprint_until_release() -> void:
-	_sprint_suppressed_until_release = true
-	_shift_held_time = 0.0
-	if _is_sprinting:
-		_exit_sprint()
 
 func is_prone_rolling() -> bool:
 	return _prone_rolling
@@ -296,15 +288,8 @@ func _physics_process(delta: float) -> void:
 	# ──────────────────────────────────────────────────────
 	# 2. Shift 按压检测：区分单击（切换 Run）和长按（Sprint）
 	# ──────────────────────────────────────────────────────
-	if not ai_driving and _sprint_suppressed_until_release:
-		if shift_held:
-			_shift_was_held = true
-			_shift_held_time = 0.0
-		else:
-			_sprint_suppressed_until_release = false
-			_shift_was_held = false
 	# 下降沿：Shift 刚松开
-	elif not ai_driving and _shift_was_held and not shift_held:
+	if not ai_driving and _shift_was_held and not shift_held:
 		var threshold := _config.sprint_hold_threshold if _config else 0.25
 		if _shift_held_time < threshold:
 			# 短按 → 切换 Run（不触发 Sprint）
@@ -528,7 +513,6 @@ func clear_locomotion_state() -> void:
 		_exit_run()
 	_shift_held_time = 0.0
 	_shift_was_held = false
-	_sprint_suppressed_until_release = false
 	_burst_timer = 0.0
 	_gait_phase = 0.0
 	_ai_input_running = false

@@ -1,7 +1,7 @@
 class_name SpineAimController
 extends Node
 
-const HEAD_MUZZLE_TARGET_DISTANCE: float = 1000.0
+const HEAD_LOOK_TARGET_DISTANCE: float = 1000.0
 
 var _player: BasePlayer
 var _camera_controller: PlayerCameraController
@@ -88,23 +88,20 @@ func process_aim(delta: float, enabled: bool = true) -> void:
 	_modifier.yaw_radians = _current_yaw
 	_modifier.free_pitch_radians = _current_free_pitch
 	_modifier.free_yaw_radians = _current_free_yaw
-	_update_head_muzzle_target()
+	_update_head_look_target()
 
 
-func _update_head_muzzle_target() -> void:
+func _update_head_look_target() -> void:
 	_modifier.head_target_valid = false
-	if not is_instance_valid(_player) or not _player.weapon_manager:
+	if not is_instance_valid(_camera_controller):
 		return
-	var weapon := _player.weapon_manager.current_weapon
-	if not is_instance_valid(weapon):
+	if not is_instance_valid(_player):
 		return
-	var muzzle_position := weapon.get_muzzle_position()
-	var muzzle_direction := weapon.get_muzzle_direction()
-	if not muzzle_position.is_finite() or not muzzle_direction.is_finite() \
-			or muzzle_direction.is_zero_approx():
+	var view_direction := _camera_controller.get_aim_direction()
+	if not view_direction.is_finite() or view_direction.is_zero_approx():
 		return
-	_modifier.head_target_world_position = muzzle_position \
-			+ muzzle_direction.normalized() * HEAD_MUZZLE_TARGET_DISTANCE
+	_modifier.head_target_world_position = _player.global_position \
+			+ view_direction.normalized() * HEAD_LOOK_TARGET_DISTANCE
 	_modifier.head_target_valid = true
 
 
@@ -206,7 +203,7 @@ class SpineAimModifier extends SkeletonModifier3D:
 				_free_look_bone_indices[i],
 				Quaternion(skeleton_up, free_yaw_radians * _free_look_bone_weights[i]) * Quaternion(skeleton_right, free_pitch_radians * _free_look_bone_weights[i])
 			)
-		_align_head_to_muzzle_target(skeleton)
+		_align_head_to_view_target(skeleton)
 
 
 	func _calibrate_head_view_basis(skeleton: Skeleton3D) -> void:
@@ -216,14 +213,13 @@ class SpineAimModifier extends SkeletonModifier3D:
 		var head_basis := (
 			skeleton_basis * skeleton.get_bone_global_pose(_head_bone_idx).basis
 		).orthonormalized()
-		var body_basis := _player.global_basis.orthonormalized()
-		# Converts the imported head bone basis into the project's view basis.
-		# It captures FBX/Mixamo axis differences without hard-coded Euler offsets.
-		_head_to_view_basis = (head_basis.inverse() * body_basis).orthonormalized()
+		_head_to_view_basis = (
+			head_basis.inverse() * _player.global_basis.orthonormalized()
+		).orthonormalized()
 		_head_alignment_calibrated = true
 
 
-	func _align_head_to_muzzle_target(skeleton: Skeleton3D) -> void:
+	func _align_head_to_view_target(skeleton: Skeleton3D) -> void:
 		if not head_target_valid or not _head_alignment_calibrated or _head_bone_idx < 0:
 			return
 		var skeleton_basis := skeleton.global_basis.orthonormalized()

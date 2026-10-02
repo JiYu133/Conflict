@@ -72,10 +72,6 @@ func initialize(
 
 启用摄像机视角控制。从 `CameraConfig` 读取鼠标灵敏度与垂直角度限制，然后按优先级（挂载点 → 模型摄像机 → 骨骼创建）完成摄像机挂载，最后发出 `camera_ready` 信号并应用 FOV。
 
-### `setup_weapon_sway_pivot(weapon_mount: Node3D) -> Node3D`
-
-在 `weapon_mount` 下创建名为 `WeaponSwayPivot` 的 `Node3D` 节点并返回，供调用方将武器实际挂载到该支点之下以获得晃动效果。若支点已存在则直接返回现有实例。由 `BasePlayer._on_model_loaded` 在 `WeaponMount` 就绪后调用。
-
 ### `connect_movement_signals(movement: PlayerMovementController) -> void`
 
 将 `PlayerMovementController` 的 `landed` 与 `jumped` 信号分别连接到 `on_landed` 和 `on_jumped`，启用落地冲击效果。由 `BasePlayer` 在子系统初始化完成后调用，内部做幂等校验防止重复连接。
@@ -86,7 +82,7 @@ func initialize(
 
 ### `get_active_camera() -> Camera3D`
 
-返回当前活动的 `Camera3D`，供 `WeaponObstructionDetector` 等外部系统使用。
+返回当前活动的 `Camera3D`，供需要读取玩家视角的系统使用。
 
 死亡跟随期间返回的相机仍为同一活动相机，但其父节点为场景根，位置和朝向每帧由布娃娃物理骨骼驱动。
 
@@ -168,20 +164,9 @@ func initialize(
 
 相关配置键：`tilt_max_angle`、`tilt_speed`、`max_speed_reference`
 
-### 武器晃动（Weapon Sway）
+### 武器展示边界
 
-**控制开关：** `CameraConfig.sway_enabled`  
-**作用节点：** `_sway_pivot`（`WeaponSwayPivot`），不影响摄像机旋转
-
-三层效果叠加，作用于 `WeaponMount` 下的支点节点：
-
-- **层 A（look sway）：** 鼠标移动量 `_mouse_delta` 分别乘以 `sway_look_amount`（横滚/Z 轴）和 `sway_look_amount_pitch`（俯仰/X 轴）驱动支点旋转目标，lerp 平滑归位，模拟武器惯性滞后。
-- **层 B（move sway）：** 角色速度转换到局部坐标系后乘以 `sway_move_amount × sway_move_scale_*`，驱动支点位置偏移（X/Y 轴），模拟持枪重量在运动中的晃动。空中时 Y 速度非零，会产生额外垂直偏移。
-- **层 C（weapon lag）：** 由 `weapon_lag_enabled` 独立控制。鼠标输入乘以灵敏度后叠加到 yaw/pitch 积累量，每帧钳制到 `weapon_lag_max` 后再 lerp 归零，产生转头时武器的惯性滞后感。**仅在 `sway_enabled = true` 时生效**；`look sway` 使用原始像素输入，`weapon lag` 乘以 `mouse_sensitivity`，两者量纲不同，调整灵敏度时 lag 效果会同步缩放但 sway 不会。
-
-Z 轴（`position.z`）保留给 `WeaponObstructionDetector` 控制收枪偏移，本控制器仅写 X/Y。
-
-相关配置键：`sway_enabled`、`sway_look_amount`、`sway_look_amount_pitch`、`sway_move_amount`、`sway_move_scale_horizontal`、`sway_move_scale_vertical`、`sway_speed`、`weapon_lag_enabled`、`weapon_lag_scale`、`weapon_lag_max`、`weapon_lag_return_speed`
+摄像机控制器不再驱动武器支点、武器晃动或 ADS 位置。`WeaponMount` 始终由右手动画提供姿态；`WeaponPresentationController` 只在其子支点上写入 ADS 的 X/Y 展示偏移，不读取或写入手骨骼，也不修改摄像机。武器深度/遮挡属于独立组件，不能与该支点的 X/Y 所有权混用。
 
 ---
 
@@ -225,7 +210,7 @@ Z 轴（`position.z`）保留给 `WeaponObstructionDetector` 控制收枪偏移�
 
 ## 注意事项
 
-- **武器晃动只修改 `_sway_pivot` 的 X/Y 轴，Z 轴保留给外部系统。** `WeaponObstructionDetector` 等组件通过修改 `_sway_pivot.position.z` 实现收枪偏移，若此控制器也写入 Z 轴将产生冲突。见代码注释：`# 只插值 X/Y，Z 轴留给 WeaponObstructionDetector 控制收枪偏移`。
+- **摄像机控制器不再拥有武器支点。** `WeaponPresentationController` 只改展示支点 X/Y，不读写相机或手骨骼；深度偏移由独立逻辑拥有。
 
 - **后座不修改 `_vertical_angle`、`_view_yaw` 或玩家 yaw。** 后座角度仅在写入 `_active_camera.global_rotation` 时临时叠加，保证恢复后鼠标视角、准星基准和枪口瞄准状态不漂移。
 

@@ -42,11 +42,13 @@ extends Resource
 ## 自动装配时优先尝试的槽位名，按顺序回退；如 ["SideRailLeft", "SideRailRight"]
 @export var preferred_slot_names: Array[String] = []
 
-# ──────────────────────────── 旧数据兼容 ────────────────────────────
-## Deprecated. ADS does not change projectile accuracy; retained so existing
-## .tres resources load without losing serialized data.
-@export_storage var hipfire_spread_modifier: float = 0.0
-@export_storage var ads_spread_modifier: float = 0.0
+# ──────────────────────────── 数值修正 ────────────────────────────
+@export_group("散布修正")
+## 腰射散布修正：负值 = 减少散布 / Hip-fire spread modifier; negative = tighter
+@export var hipfire_spread_modifier: float = 0.0
+
+## 机瞄散布修正：负值 = 减少散布 / ADS spread modifier; negative = tighter
+@export var ads_spread_modifier: float = 0.0
 
 # ──────────────────────────── 后座修正 ────────────────────────────
 @export_group("后座修正")

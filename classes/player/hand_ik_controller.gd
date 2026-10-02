@@ -1,35 +1,34 @@
 class_name HandIKController
 extends Node
 
-# 双手 IK 控制器（TwoBoneIK3D 版本）。实际武器位于独立 WeaponPoseRoot 下，
-# 左右手目标每次骨骼修改时从武器握把实时采样，因此不存在骨骼驱动武器、
-# 武器又反向驱动同一骨骼的循环依赖。
+# 左手 IK 控制器（TwoBoneIK3D 版本）
+# target_node 指向 Skeleton3D 下的中间 Marker3D（LeftHandTarget），
+# 每帧将其变换同步到武器的 LeftHandGrip，避免跨场景树路径失效。
+#
+# 只对左手做 IK：武器挂在右手骨骼的 WeaponMount 下（见 BasePlayer._on_model_loaded），
+# 右手天然持枪，无需 IK。若对右手也做 IK 去抓武器上的 RightHandGrip，
+# 会形成「右手→武器→握把→右手」的正反馈闭环，每帧累加握把偏移导致右臂漂移。
 
 var _config: HandIKConfig
 
 var _ik_node: TwoBoneIK3D
 var _hand_target: Marker3D      # Skeleton3D 下的中间目标点，由代码每帧更新
-var _right_ik_node: TwoBoneIK3D
-var _right_hand_target: Marker3D
 var _target_modifier: HandTargetModifier
 var _left_hand_grip: Node3D     # 武器上的 LeftHandGrip 掌心接触点
 var _left_hand_wrist_target: Node3D # 武器上的 LeftHandWristTarget 腕部目标
-var _right_hand_grip: Node3D
 var _using_wrist_target_fallback: bool = false
+var _wrist_modifier: HandWristModifier
 var _model_manager: PlayerModelManager
 var _owns_hand_target: bool = false
-var _owns_right_hand_target: bool = false
 var _current_weapon: BaseWeapon
 var _enabled: bool = false
-var _right_enabled: bool = false
 var _ik_weight: float = 1.0
-var _weapon_pose_controller: PlayerCameraController
 
-# 左手掌根偏移用于把 TwoBoneIK 的腕骨目标从握把接触点退回到腕部。
-# TwoBoneIK 负责双臂位置，手腕旋转继续来自底层动画，不直接写骨骼旋转。
+# 手腕朝向标定：握把 Marker 的朝向由美术随手摆放（AK 本体握把带约 40° 倾斜，
+# 导轨护木握把是 90° 翻转），直接把它套到手骨上会拧歪手腕。
+# 这里记录「动画手腕朝向 相对于 握把朝向」的差值，每帧还原，手腕即保持自然姿态。
 var _skeleton: Skeleton3D = null
 var _hand_bone_idx: int = -1
-var _right_hand_bone_idx: int = -1
 var _middle_finger_bone_idx: int = -1
 var _wrist_to_palm_local: Vector3 = Vector3.ZERO
 
@@ -50,18 +49,12 @@ func initialize(model_manager: PlayerModelManager, _lookup: ModelLookupConfig) -
 		_model_manager.model_unloaded.connect(clear)
 
 
-func set_weapon_pose_controller(controller: PlayerCameraController) -> void:
-	_weapon_pose_controller = controller
-
-
 ## Release old modifiers before accepting a replacement model, including failed loads.
 func clear() -> void:
 	_disconnect_weapon_attachments()
 	if is_instance_valid(_ik_node):
 		_ik_node.influence = 0.0
-	if is_instance_valid(_right_ik_node):
-		_right_ik_node.influence = 0.0
-	for modifier in [_target_modifier]:
+	for modifier in [_target_modifier, _wrist_modifier]:
 		if is_instance_valid(modifier):
 			modifier.active = false
 			if modifier.get_parent():
@@ -71,24 +64,15 @@ func clear() -> void:
 		if _hand_target.get_parent():
 			_hand_target.get_parent().remove_child(_hand_target)
 		_hand_target.queue_free()
-	if _owns_right_hand_target and is_instance_valid(_right_hand_target):
-		if _right_hand_target.get_parent():
-			_right_hand_target.get_parent().remove_child(_right_hand_target)
-		_right_hand_target.queue_free()
 	_ik_node = null
-	_right_ik_node = null
 	_target_modifier = null
+	_wrist_modifier = null
 	_hand_target = null
-	_right_hand_target = null
 	_owns_hand_target = false
-	_owns_right_hand_target = false
 	_left_hand_grip = null
-	_right_hand_grip = null
 	_skeleton = null
 	_hand_bone_idx = -1
-	_right_hand_bone_idx = -1
 	_enabled = false
-	_right_enabled = false
 	_left_hand_wrist_target = null
 	_using_wrist_target_fallback = false
 	_middle_finger_bone_idx = -1
@@ -105,7 +89,6 @@ func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 		GlobalLogger.warn("HandIK", "未找到 Skeleton3D，手部 IK 已禁用")
 		return
 	_hand_bone_idx = skeleton.find_bone(_config.tip_bone_name)
-	_right_hand_bone_idx = skeleton.find_bone("mixamorig_RightHand")
 	if _hand_bone_idx == -1:
 		GlobalLogger.warn("HandIK", "未找到手腕骨骼 '%s'，手腕朝向标定不可用" % _config.tip_bone_name)
 	_middle_finger_bone_idx = skeleton.find_bone("mixamorig_LeftHandMiddle1")
@@ -120,10 +103,6 @@ func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 		GlobalLogger.warn("HandIK", "Skeleton3D 下未找到 TwoBoneIK3D 节点 '%s'，请在编辑器里添加。" % node_name)
 		clear()
 		return
-	_right_ik_node = skeleton.get_node_or_null("RightHandIK") as TwoBoneIK3D
-	if not _right_ik_node or _right_ik_node.setting_count < 1 or _right_hand_bone_idx < 0:
-		GlobalLogger.warn("HandIK", "Skeleton3D 下未找到可用的 RightHandIK，右手 IK 已禁用")
-		_right_ik_node = null
 
 	# 查找或创建中间目标 Marker3D（固定挂在 Skeleton3D 下，路径稳定）
 	_hand_target = skeleton.get_node_or_null("LeftHandTarget") as Marker3D
@@ -133,20 +112,10 @@ func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 		_hand_target.name = "LeftHandTarget"
 		skeleton.add_child(_hand_target)
 		GlobalLogger.info("HandIK", "已自动创建 LeftHandTarget Marker3D")
-	_right_hand_target = skeleton.get_node_or_null("RightHandTarget") as Marker3D
-	if not _right_hand_target:
-		_right_hand_target = Marker3D.new()
-		_owns_right_hand_target = true
-		_right_hand_target.name = "RightHandTarget"
-		skeleton.add_child(_right_hand_target)
-		GlobalLogger.info("HandIK", "已自动创建 RightHandTarget Marker3D")
 
 	# index 0 是第一条（唯一一条）IK 设置
 	_ik_node.set_target_node(0, _ik_node.get_path_to(_hand_target))
 	_ik_node.influence = 0.0
-	if is_instance_valid(_right_ik_node):
-		_right_ik_node.set_target_node(0, _right_ik_node.get_path_to(_right_hand_target))
-		_right_ik_node.influence = 0.0
 
 	# 目标同步必须发生在脊柱修正之后、TwoBoneIK3D 求解之前。
 	# SkeletonModifier3D 的兄弟顺序就是执行顺序，因此把同步器插到 IK 前面。
@@ -154,20 +123,20 @@ func setup(skeleton: Skeleton3D, config: HandIKConfig = null) -> void:
 	_target_modifier.name = "LeftHandTargetSync"
 	skeleton.add_child(_target_modifier)
 	_target_modifier.setup(self)
-	var first_hand_ik_index := _ik_node.get_index()
-	if is_instance_valid(_right_ik_node):
-		first_hand_ik_index = mini(first_hand_ik_index, _right_ik_node.get_index())
-	skeleton.move_child(_target_modifier, first_hand_ik_index)
-	GlobalLogger.info("HandIK", "双手 IK 已绑定，目标点: LeftHandTarget / RightHandTarget")
+	skeleton.move_child(_target_modifier, _ik_node.get_index())
+	_wrist_modifier = HandWristModifier.new()
+	_wrist_modifier.name = "LeftHandWrist"
+	skeleton.add_child(_wrist_modifier)
+	_wrist_modifier.controller = self
+	skeleton.move_child(_wrist_modifier, _ik_node.get_index() + 1)
+	GlobalLogger.info("HandIK", "TwoBoneIK3D '%s' 已绑定，目标点: LeftHandTarget" % node_name)
 
 
 func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 	_disconnect_weapon_attachments()
 	_left_hand_grip = null
 	_left_hand_wrist_target = null
-	_right_hand_grip = null
 	_enabled = false
-	_right_enabled = false
 	_using_wrist_target_fallback = false
 
 	if not is_instance_valid(weapon) or not is_instance_valid(_ik_node):
@@ -185,7 +154,6 @@ func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 
 	_left_hand_grip = weapon.find_grip_node("LeftHandGrip")
 	_left_hand_wrist_target = weapon.find_grip_node("LeftHandWristTarget")
-	_right_hand_grip = weapon.find_grip_node("RightHandGrip")
 	_using_wrist_target_fallback = not is_instance_valid(_left_hand_wrist_target)
 	if not _left_hand_grip and _using_wrist_target_fallback:
 		GlobalLogger.warn("HandIK", "武器 '%s' 缺少 LeftHandGrip 与 LeftHandWristTarget，左手 IK 不启用" % weapon.name)
@@ -196,9 +164,6 @@ func set_weapon(weapon: BaseWeapon, ik_weight: float = -1.0) -> void:
 		GlobalLogger.info("HandIK", "左手 IK 启用: grip=%s  weight=%.2f" % [
 			str(_left_hand_wrist_target.get_path()) if is_instance_valid(_left_hand_wrist_target) else "fallback",
 			_ik_weight])
-	_right_enabled = is_instance_valid(_right_ik_node) and is_instance_valid(_right_hand_grip)
-	if not _right_enabled:
-		GlobalLogger.warn("HandIK", "武器 '%s' 缺少 RightHandGrip 或 RightHandIK，右手 IK 不启用" % weapon.name)
 
 
 func _disconnect_weapon_attachments() -> void:
@@ -215,10 +180,8 @@ func _on_attachments_changed() -> void:
 		return
 	_left_hand_grip = _current_weapon.find_grip_node("LeftHandGrip")
 	_left_hand_wrist_target = _current_weapon.find_grip_node("LeftHandWristTarget")
-	_right_hand_grip = _current_weapon.find_grip_node("RightHandGrip")
 	_using_wrist_target_fallback = not is_instance_valid(_left_hand_wrist_target)
 	_enabled = is_instance_valid(_left_hand_grip) or is_instance_valid(_left_hand_wrist_target)
-	_right_enabled = is_instance_valid(_right_ik_node) and is_instance_valid(_right_hand_grip)
 	# 换护木/握把后握把 Marker 朝向可能完全不同（导轨护木是 90° 翻转），需重新标定
 	if _enabled:
 		if _using_wrist_target_fallback:
@@ -247,12 +210,10 @@ func set_prone_state(prone: bool) -> void:
 
 func _update_target_weight() -> void:
 	var base := _ik_weight
-	if _is_prone:
-		_target_weight = base * (_config.prone_ik_weight if _config else 1.0)
-	elif _is_sprinting:
+	if _is_sprinting:
 		_target_weight = base * (_config.sprint_ik_weight if _config else 0.1)
 	elif _is_ads:
-		_target_weight = base * (_config.ads_ik_weight if _config else 1.0)
+		_target_weight = base * (_config.ads_ik_weight if _config else 0.8)
 	elif _is_running:
 		_target_weight = base * (_config.run_ik_weight if _config else 0.6)
 	else:
@@ -263,68 +224,39 @@ func process_ik(delta: float, active: bool = true) -> void:
 	if not is_instance_valid(_ik_node):
 		return
 
-	var left_can_solve: bool = active and _enabled \
+	var can_solve: bool = active and _enabled \
 		and (is_instance_valid(_left_hand_wrist_target) or is_instance_valid(_left_hand_grip)) \
 		and is_instance_valid(_hand_target)
-	var right_can_solve: bool = active and _right_enabled \
-		and is_instance_valid(_right_hand_grip) and is_instance_valid(_right_hand_target)
 	if is_instance_valid(_target_modifier):
-		_target_modifier.sync_enabled = left_can_solve or right_can_solve
+		_target_modifier.sync_enabled = can_solve
+	if is_instance_valid(_wrist_modifier):
+		_wrist_modifier.active = can_solve
 
 	# Sample only in the modifier chain, after spine aim and before IK.
 
 	var blend_time := maxf(_config.weight_blend_time if _config else 0.12, 0.001)
-	var effective_target := _target_weight if left_can_solve or right_can_solve else 0.0
+	var effective_target := _target_weight if can_solve else 0.0
 	if not active:
 		_current_weight = 0.0
 		_ik_node.influence = 0.0
-		if is_instance_valid(_right_ik_node):
-			_right_ik_node.influence = 0.0
 		return
 	_current_weight = move_toward(_current_weight, effective_target, delta / blend_time)
-	_ik_node.influence = _current_weight if left_can_solve else 0.0
-	if is_instance_valid(_right_ik_node):
-		_right_ik_node.influence = _current_weight if right_can_solve else 0.0
+	_ik_node.influence = _current_weight
 
 
-## Build the IK target from separate authored responsibilities:
-## LeftHandGrip supplies the wrist position, while LeftHandWristTarget supplies
-## only the wrist orientation. A wrist target may still provide the complete
-## transform when no grip exists, preserving the legacy fallback path.
+## 位置永远取握把；朝向按配置决定是否用标定后的自然手腕姿态。
 func _update_hand_target() -> void:
-	_update_hand_targets()
-
-
-func _update_hand_targets() -> void:
-	if is_instance_valid(_weapon_pose_controller):
-		_weapon_pose_controller.refresh_weapon_pose()
-	if is_instance_valid(_skeleton) and is_instance_valid(_hand_target) \
-			and (is_instance_valid(_left_hand_grip) or is_instance_valid(_left_hand_wrist_target)):
-		_hand_target.global_transform = _get_current_wrist_target_transform()
-	if is_instance_valid(_skeleton) and is_instance_valid(_right_hand_target) \
-			and is_instance_valid(_right_hand_grip):
-		_right_hand_target.global_transform = _get_current_right_hand_target_transform()
-
-
-func _get_current_right_hand_target_transform() -> Transform3D:
-	var grip_xf := _right_hand_grip.global_transform
-	if not is_instance_valid(_weapon_pose_controller) or _right_hand_bone_idx < 0:
-		return grip_xf
-	var pose_source := _weapon_pose_controller.get_weapon_pose_source()
-	if not is_instance_valid(pose_source):
-		return grip_xf
-	var animated_hand_world := _skeleton.global_transform \
-			* _skeleton.get_bone_global_pose(_right_hand_bone_idx)
-	var hand_from_source := pose_source.global_transform.affine_inverse() * animated_hand_world
-	return grip_xf * hand_from_source
+	if not is_instance_valid(_skeleton) or not is_instance_valid(_hand_target) or (not is_instance_valid(_left_hand_grip) and not is_instance_valid(_left_hand_wrist_target)):
+		return
+	_refresh_weapon_mount()
+	var target_xf := _get_current_wrist_target_transform()
+	_hand_target.global_transform = target_xf
 
 
 func _get_current_wrist_target_transform() -> Transform3D:
-	var has_grip := is_instance_valid(_left_hand_grip)
-	var has_wrist_target := is_instance_valid(_left_hand_wrist_target)
-	if not has_grip:
-		if has_wrist_target:
-			return _left_hand_wrist_target.global_transform
+	if is_instance_valid(_left_hand_wrist_target):
+		return _left_hand_wrist_target.global_transform
+	if not is_instance_valid(_left_hand_grip):
 		return Transform3D.IDENTITY
 
 	var grip_xf := _left_hand_grip.global_transform
@@ -332,10 +264,7 @@ func _get_current_wrist_target_transform() -> Transform3D:
 	var origin := grip_xf.origin + grip_basis * _config.grip_position_offset
 	origin -= _get_current_wrist_to_palm_world() * _config.fallback_palm_contact_ratio
 	origin += grip_basis * _config.fallback_wrist_position_offset
-	var target_basis := grip_basis * Basis.from_euler(_wrist_offset_rad())
-	if has_wrist_target:
-		target_basis = _left_hand_wrist_target.global_basis.orthonormalized()
-	return Transform3D(target_basis, origin)
+	return Transform3D(grip_basis * Basis.from_euler(_wrist_offset_rad()), origin)
 
 
 func _get_current_wrist_to_palm_local() -> Vector3:
@@ -371,6 +300,15 @@ func _get_current_grip_transform() -> Transform3D:
 	return _left_hand_grip.global_transform
 
 
+func _refresh_weapon_mount() -> void:
+	var node: Node = _left_hand_grip if is_instance_valid(_left_hand_grip) else _left_hand_wrist_target
+	while is_instance_valid(node):
+		if node is BoneAttachment3D:
+			(node as BoneAttachment3D).on_skeleton_update()
+			return
+		node = node.get_parent()
+
+
 ## 记录「动画手腕朝向 相对于 握把朝向」的差值
 func _wrist_offset_rad() -> Vector3:
 	if not _config:
@@ -390,4 +328,25 @@ class HandTargetModifier extends SkeletonModifier3D:
 
 	func _process_modification() -> void:
 		if sync_enabled and is_instance_valid(_controller):
-			_controller._update_hand_targets()
+			_controller._update_hand_target()
+
+
+## TwoBoneIK positions the wrist but does not consume the target's orientation.
+class HandWristModifier extends SkeletonModifier3D:
+	var controller: HandIKController
+
+
+	func _process_modification() -> void:
+		if not is_instance_valid(controller) or not is_instance_valid(controller._hand_target):
+			return
+		var skeleton := get_skeleton()
+		var bone := controller._hand_bone_idx
+		if not skeleton or bone < 0:
+			return
+		var parent_basis := skeleton.global_basis.orthonormalized()
+		var parent_idx := skeleton.get_bone_parent(bone)
+		if parent_idx >= 0:
+			parent_basis *= skeleton.get_bone_global_pose(parent_idx).basis.orthonormalized()
+		var desired := (parent_basis.inverse() * controller._hand_target.global_basis.orthonormalized()).get_rotation_quaternion()
+		var current := skeleton.get_bone_pose_rotation(bone)
+		skeleton.set_bone_pose_rotation(bone, current.slerp(desired, clampf(controller._current_weight, 0.0, 1.0)).normalized())
