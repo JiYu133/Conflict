@@ -489,27 +489,9 @@ settings/0/extend_end_bone = false
 [node name="LeftElbowPole" type="Marker3D" parent="Skeleton3D/LeftHandIK" index="0" unique_id=1229097913]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.49126345, 1.4615586, -0.13809228)
 
-[node name="RightHandIK" type="TwoBoneIK3D" parent="Skeleton3D" index="5"]
-influence = 0.0
-setting_count = 1
-settings/0/target_node = NodePath("")
-settings/0/pole_node = NodePath("RightElbowPole")
-settings/0/root_bone_name = "mixamorig_RightArm"
-settings/0/root_bone = 39
-settings/0/middle_bone_name = "mixamorig_RightForeArm"
-settings/0/middle_bone = 40
-settings/0/pole_direction = 0
-settings/0/end_bone_name = "mixamorig_RightHand"
-settings/0/end_bone = 41
-settings/0/use_virtual_end = false
-settings/0/extend_end_bone = false
+[node name="LeftFootTarget" type="Marker3D" parent="Skeleton3D" index="5" unique_id=317334819]
 
-[node name="RightElbowPole" type="Marker3D" parent="Skeleton3D/RightHandIK" index="0"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.49126345, 1.4615586, -0.13809228)
-
-[node name="LeftFootTarget" type="Marker3D" parent="Skeleton3D" index="6" unique_id=317334819]
-
-[node name="LeftFootIK" type="TwoBoneIK3D" parent="Skeleton3D" index="7" unique_id=102549917]
+[node name="LeftFootIK" type="TwoBoneIK3D" parent="Skeleton3D" index="6" unique_id=102549917]
 influence = 0.0
 setting_count = 1
 settings/0/target_node = NodePath("../LeftFootTarget")
@@ -526,9 +508,9 @@ settings/0/extend_end_bone = false
 
 [node name="LeftKneePole" type="Marker3D" parent="Skeleton3D/LeftFootIK" index="0" unique_id=1455843664]
 
-[node name="RightFootTarget" type="Marker3D" parent="Skeleton3D" index="8" unique_id=1344322249]
+[node name="RightFootTarget" type="Marker3D" parent="Skeleton3D" index="7" unique_id=1344322249]
 
-[node name="RightFootIK" type="TwoBoneIK3D" parent="Skeleton3D" index="9" unique_id=1141986649]
+[node name="RightFootIK" type="TwoBoneIK3D" parent="Skeleton3D" index="8" unique_id=1141986649]
 influence = 0.0
 setting_count = 1
 settings/0/target_node = NodePath("../RightFootTarget")

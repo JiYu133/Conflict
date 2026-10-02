@@ -17,7 +17,7 @@
 4. 连接 `model_manager.model_loaded` 与 `weapon_manager.weapon_changed` 信号
 5. 若 `player_config.model_scene` 存在，调用 `model_manager.load_model()` 加载模型
 
-模型加载完成后，`_on_model_loaded()` 回调负责：初始化布娃娃系统、动画控制器、查找武器挂载点、创建武器晃动支点、初始化 `WeaponObstructionDetector`，以及装备初始武器。
+模型加载完成后，`_on_model_loaded()` 回调负责初始化动画、脊柱观察、手部 IK 和布娃娃系统，并将武器展示支点挂在动画驱动的右手挂点下，再装备初始武器。
 
 ## 信号（Signals）
 
@@ -62,11 +62,10 @@
 
 ## 依赖关系
 
-- **依赖：** `PlayerConfig`、`PlayerModelManager`、`PlayerCameraController`、`PlayerRagdollSystem`、`PlayerMovementController`、`FootIKController`、`WeaponManager`、`PlayerAnimationController`、`WeaponObstructionDetector`、`GlobalLogger`
+- **依赖：** `PlayerConfig`、`PlayerModelManager`、`PlayerCameraController`、`PlayerRagdollSystem`、`PlayerMovementController`、`FootIKController`、`HandIKController`、`SpineAimController`、`WeaponManager`、`PlayerAnimationController`、`GlobalLogger`
 - **被依赖：** 场景树中的具体玩家场景节点；其他需要访问玩家子系统的外部系统
 
 ## 注意事项
 
 - `faction_changed` 信号已声明但代码中暂无主动 emit，外部若依赖该信号需自行调用或扩展 setter。
-- `WeaponObstructionDetector` 是在 `_on_model_loaded()` 内动态创建的，比其他子系统晚一帧初始化，不可在模型加载前访问。
 - `_on_model_loaded()` 中会将模型从 `ModelManager` 下移到 `BasePlayer` 自身下，以确保变换跟随玩家根节点。

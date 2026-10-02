@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://y8c2gfr567su"]
 
-[ext_resource type="Script" path="res://classes/weapon/weaponattachments/scopes/iron_sight.gd" id="1_base"]
+[ext_resource type="Script" uid="uid://bunsg4bort2vn" path="res://classes/weapon/weaponattachments/base_attachment.gd" id="1_base"]
 [ext_resource type="PackedScene" uid="uid://bvb0jqqcxaktw" path="res://assets/models/attachments/optics/iron_sight_open/iron_sight_open.glb" id="2_mesh"]
 
 [node name="IronSightOpen" type="Node3D" unique_id=29049906]
@@ -10,6 +10,3 @@ script = ExtResource("1_base")
 
 [node name="SnapPoint" type="Marker3D" parent="." unique_id=1908185995]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0069319606, 0, -0.032653783)
-
-[node name="ADSAnchor" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.018, 0.12)
