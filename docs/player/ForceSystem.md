@@ -1,7 +1,6 @@
 # 通用力反馈系统（ForceReceiver）
 
 **文件路径：** `classes/player/force/`
-**首期范围：** 只接入受击反馈（`HealthSystem.damage_taken`）；不接开火，不碰摄像机。
 
 ## 功能概述
 
@@ -95,7 +94,7 @@ apply_force(
 传递比例按情形选择：爆头 → `headshot_energy_transfer`；爆炸 →
 `explosion_energy_transfer`；其余 → `impact_energy_transfer`。
 
-弹道伤害缺少弹头质量时不猜质量，直接返回（与布娃娃原有策略一致）。
+弹道伤害缺少弹头质量时直接返回（与布娃娃原有策略一致）。
 
 ### 布娃娃接口
 
