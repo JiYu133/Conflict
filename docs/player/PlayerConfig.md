@@ -75,7 +75,7 @@
 |------|------|--------|------|
 | `ragdoll_config` | `RagdollConfig` | `null` | 死亡布娃娃物理配置 |
 | `force_config` | `ForceConfig` | `null` | 通用力系统配置；为空时使用代码默认值。详见 [ForceSystem](ForceSystem.md) |
-| `hand_ik_config` | `HandIKConfig` | `null` | 左手 IK 参数 |
+| `ik_config` | `IKRigConfig` | `null` | 双臂握枪与双脚贴地参数（见 [IKRig](IKRig.md)） |
 | `spine_aim_config` | `SpineAimConfig` | `null` | 脊柱视角旋转参数 |
 | `health_config` | `HealthConfig` | `null` | 医疗系统参数 |
 | `blood_effect_config` | `BloodEffectConfig` | `null` | 死亡渗血表现参数 |
@@ -84,7 +84,7 @@
 ## 依赖关系
 
 - **依赖：** `ModelLookupConfig`、`CameraConfig`、`WeaponConfig`、`MovementConfig`、`RagdollConfig`、`ForceConfig`
-- **被依赖：** `BasePlayer`、`PlayerMovementController`、`PlayerCameraController`、`FootIKController`
+- **被依赖：** `BasePlayer`、`PlayerMovementController`、`PlayerCameraController`、`IKRig`
 
 ## 注意事项
 

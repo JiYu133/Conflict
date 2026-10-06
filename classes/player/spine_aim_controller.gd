@@ -40,7 +40,6 @@ func setup(
 	_modifier.name = "SpineAimModifier"
 	_skeleton.add_child(_modifier)
 	_modifier.setup(_player, _config)
-	_move_before_first_ik_modifier()
 
 	if _modifier.get_valid_bone_count() == 0:
 		GlobalLogger.warn("SpineAim", "未找到配置中的脊柱骨骼，脊柱视角旋转已禁用")
@@ -106,15 +105,6 @@ func _update_head_muzzle_target() -> void:
 	_modifier.head_target_world_position = muzzle_position \
 			+ muzzle_direction.normalized() * HEAD_MUZZLE_TARGET_DISTANCE
 	_modifier.head_target_valid = true
-
-
-func _move_before_first_ik_modifier() -> void:
-	if not _modifier or not _skeleton:
-		return
-	for child in _skeleton.get_children():
-		if child is TwoBoneIK3D:
-			_skeleton.move_child(_modifier, child.get_index())
-			return
 
 
 class SpineAimModifier extends SkeletonModifier3D:

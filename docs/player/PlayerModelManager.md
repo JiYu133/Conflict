@@ -56,7 +56,7 @@
   - `BasePlayer` — 持有该节点并调用 `load_model()`
   - `PlayerAnimationController` — 通过 `model_manager.animator` 获取动画播放器引用
   - `PlayerRagdollSystem` — 通过外部传入的 `skeleton` / `animator` 使用其缓存结果
-  - `FootIKController` — 持有 `PlayerModelManager` 引用，监听 `model_loaded` 信号并调用 `find_node_by_names()`
+  - `IKRig` — 监听 `model_unloaded` 清理 IK，并读取 `animator` 中的握枪手指参考动画
 
 ## 注意事项
 

@@ -84,8 +84,7 @@ var optic_render_controller: OpticRenderController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
 var collision_controller: PlayerCollisionController
-var foot_ik_controller: FootIKController
-var hand_ik_controller: HandIKController
+var ik_rig: IKRig
 var spine_aim_controller: SpineAimController
 var weapon_manager: WeaponManager
 var weapon_drop_system: WeaponDropSystem
@@ -181,8 +180,7 @@ func _initialize_subsystems() -> void:
 	stance_controller = _create_subsystem(StanceController.new(), "StanceController")
 	movement_controller = _create_subsystem(PlayerMovementController.new(), "MovementController")
 	collision_controller = _create_subsystem(PlayerCollisionController.new(), "CollisionController")
-	foot_ik_controller = _create_subsystem(FootIKController.new(), "FootIKController")
-	hand_ik_controller = _create_subsystem(HandIKController.new(), "HandIKController")
+	ik_rig = _create_subsystem(IKRig.new(), "IKRig") as IKRig
 	spine_aim_controller = _create_subsystem(SpineAimController.new(), "SpineAimController")
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
 	weapon_drop_system = _create_subsystem(WEAPON_DROP_SYSTEM_SCRIPT.new(), "WeaponDropSystem") as WeaponDropSystem
@@ -219,16 +217,12 @@ func _initialize_subsystems() -> void:
 		camera_controller
 		)
 
-	foot_ik_controller.initialize(
+	ik_rig.initialize(
+		self,
 		model_manager,
-		player_config.model_config if player_config else null
+		player_config.ik_config if player_config else null,
+		camera_controller
 		)
-
-	hand_ik_controller.initialize(
-		model_manager,
-		player_config.model_config if player_config else null
-		)
-	hand_ik_controller.set_weapon_pose_controller(camera_controller)
 
 
 	weapon_manager.set_camera_controller(camera_controller)
@@ -335,7 +329,6 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 func _connect_signals() -> void:
 	model_manager.model_loaded.connect(_on_model_loaded)
 	weapon_manager.weapon_changed.connect(_on_weapon_changed)
-	weapon_manager.aiming_changed.connect(hand_ik_controller.set_ads_state)
 	weapon_manager.weapon_stats_changed.connect(_sync_weapon_weight_to_stamina)
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
@@ -344,10 +337,6 @@ func _connect_signals() -> void:
 	collision_controller.transition_blocked.connect(_on_collision_transition_blocked)
 	# Sprint 开始时强制取消 ADS，并同步 IK 状态
 	movement_controller.started_sprinting.connect(_on_started_sprinting)
-	# 运动状态 → 左手 IK 权重过渡
-	movement_controller.started_running.connect(func(): hand_ik_controller.set_movement_state(true, false))
-	movement_controller.stopped_running.connect(func(): hand_ik_controller.set_movement_state(false, false))
-	movement_controller.stopped_sprinting.connect(func(): hand_ik_controller.set_movement_state(true, false))
 	# 运动状态 → 体力消耗
 	movement_controller.started_sprinting.connect(stamina_system.on_started_sprinting)
 	movement_controller.stopped_sprinting.connect(stamina_system.on_stopped_sprinting)
@@ -408,11 +397,11 @@ func _on_model_loaded(_model: Node3D) -> void:
 		player_config.spine_aim_config if player_config else null
 	)
 	# 力系统在骨骼就绪后接管姿态叠加，并成为布娃娃的力提供者。
-	# 顺序：SpineAim → Force → HandIK/FootIK，保证 IK 拥有最终发言权。
+	# IKRig 把自己的 modifier 排在这些姿态叠加之后，IK 拥有最终发言权。
 	force_receiver.set_skeleton(model_manager.skeleton)
 	_setup_force_modifier(model_manager.skeleton)
 	ragdoll_system.set_force_provider(force_receiver)
-	hand_ik_controller.setup(model_manager.skeleton, player_config.hand_ik_config if player_config else null)
+	ik_rig.bind_skeleton(model_manager.skeleton)
 	if not is_ai_player:
 		camera_controller._find_camera_nodes()
 		camera_controller.enable_camera()
@@ -456,9 +445,8 @@ func _on_model_loaded(_model: Node3D) -> void:
 		free_camera_controller.initialize(self, camera_controller)
 
 
-## 创建力姿态修饰器，并插到 SpineAimModifier 之后、第一个 TwoBoneIK3D 之前。
-## SkeletonModifier3D 的兄弟顺序即执行顺序，因此 IK 会在力偏移之上求解，
-## 把被推开的左手拉回武器握把；摄像机不参与本期力系统。
+## 创建力姿态修饰器。IKRig 会把它排在 IK 之前，IK 在力偏移之上求解，
+## 把被推开的双手拉回武器；摄像机不参与本期力系统。
 func _setup_force_modifier(skeleton: Skeleton3D) -> void:
 	if not is_instance_valid(skeleton) or not force_receiver:
 		return
@@ -466,10 +454,6 @@ func _setup_force_modifier(skeleton: Skeleton3D) -> void:
 	modifier.name = "ForceBodyModifier"
 	skeleton.add_child(modifier)
 	modifier.setup(force_receiver)
-	for child in skeleton.get_children():
-		if child is TwoBoneIK3D:
-			skeleton.move_child(modifier, child.get_index())
-			break
 
 
 func _load_ai_starting_weapon(config: WeaponConfig) -> void:
@@ -611,7 +595,7 @@ func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
 	if force_receiver:
 		force_receiver.clear_forces()
 	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
-	hand_ik_controller.set_weapon(new_weapon, weight)
+	ik_rig.set_weapon(new_weapon, weight)
 	if camera_controller:
 		camera_controller.set_recoil_component(
 			new_weapon.recoil_component if new_weapon else null
@@ -652,9 +636,7 @@ func _process(delta: float) -> void:
 	# The independent weapon rig still samples the authored hand pose when arm IK
 	# is disabled, including the pre-physics death-animation phase.
 	camera_controller.refresh_weapon_pose()
-	hand_ik_controller.set_prone_state(prone)
-	hand_ik_controller.process_ik(delta, procedural_animation_active)
-	foot_ik_controller.set_active(procedural_animation_active and not prone, delta if procedural_animation_active else 0.0)
+	ik_rig.update(delta, procedural_animation_active, prone, movement_controller.is_sprinting())
 
 
 func _sync_prone_mesh_floor_offset() -> void:
@@ -840,7 +822,6 @@ func _debug_trigger_pain_feedback(world_direction: Vector3) -> void:
 
 
 func _on_started_sprinting() -> void:
-	hand_ik_controller.set_movement_state(true, true)
 	weapon_manager.release_trigger()
 	weapon_manager.cancel_aiming()
 
@@ -1000,8 +981,7 @@ func _activate_ragdoll(
 		camera_controller.reset_weapon_pose_to_hip()
 	is_ragdolled = true
 	spine_aim_controller.process_aim(0.0, false)
-	hand_ik_controller.process_ik(0.0, false)
-	foot_ik_controller.set_active(false)
+	ik_rig.update(0.0, false, false, false)
 	velocity = Vector3.ZERO
 	clear_ai_player_test_fire()
 	_set_collision_enabled(false)

@@ -6,8 +6,8 @@
 ## 功能概述
 
 与伤害来源解耦的通用力系统。任何系统把“力”交给 `ForceReceiver`，力沿骨骼链按层级距离衰减
-传播，在动画姿态之上叠加旋转与限幅位移；IK 独立运行，形成自然对抗（被推开的左手仍会被
-`TwoBoneIK3D` 拉回武器握把）。
+传播，在动画姿态之上叠加旋转与限幅位移；IK 独立运行，形成自然对抗（被推开的手仍会被
+`IKRig` 拉回武器）。
 
 存活姿态受力与死亡倒下受力同源：力载荷同时携带归一化强度与真实物理量，布娃娃死亡时优先
 消费力系统缓存的冲量。
@@ -117,9 +117,9 @@ apply_force(
 
 ## 执行顺序
 
-`BasePlayer._on_model_loaded()` 把 `ForceBodyModifier` 插在 `SpineAimModifier` 之后、
-第一个 `TwoBoneIK3D` 之前。`SkeletonModifier3D` 的兄弟顺序即执行顺序，因此
-**IK 拥有最终发言权**。
+`BasePlayer._on_model_loaded()` 创建 `ForceBodyModifier`，`IKRig` 把它排在
+`SpineAimModifier` 之后、`IKLegs` / `IKArms` 之前。`SkeletonModifier3D` 的兄弟顺序即执行顺序，因此
+**IK 拥有最终发言权**（见 [IKRig](IKRig.md)）。
 
 每帧流程：动画与前序 modifier 生成当前姿态 → `ForceBodyModifier` 读取当前剩余力
 → 只在这一帧姿态上叠加旋转/位移。修改器不保存或回写上一帧的骨骼基准，
@@ -145,7 +145,7 @@ apply_force(
 
 `BasePlayer.apply_weapon_recoil()` 将 `RecoilPhysicsModel` 的冲量转换到玩家世界空间，并按 `ForceConfig` 中的肩部、主手和辅手接触刚度分配。每个有效接触点通过 `ForceReceiver.apply_recoil_impulse()` 写入对应骨骼；接触点力矩与剩余纯角冲量共同形成骨骼角位移。后坐力持续时间由武器的转动惯量、控制刚度、阻尼和 `ForceConfig.decay_floor` 推导，不使用固定秒数。后坐力不改变角色根节点速度，也不复用受击的经验性平移/旋转增益。
 
-`ForceReceiver` 将每次射击的角冲量累加到持续的角度/角速度状态，并用解析临界阻尼响应回到零。线性 `ForcePayload` 回收或松开扳机都不会清除这份状态，因此连续射击和停火恢复不会突然归位；`ForceBodyModifier` 仍是唯一的骨骼姿态写回者，并在 Hand IK 之前叠加偏移，让左手 IK 继续约束武器握把。
+`ForceReceiver` 将每次射击的角冲量累加到持续的角度/角速度状态，并用解析临界阻尼响应回到零。线性 `ForcePayload` 回收或松开扳机都不会清除这份状态，因此连续射击和停火恢复不会突然归位；`ForceBodyModifier` 仍是唯一的骨骼姿态写回者，并在 IKRig 之前叠加偏移，让手臂 IK 继续约束武器。
 
 可校准参数：`recoil_shoulder_stiffness`、`recoil_primary_hand_stiffness`、`recoil_support_hand_stiffness`、`recoil_bone_inertia_kg_m2` 和 `decay_floor`。武器端的弹头/装药/燃气/质心/惯量、控制刚度与阻尼仍由 `WeaponConfig`、`BarrelConfig` 和附件配置提供。
 

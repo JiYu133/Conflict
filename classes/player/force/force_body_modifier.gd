@@ -6,8 +6,8 @@ extends SkeletonModifier3D
 # 功能：把当前力产生的旋转与限幅位移叠加到当前帧的上游骨骼姿态。
 #       SkeletonModifier3D 执行前已经收到动画和前序 modifier 的新姿态；
 #       不能回写上一帧缓存，否则后坐力结束时会插入旧姿势并产生跳变。
-# 用法：由 BasePlayer 在模型加载后创建，插在 SpineAimModifier 之后、
-#       第一个 TwoBoneIK3D 之前，使 IK 拥有最终发言权。
+# 用法：由 BasePlayer 在模型加载后创建；IKRig 把它排在 IK modifier 之前，
+#       使 IK 拥有最终发言权。
 # ============================================================
 
 var _receiver: ForceReceiver = null

@@ -24,32 +24,8 @@ extends Resource
 	"Camera", "camera", "Camera3D", "Marker3D"
 ]
 
-# 脚部射线候选名称 ──────────────────────────────────────────
-## 左脚 RayCast 节点候选名称（用于 IK 脚步适配）/ Left foot RayCast candidate node names for IK
-@export var left_foot_ray_names: Array[String] = [
-	"RayCast_LeftFoot", "LeftFootRay", "LeftRay", "leftray"
-]
-## 右脚 RayCast 节点候选名称（用于 IK 脚步适配）/ Right foot RayCast candidate node names for IK
-@export var right_foot_ray_names: Array[String] = [
-	"RayCast_RightFoot", "RightFootRay", "RightRay", "rightray"
-]
-
 # 头部骨骼候选名称（自动创建挂载点时的回退方案）────────────────
 ## 当模型没有 CameraMount 时，从头部骨骼自动创建挂载点 / Head bone candidates used to auto-create camera mount when none exists
 @export var head_bone_names: Array[String] = [
 	"mixamorig_Head", "mixamorig:Head", "Head", "head", "Eye", "eye"
-]
-
-# 手部骨骼候选名称（用于 Hand IK）──────────────────────────────
-## 用于解析右手骨骼的候选名称，按优先顺序匹配。
-@export var right_hand_bone_names: Array[String] = [
-	"mixamorig_RightHand", "RightHand", "Hand_R", "r_hand"
-]
-## Candidate bone names for resolving the left hand.
-@export var left_hand_bone_names: Array[String] = [
-	"mixamorig_LeftHand", "LeftHand", "Hand_L", "l_hand"
-]
-## Candidate bone names for resolving the left arm chain.
-@export var left_arm_bone_names: Array[String] = [
-	"mixamorig_LeftArm", "LeftArm", "Arm_L", "l_arm"
 ]
