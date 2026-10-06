@@ -237,6 +237,7 @@ func enable_camera() -> void:
 	camera_ready.emit(_active_camera)
 	if _active_camera:
 		_active_camera.fov = _camera_config.fov
+		_active_camera.near = _camera_config.near_plane
 
 	_bone_attachment = _find_bone_attachment()
 	if _bone_attachment:

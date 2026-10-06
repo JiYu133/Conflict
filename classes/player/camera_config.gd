@@ -13,6 +13,9 @@ extends Resource
 @export_group("视角控制")
 ## 第一人称视野角度（度）/ Field of view in degrees
 @export var fov: float = 90.0
+## 第一人称近裁剪面（米）。ADS 时眼睛离机匣只有 1~2 cm，默认 0.05 会把机匣切开、露出模型内部。
+## Near clip plane in meters; ADS puts the eye ~2 cm above the receiver.
+@export_range(0.001, 0.1, 0.001) var near_plane: float = 0.01
 ## 鼠标灵敏度（弧度/像素），约 0.003 ≈ 中低灵敏度 / Mouse sensitivity in rad/px
 @export var mouse_sensitivity: float = 0.003
 ## 垂直视角最大角度（弧度），1.4 ≈ 80° / Max vertical look angle in radians
