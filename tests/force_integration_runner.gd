@@ -46,7 +46,7 @@ func _run() -> void:
 		_finish(results)
 		return
 
-	# 修饰器必须存在，且排在 SpineAimModifier 之后、第一个 TwoBoneIK3D 之前
+	# 修饰器必须存在，且排在 SpineAimModifier 之后、IKRig 的第一个 IK 修饰器（IKLegs）之前
 	var modifier = null
 	var spine_index := -1
 	var force_index := -1
@@ -58,7 +58,7 @@ func _run() -> void:
 			force_index = child_index
 		elif child.name == "SpineAimModifier":
 			spine_index = child_index
-		elif child is TwoBoneIK3D and ik_index < 0:
+		elif child.name == "IKLegs" and ik_index < 0:
 			ik_index = child_index
 		child_index += 1
 	results["force_modifier_present"] = modifier != null

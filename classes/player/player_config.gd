@@ -46,10 +46,10 @@ extends Resource
 ## 通用力系统配置（受击反馈的传播/衰减/上限；不挂载时使用默认值）
 @export var force_config: ForceConfig
 
-# 手部 IK 配置 ──────────────────────────────────────────────
-@export_group("手部 IK 配置")
-## 左手 IK 参数
-@export var hand_ik_config: HandIKConfig
+# IK 配置 ──────────────────────────────────────────────────
+@export_group("IK 配置")
+## 双臂握枪与双脚贴地参数
+@export var ik_config: IKRigConfig
 
 ## 脊柱随视角旋转参数
 @export var spine_aim_config: SpineAimConfig

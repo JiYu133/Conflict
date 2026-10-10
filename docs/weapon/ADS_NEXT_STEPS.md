@@ -13,7 +13,7 @@ Before opening a fresh clone, run `git lfs install` and `git lfs pull`; UI audio
 
 ## Work in progress
 
-`WeaponPresentationConfig` and `WeaponPresentationController` are initial, parseable building blocks for the Tarkov-style presentation pass. They are not yet connected to `BasePlayer`, `HandIKController`, obstruction detection, or optic rendering.
+`WeaponPresentationConfig` and `WeaponPresentationController` are initial, parseable building blocks for the Tarkov-style presentation pass. They are not yet connected to `BasePlayer`, `IKRig`, obstruction detection, or optic rendering.
 
 Do not remove the existing camera-controller pose path until all consumers have moved to the new controller and the ADS/IK regression scenes pass.
 
@@ -22,7 +22,7 @@ Do not remove the existing camera-controller pose path until all consumers have 
 1. Add a model-authored `EyeAnchor` under the head `BoneAttachment3D`. Make camera position use it, with a zero-horizontal-offset fallback. Keep look input authoritative for camera rotation.
 2. Instantiate `WeaponPresentationController` in `BasePlayer`, create `WeaponPoseRoot/WeaponSwayPivot` through it, bind equipped weapons, and point the weapon manager and ragdoll system at the new rig.
 3. Remove the rigid per-frame `PlayerCameraController.refresh_weapon_pose()` update only after compatibility getters delegate to the presentation controller.
-4. Change `HandIKController` to sample the final presentation pose every frame. Keep both hands on `TwoBoneIK3D`; do not directly rotate hand bones.
+4. Change `IKRig` to sample the final presentation pose every frame (its arm stage already refreshes the weapon pose before solving).
 5. Replace the unused ray obstruction code with a swept sphere from the eye/weapon origin toward the live muzzle. Exclude every player-owned collision RID, feed a continuous obstruction weight to the pose controller, and block firing before ammunition consumption.
 6. Hide the local head/body from the first-person camera using the existing local visual layer while retaining shadows. Set a small configurable camera near plane to reduce weapon clipping.
 7. Add magnified-optic eye-box parameters (lateral tolerance, eye relief, angular tolerance, softness). Apply the same scope-shadow model to both pixel and dual-camera modes. In pixel mode, sample around the projected optic axis instead of fixed screen center.
@@ -34,4 +34,4 @@ Do not remove the existing camera-controller pose path until all consumers have 
 - The authored sight anchor remains the calibration point, while actual muzzle motion changes projectile direction.
 - Camera never renders inside the local head, the weapon does not enter the camera, and wall obstruction visibly raises/retracts the weapon and prevents firing.
 - Magnified optics show eye-box shadow/parallax as eye alignment drifts. Iron sights and 1x optics ignore the high-magnification mode setting.
-- `ads_system_runner.tscn`, `ik_regression_check.tscn`, `ai_aim_check.tscn`, and `force_integration_runner.gd` pass. The known foot-IK stance-return assertion in `crouch_ik_check.tscn` is unrelated to this ADS pass.
+- `ads_system_runner.tscn`, `ik_rig_check.tscn`, `ai_aim_check.tscn`, and `force_integration_runner.gd` pass.

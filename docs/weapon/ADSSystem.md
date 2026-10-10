@@ -12,7 +12,7 @@
 
 `WeaponMount` under the animated right-hand attachment is now a pose source only. The equipped weapon lives under an independent `WeaponPoseRoot/WeaponSwayPivot` hierarchy. At hip, `WeaponPoseRoot` copies the authored hand mount. During ADS it blends toward the transform that places the active `ADSAnchor` exactly on the camera transform.
 
-Both arms use `TwoBoneIK3D`. `HandTargetSync` refreshes the independent weapon pose and both hand targets after spine/force modifiers and before the arm solvers. The controller does not call `set_bone_pose_rotation()` for either hand; wrist rotation remains owned by the base animation.
+Both arms are solved by `IKRig` (see `docs/player/IKRig.md`). Its arm stage runs after the spine/force modifiers and the leg stage: it refreshes the independent weapon pose, places the right wrist where it holds the weapon mount at hip, places the left wrist on the weapon's `LeftHandWristTarget`, solves both arms, then turns each wrist to its target and applies the grip finger pose.
 
 This separation avoids the former right-hand -> weapon -> grip -> right-hand feedback loop and lets the weapon remain camera-centred while the hands follow it in real time.
 

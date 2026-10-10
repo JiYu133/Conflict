@@ -52,7 +52,6 @@
 [ext_resource type="AnimationLibrary" uid="uid://cm3oysg512ee8" path="res://assets/animations/player/prone_exit.tres" id="42_prone_exit"]
 [ext_resource type="AnimationLibrary" uid="uid://cbu66p313su0a" path="res://assets/animations/player/prone_idle.tres" id="43_prone_idle"]
 [ext_resource type="AnimationLibrary" uid="uid://cdt8e07eajcjs" path="res://assets/animations/player/prone_forward.tres" id="44_prone_forward"]
-[ext_resource type="Script" uid="uid://bswvfbnn6pt4h" path="res://classes/player/foot_ik_controller.gd" id="45_21u12"]
 [ext_resource type="AnimationLibrary" uid="uid://bgueo6bwxhkvx" path="res://assets/animations/player/prone_backward.tres" id="45_prone_backward"]
 [ext_resource type="AnimationLibrary" uid="uid://p24h3n2lql2e" path="res://assets/animations/player/prone_crawl_backward.tres" id="46_prone_crawl_backward"]
 [ext_resource type="AnimationLibrary" uid="uid://bj3mcidx53lox" path="res://assets/animations/player/prone_turn_left.tres" id="47_prone_turn_left"]
@@ -471,81 +470,7 @@ bone_idx = 47
 
 [node name="WeaponMount" type="Node3D" parent="Skeleton3D/RightHandAttachment" index="0" unique_id=157479528]
 
-[node name="LeftHandIK" type="TwoBoneIK3D" parent="Skeleton3D" index="4" unique_id=1304506668]
-influence = 0.0
-setting_count = 1
-settings/0/target_node = NodePath("")
-settings/0/pole_node = NodePath("LeftElbowPole")
-settings/0/root_bone_name = "mixamorig_LeftArm"
-settings/0/root_bone = 12
-settings/0/middle_bone_name = "mixamorig_LeftForeArm"
-settings/0/middle_bone = 13
-settings/0/pole_direction = 0
-settings/0/end_bone_name = "mixamorig_LeftHand"
-settings/0/end_bone = 14
-settings/0/use_virtual_end = false
-settings/0/extend_end_bone = false
-
-[node name="LeftElbowPole" type="Marker3D" parent="Skeleton3D/LeftHandIK" index="0" unique_id=1229097913]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.49126345, 1.4615586, -0.13809228)
-
-[node name="RightHandIK" type="TwoBoneIK3D" parent="Skeleton3D" index="5"]
-influence = 0.0
-setting_count = 1
-settings/0/target_node = NodePath("")
-settings/0/pole_node = NodePath("RightElbowPole")
-settings/0/root_bone_name = "mixamorig_RightArm"
-settings/0/root_bone = 39
-settings/0/middle_bone_name = "mixamorig_RightForeArm"
-settings/0/middle_bone = 40
-settings/0/pole_direction = 0
-settings/0/end_bone_name = "mixamorig_RightHand"
-settings/0/end_bone = 41
-settings/0/use_virtual_end = false
-settings/0/extend_end_bone = false
-
-[node name="RightElbowPole" type="Marker3D" parent="Skeleton3D/RightHandIK" index="0"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.49126345, 1.4615586, -0.13809228)
-
-[node name="LeftFootTarget" type="Marker3D" parent="Skeleton3D" index="6" unique_id=317334819]
-
-[node name="LeftFootIK" type="TwoBoneIK3D" parent="Skeleton3D" index="7" unique_id=102549917]
-influence = 0.0
-setting_count = 1
-settings/0/target_node = NodePath("../LeftFootTarget")
-settings/0/pole_node = NodePath("LeftKneePole")
-settings/0/root_bone_name = "mixamorig_LeftUpLeg"
-settings/0/root_bone = 59
-settings/0/middle_bone_name = "mixamorig_LeftLeg"
-settings/0/middle_bone = 60
-settings/0/pole_direction = 0
-settings/0/end_bone_name = "mixamorig_LeftFoot"
-settings/0/end_bone = 61
-settings/0/use_virtual_end = false
-settings/0/extend_end_bone = false
-
-[node name="LeftKneePole" type="Marker3D" parent="Skeleton3D/LeftFootIK" index="0" unique_id=1455843664]
-
-[node name="RightFootTarget" type="Marker3D" parent="Skeleton3D" index="8" unique_id=1344322249]
-
-[node name="RightFootIK" type="TwoBoneIK3D" parent="Skeleton3D" index="9" unique_id=1141986649]
-influence = 0.0
-setting_count = 1
-settings/0/target_node = NodePath("../RightFootTarget")
-settings/0/pole_node = NodePath("RightKneePole")
-settings/0/root_bone_name = "mixamorig_RightUpLeg"
-settings/0/root_bone = 64
-settings/0/middle_bone_name = "mixamorig_RightLeg"
-settings/0/middle_bone = 65
-settings/0/pole_direction = 0
-settings/0/end_bone_name = "mixamorig_RightFoot"
-settings/0/end_bone = 66
-settings/0/use_virtual_end = false
-settings/0/extend_end_bone = false
-
-[node name="RightKneePole" type="Marker3D" parent="Skeleton3D/RightFootIK" index="0" unique_id=1975033935]
-
-[node name="PhysicalBoneSimulator3D" type="PhysicalBoneSimulator3D" parent="Skeleton3D" index="9" unique_id=504052545]
+[node name="PhysicalBoneSimulator3D" type="PhysicalBoneSimulator3D" parent="Skeleton3D" index="4" unique_id=504052545]
 
 [node name="Physical Bone mixamorig_Hips" type="PhysicalBone3D" parent="Skeleton3D/PhysicalBoneSimulator3D" index="0" unique_id=1220814342]
 transform = Transform3D(-0.976834, -0.21222177, 0.027520277, -0.2128688, 0.97680575, -0.023182848, -0.021962058, -0.028504, -0.99935246, 0.002575868, 0.2025244, 0.03946835)
@@ -808,7 +733,3 @@ parameters/Walk/blend_position = Vector2(0, 0)
 
 [node name="Camera3D" type="Camera3D" parent="." index="4" unique_id=860448908]
 cull_mask = 1048573
-
-[node name="FootIKController" type="Node" parent="." index="5" unique_id=341345463]
-script = ExtResource("45_21u12")
-metadata/_custom_type_script = "uid://bswvfbnn6pt4h"

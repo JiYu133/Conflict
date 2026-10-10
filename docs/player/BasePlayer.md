@@ -11,7 +11,7 @@
 
 `_ready()` 调用 `_initialize_subsystems()`，按以下顺序完成初始化：
 
-1. 创建并添加全部子系统节点（ModelManager、CameraController、RagdollSystem、MovementController、CollisionController、FootIKController、WeaponManager、AnimationController）
+1. 创建并添加全部子系统节点（ModelManager、CameraController、RagdollSystem、MovementController、CollisionController、IKRig、WeaponManager、AnimationController）
 2. 依次调用各子系统的 `initialize()` 方法，传入所需依赖
 3. 将 `movement_controller` 的落地/起跳信号连接到 `camera_controller`
 4. 连接 `model_manager.model_loaded` 与 `weapon_manager.weapon_changed` 信号
@@ -40,7 +40,7 @@
 | `ragdoll_system` | `PlayerRagdollSystem` | 布娃娃系统引用 |
 | `movement_controller` | `PlayerMovementController` | 移动控制器引用 |
 | `collision_controller` | `PlayerCollisionController` | 主环境碰撞体唯一所有者 |
-| `foot_ik_controller` | `FootIKController` | 脚部 IK 控制器引用 |
+| `ik_rig` | `IKRig` | 双臂握枪 + 双脚贴地 IK |
 | `weapon_manager` | `WeaponManager` | 武器管理器引用 |
 | `animation_controller` | `PlayerAnimationController` | 动画控制器引用 |
 
@@ -62,7 +62,7 @@
 
 ## 依赖关系
 
-- **依赖：** `PlayerConfig`、`PlayerModelManager`、`PlayerCameraController`、`PlayerRagdollSystem`、`PlayerMovementController`、`FootIKController`、`WeaponManager`、`PlayerAnimationController`、`WeaponObstructionDetector`、`GlobalLogger`
+- **依赖：** `PlayerConfig`、`PlayerModelManager`、`PlayerCameraController`、`PlayerRagdollSystem`、`PlayerMovementController`、`IKRig`、`WeaponManager`、`PlayerAnimationController`、`WeaponObstructionDetector`、`GlobalLogger`
 - **被依赖：** 场景树中的具体玩家场景节点；其他需要访问玩家子系统的外部系统
 
 ## 注意事项

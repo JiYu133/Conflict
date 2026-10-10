@@ -64,7 +64,7 @@ func _run() -> void:
 	# A correct command alone is insufficient if it never moves the muzzle.
 	var weapon := bot.weapon_manager.current_weapon
 	var samples := {}
-	bot.hand_ik_controller._target_modifier.modification_processed.connect(
+	bot.ik_rig.arms_processed.connect(
 		func(): samples["direction"] = weapon._get_muzzle_direction()
 	)
 	brain._face(bot.global_position + Vector3(0, 0, -10))
