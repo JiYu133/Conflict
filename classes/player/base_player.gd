@@ -626,7 +626,9 @@ func _sync_weapon_weight_to_stamina() -> void:
 
 
 func _process(delta: float) -> void:
-	if weapon_manager and weapon_manager.is_aiming and (not is_alive or not controllable):
+	# AIPlayers are never `controllable` (no local input) but still aim through
+	# the AI bridge, so only a non-controllable human loses ADS here.
+	if weapon_manager and weapon_manager.is_aiming and (not is_alive or not (controllable or is_ai_player)):
 		weapon_manager.cancel_aiming()
 	var stance_geometry_settled := not stance_controller \
 			or not stance_controller.is_stance_transitioning()

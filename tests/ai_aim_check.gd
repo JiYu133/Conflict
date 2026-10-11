@@ -29,7 +29,7 @@ func _run() -> void:
 
 	# Exercise the brain entry point, not just the view setter.
 	for direction in [Vector3.RIGHT, Vector3.LEFT, Vector3.FORWARD, Vector3.BACK]:
-		brain._face(bot.global_position + direction * 10.0)
+		brain.face(bot.global_position + direction * 10.0)
 		spine.process_aim(1.0, true)
 		if not _check(absf(camera.get_body_yaw_offset()) < 0.0001, "AI body and view agree after facing " + str(direction)):
 			return
@@ -39,7 +39,7 @@ func _run() -> void:
 			return
 
 	for height in [5.0, -5.0]:
-		brain._face(bot.global_position + Vector3(10, height, 0))
+		brain.face(bot.global_position + Vector3(10, height, 0))
 		spine.process_aim(1.0, true)
 		var expected_pitch := atan2(height, 10.0)
 		if not _check(absf(camera.get_vertical_angle() - expected_pitch) < 0.0001, "AI view retains target elevation"):
@@ -49,15 +49,17 @@ func _run() -> void:
 		if not _check(absf(bot.rotation.x) < 0.0001 and absf(bot.rotation.z) < 0.0001, "aiming keeps the character capsule upright"):
 			return
 
-	# Profile aim error must change the coherent aim, not only the body transform.
+	# The default aim provider must steer the coherent aim, not only the body transform.
 	var profile := AIProfile.new()
 	profile.aim_error_degrees = 3.0
-	var pitch_before := camera.get_vertical_angle()
+	var aim := AISimpleAim.new()
+	aim.begin_aim(brain, player)
 	for i in 8:
-		brain._apply_aim_error(profile)
-		if not _check(absf(camera.get_body_yaw_offset()) < 0.0001, "aim error keeps body/view synchronized"):
+		aim.update_aim(brain, player, profile, 0.016)
+		aim.on_shot_fired(brain)
+		if not _check(absf(camera.get_body_yaw_offset()) < 0.0001, "aim provider keeps body/view synchronized"):
 			return
-		if not _check(absf(camera.get_vertical_angle() - pitch_before) < 0.0001, "yaw error preserves elevation"):
+		if not _check(absf(bot.rotation.x) < 0.0001 and absf(bot.rotation.z) < 0.0001, "aim provider keeps the capsule upright"):
 			return
 
 	# Observe the actual rendered weapon after the spine/attachment modifier chain.
@@ -67,21 +69,21 @@ func _run() -> void:
 	bot.hand_ik_controller._target_modifier.modification_processed.connect(
 		func(): samples["direction"] = weapon._get_muzzle_direction()
 	)
-	brain._face(bot.global_position + Vector3(0, 0, -10))
+	brain.face(bot.global_position + Vector3(0, 0, -10))
 	spine.process_aim(1.0, true)
 	for i in 3:
 		await get_tree().process_frame
 	if not _check(samples.has("direction"), "weapon direction is sampled after pose modification"):
 		return
 	var level_direction: Vector3 = samples.direction
-	brain._face(bot.global_position + Vector3(0, 5, -10))
+	brain.face(bot.global_position + Vector3(0, 5, -10))
 	spine.process_aim(1.0, true)
 	for i in 3:
 		await get_tree().process_frame
 	var elevated_direction: Vector3 = samples.direction
 	if not _check(elevated_direction.y > level_direction.y + 0.1, "elevated aim raises the actual muzzle direction"):
 		return
-	brain._move_to(bot.global_position + Vector3(10, 3, 0), profile, 0.016)
+	brain.move_to(bot.global_position + Vector3(10, 3, 0), profile, 0.016)
 	if not _check(absf(camera.get_vertical_angle()) < 0.0001, "navigation restores a level heading"):
 		return
 

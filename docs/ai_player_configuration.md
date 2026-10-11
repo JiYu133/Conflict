@@ -57,7 +57,11 @@ AIPlayer 会复制本局玩家的角色与真实武器配置；设置它们才�
 
 打开 `assets/config/ai/trees/ai_default_behavior_tree.tres`，用 LimboAI 编辑器替换根任务或建立子树，然后把保存后的资源赋给某个 `AIConfig.behavior_tree`。运行时 `AIPlayerManager` 创建 AIPlayer，`EncounterAIDirector` 将该资源交给 AIPlayer 的 `BTPlayer` 执行。
 
-行为树任务通过 AIPlayer 的 `ai_player_brain` 元数据取得执行对象。移动必须调用 AIPlayer 的虚拟输入，开火必须调用武器扳机输入；不要在任务中直接写 `velocity`、生成子弹或调用伤害接口。
+默认树的分支、黑板变量、自定义任务和瞄准接口见
+[AI 系统概览](ai/AISystemOverview.md#行为树)。改结构后若想恢复默认树，可运行
+`tools/build_ai_behavior_tree.gd`（会覆盖该资源）。
+
+行为树任务通过 AIPlayer 的 `ai_player_brain` 元数据取得执行对象（`AIBT.brain_of(agent)`）。移动必须调用 AIPlayer 的虚拟输入，开火必须调用武器扳机输入；不要在任务中直接写 `velocity`、生成子弹或调用伤害接口。
 
 `AIProfile` 中的感知、反应、记忆、射击、弹药、跑步、撤退冲刺和蹲伏字段都会在运行时生效。医疗互助暂未接入行为树。
 
