@@ -51,8 +51,7 @@ func _run() -> void:
 	player.velocity = Vector3.RIGHT
 	camera.call("_sync_moving_body_yaw", 1.0)
 	var body_yaw := float(player.rotation.y)
-	results["body_follows_velocity"] = absf(angle_difference(body_yaw, -PI * 0.5)) < EPSILON
-	results["body_does_not_follow_view"] = absf(angle_difference(body_yaw, 0.0)) > 1.0
+	results["body_stays_view_aligned"] = absf(angle_difference(body_yaw, 0.0)) < EPSILON
 
 	# Keep the same velocity-driven body pose and ask the spine modifier to aim at
 	# the view direction. A non-zero correction proves the upper body is separate.
@@ -67,9 +66,8 @@ func _run() -> void:
 	player.velocity = Vector3.BACK
 	camera.call("_sync_moving_body_yaw", 1.0)
 	var backward_body_yaw := float(player.rotation.y)
-	var backward_local_velocity: Vector3 = player.global_transform.basis.transposed() * player.velocity
 	results["backward_keeps_view_facing_body"] = absf(angle_difference(backward_body_yaw, 0.0)) < EPSILON
-	results["backward_animation_direction_preserved"] = -backward_local_velocity.z < -EPSILON
+	results["backward_velocity_is_not_used_for_body_yaw"] = absf(angle_difference(backward_body_yaw, 0.0)) < EPSILON
 
 	# A large view/body mismatch must interrupt locomotion and keep the turn
 	# active even though horizontal velocity remains non-zero.

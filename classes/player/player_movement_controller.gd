@@ -43,6 +43,7 @@ var _was_controllable: bool = true
 var _gait_phase: float = 0.0
 var _burst_timer: float = 0.0
 var _had_input: bool = false
+var _locomotion_direction_world: Vector3 = Vector3.ZERO
 
 var _shift_held_time: float = 0.0
 var _shift_was_held: bool = false
@@ -101,6 +102,14 @@ func get_prone_roll_progress() -> float:
 	if not _prone_rolling or _prone_roll_duration <= 0.0:
 		return 0.0
 	return clampf(1.0 - _prone_roll_timer / _prone_roll_duration, 0.0, 1.0)
+
+func get_locomotion_direction_world() -> Vector3:
+	return _locomotion_direction_world
+
+func _set_locomotion_direction_from_world(world_direction: Vector3) -> void:
+	var horizontal := Vector3(world_direction.x, 0.0, world_direction.z)
+	if horizontal.length_squared() > 0.000001:
+		_locomotion_direction_world = horizontal.normalized()
 
 ## Single source of truth for the three gameplay locomotion postures.
 func get_locomotion_mode() -> LocomotionMode:
@@ -164,6 +173,7 @@ func initialize(player: BasePlayer, config: PlayerConfig, camera_controller: Pla
 func set_test_motion_velocity(world_velocity: Vector3) -> void:
 	_test_motion_active = true
 	_test_motion_velocity = world_velocity
+	_set_locomotion_direction_from_world(world_velocity)
 	_velocity = world_velocity
 	if _player:
 		_player.velocity = world_velocity
@@ -181,6 +191,7 @@ func clear_test_motion() -> void:
 func set_ai_motion_velocity(world_velocity: Vector3) -> void:
 	_ai_motion_active = true
 	_ai_motion_velocity = world_velocity
+	_set_locomotion_direction_from_world(world_velocity)
 
 
 func clear_ai_motion() -> void:
@@ -289,6 +300,9 @@ func _physics_process(delta: float) -> void:
 		shift_held = Input.is_action_pressed("sprint")
 		has_forward = Input.is_action_pressed("move_forward")
 	var has_input := input_dir.length() > _config.input_dead_zone
+	if has_input:
+		var input_basis := _camera_controller.get_view_basis() if _camera_controller else _player.global_basis
+		_locomotion_direction_world = (input_basis.x * input_dir.x + input_basis.z * input_dir.y).normalized()
 	if get_locomotion_mode() == LocomotionMode.PRONE:
 		_process_prone_movement(delta, input_dir, has_input, ai_driving)
 		return
@@ -346,7 +360,7 @@ func _physics_process(delta: float) -> void:
 
 		if has_input:
 			var basis := _camera_controller.get_view_basis() if _camera_controller else _player.global_basis
-			var direction := (basis.x * input_dir.x + basis.z * input_dir.y).normalized()
+			var direction := _locomotion_direction_world
 
 			# 3b. 方向速度上限：横向 80%、后退 70%
 			var forward_dot: float = direction.dot(-basis.z)

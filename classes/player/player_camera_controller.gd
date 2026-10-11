@@ -1036,14 +1036,7 @@ func _get_horizontal_velocity_yaw() -> float:
 
 
 func _get_moving_body_target_yaw(movement_config: MovementConfig = null) -> float:
-	var view_yaw := get_base_view_yaw()
-	var velocity_yaw := _get_horizontal_velocity_yaw()
-	var threshold_degrees := movement_config.moving_body_velocity_yaw_threshold_degrees \
-		if movement_config else 120.0
-	var velocity_view_offset := absf(angle_difference(view_yaw, velocity_yaw))
-	if velocity_view_offset > deg_to_rad(clampf(threshold_degrees, 0.0, 180.0)):
-		return view_yaw
-	return velocity_yaw
+	return get_base_view_yaw()
 
 
 var _body_yaw_blend_remaining: float = 0.0

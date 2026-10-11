@@ -454,9 +454,15 @@ func _update_blend_positions() -> void:
 
 	# 将世界速度转换到玩家局部坐标系，取水平分量
 	# 玩家 basis 只做 yaw 旋转（正交），transposed() 等价于 inverse() 且更便宜
-	var local_vel: Vector3 = _player.global_transform.basis.transposed() * _player.velocity
-	# 局部坐标：X = 右，-Z = 前；BlendSpace2D 约定 Y 轴正方向 = 前进
-	var vel_2d := Vector2(local_vel.x, -local_vel.z)
+	var locomotion_direction := _movement.get_locomotion_direction_world()
+	var local_direction := Vector3.ZERO
+	if not locomotion_direction.is_zero_approx():
+		local_direction = _player.global_transform.basis.transposed() * locomotion_direction.normalized()
+	var direction_2d := Vector2(local_direction.x, -local_direction.z)
+	if not direction_2d.is_zero_approx():
+		direction_2d = direction_2d.normalized()
+	var horizontal_speed := Vector2(_player.velocity.x, _player.velocity.z).length()
+	var vel_2d := direction_2d * horizontal_speed
 
 	# 速度与上一帧相同（如静止站立）时跳过写入，避免无谓的参数路径解析
 	if vel_2d == _last_blend_vel:
