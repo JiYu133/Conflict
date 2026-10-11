@@ -1,9 +1,249 @@
 [gd_resource type="BehaviorTree" format=3 uid="uid://bh3ru3mbh5ens"]
 
-[ext_resource type="Script" uid="uid://d0dlholotqmrx" path="res://classes/bot/limbo/limbo_bot_tick.gd" id="1_task"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/sense_environment.gd" id="1_83h64"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/check_flag.gd" id="2_cj8g8"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/hold_position.gd" id="3_dm6fp"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/move_to.gd" id="4_cdwxj"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/clear_malfunction.gd" id="5_68a7f"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/reload_weapon.gd" id="6_cngm0"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/follow_squad_command.gd" id="7_yrwdy"]
+[ext_resource type="Script" path="res://classes/bot/aim/ai_simple_aim.gd" id="8_r6f02"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/aim_at_target.gd" id="9_rt170"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/fire_at_target.gd" id="10_8ey35"]
+[ext_resource type="Script" path="res://classes/bot/limbo/tasks/search_last_known.gd" id="11_xtfew"]
 
-[sub_resource type="BTAction" id="BTAction_ai_tick"]
-script = ExtResource("1_task")
+[sub_resource type="BTAction" id="BTAction_w0jk4"]
+script = ExtResource("1_83h64")
+
+[sub_resource type="BTCondition" id="BTCondition_5qw5w"]
+script = ExtResource("2_cj8g8")
+flag = &"is_incapacitated"
+
+[sub_resource type="BTAction" id="BTAction_s1tf0"]
+script = ExtResource("3_dm6fp")
+crouch_when_holding = false
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_a5ecl"]
+custom_name = "Incapacitated"
+children = [SubResource("BTCondition_5qw5w"), SubResource("BTAction_s1tf0")]
+
+[sub_resource type="BTCondition" id="BTCondition_kythv"]
+script = ExtResource("2_cj8g8")
+flag = &"retreat_order"
+
+[sub_resource type="BTCondition" id="BTCondition_gcw2v"]
+script = ExtResource("2_cj8g8")
+flag = &"at_extraction"
+
+[sub_resource type="BTAction" id="BTAction_ugl22"]
+script = ExtResource("3_dm6fp")
+face_var = &"last_known_enemy_position"
+profile_context = &"retreat"
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_d81u7"]
+custom_name = "Hold extraction"
+children = [SubResource("BTCondition_gcw2v"), SubResource("BTAction_ugl22")]
+
+[sub_resource type="BTAction" id="BTAction_0u7yi"]
+script = ExtResource("4_cdwxj")
+destination_var = &"rally_position"
+profile_context = &"retreat"
+run = true
+sprint = true
+release_weapon = true
+
+[sub_resource type="BTDynamicSelector" id="BTDynamicSelector_ww2a3"]
+custom_name = "Hold at extraction or fall back"
+children = [SubResource("BTDynamicSequence_d81u7"), SubResource("BTAction_0u7yi")]
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_tfwdu"]
+custom_name = "Retreat"
+children = [SubResource("BTCondition_kythv"), SubResource("BTDynamicSelector_ww2a3")]
+
+[sub_resource type="BTCondition" id="BTCondition_tasmv"]
+script = ExtResource("2_cj8g8")
+flag = &"weapon_malfunction"
+
+[sub_resource type="BTAction" id="BTAction_irjn8"]
+script = ExtResource("5_68a7f")
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_pdmet"]
+custom_name = "Clear malfunction"
+children = [SubResource("BTCondition_tasmv"), SubResource("BTAction_irjn8")]
+
+[sub_resource type="BTCondition" id="BTCondition_n6tne"]
+script = ExtResource("2_cj8g8")
+flag = &"needs_reload"
+
+[sub_resource type="BTAction" id="BTAction_7sx35"]
+script = ExtResource("6_cngm0")
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_mpjee"]
+custom_name = "Reload"
+children = [SubResource("BTCondition_n6tne"), SubResource("BTAction_7sx35")]
+
+[sub_resource type="BTCondition" id="BTCondition_pomak"]
+script = ExtResource("2_cj8g8")
+flag = &"command_ignores_enemies"
+
+[sub_resource type="BTAction" id="BTAction_l82e5"]
+script = ExtResource("7_yrwdy")
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_asgsr"]
+custom_name = "Ordered move (ignores enemies)"
+children = [SubResource("BTCondition_pomak"), SubResource("BTAction_l82e5")]
+
+[sub_resource type="BTCondition" id="BTCondition_6y50x"]
+script = ExtResource("2_cj8g8")
+
+[sub_resource type="BTCondition" id="BTCondition_ot47t"]
+script = ExtResource("2_cj8g8")
+flag = &"target_visible"
+
+[sub_resource type="BTCondition" id="BTCondition_vdlmd"]
+script = ExtResource("2_cj8g8")
+flag = &"target_reacted"
+expected = false
+
+[sub_resource type="BTAction" id="BTAction_csj6r"]
+script = ExtResource("3_dm6fp")
+face_var = &"target_position"
+profile_context = &"combat"
+crouch_when_holding = false
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_2eyeh"]
+custom_name = "React to new target"
+children = [SubResource("BTCondition_6y50x"), SubResource("BTCondition_ot47t"), SubResource("BTCondition_vdlmd"), SubResource("BTAction_csj6r")]
+
+[sub_resource type="BTCondition" id="BTCondition_2ou3s"]
+script = ExtResource("2_cj8g8")
+
+[sub_resource type="BTCondition" id="BTCondition_1is8a"]
+script = ExtResource("2_cj8g8")
+flag = &"target_visible"
+
+[sub_resource type="BTCondition" id="BTCondition_t24rv"]
+script = ExtResource("2_cj8g8")
+flag = &"is_suppressing"
+
+[sub_resource type="Resource" id="Resource_iy5ac"]
+script = ExtResource("8_r6f02")
+turn_speed_degrees = 540.0
+ready_tolerance_degrees = 2.0
+offset_smoothing = 0.3
+
+[sub_resource type="BTAction" id="BTAction_w218l"]
+script = ExtResource("9_rt170")
+aim_provider = SubResource("Resource_iy5ac")
+profile_context = &"suppress"
+
+[sub_resource type="BTAction" id="BTAction_sdc15"]
+script = ExtResource("10_8ey35")
+profile_context = &"suppress"
+
+[sub_resource type="BTParallel" id="BTParallel_nxlgk"]
+custom_name = "Aim + Fire (suppress)"
+children = [SubResource("BTAction_w218l"), SubResource("BTAction_sdc15")]
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_tdx3c"]
+custom_name = "Suppress"
+children = [SubResource("BTCondition_2ou3s"), SubResource("BTCondition_1is8a"), SubResource("BTCondition_t24rv"), SubResource("BTParallel_nxlgk")]
+
+[sub_resource type="BTCondition" id="BTCondition_7gdqg"]
+script = ExtResource("2_cj8g8")
+
+[sub_resource type="BTCondition" id="BTCondition_s5t8m"]
+script = ExtResource("2_cj8g8")
+flag = &"target_visible"
+
+[sub_resource type="BTCondition" id="BTCondition_yru2e"]
+script = ExtResource("2_cj8g8")
+flag = &"target_in_range"
+
+[sub_resource type="Resource" id="Resource_dgp48"]
+script = ExtResource("8_r6f02")
+turn_speed_degrees = 540.0
+ready_tolerance_degrees = 2.0
+offset_smoothing = 0.3
+
+[sub_resource type="BTAction" id="BTAction_y34a1"]
+script = ExtResource("9_rt170")
+aim_provider = SubResource("Resource_dgp48")
+
+[sub_resource type="BTAction" id="BTAction_s60wo"]
+script = ExtResource("10_8ey35")
+
+[sub_resource type="BTParallel" id="BTParallel_g6mdx"]
+custom_name = "Aim + Fire (combat)"
+children = [SubResource("BTAction_y34a1"), SubResource("BTAction_s60wo")]
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_61x4k"]
+custom_name = "Engage"
+children = [SubResource("BTCondition_7gdqg"), SubResource("BTCondition_s5t8m"), SubResource("BTCondition_yru2e"), SubResource("BTParallel_g6mdx")]
+
+[sub_resource type="BTCondition" id="BTCondition_hw5ec"]
+script = ExtResource("2_cj8g8")
+flag = &"has_command"
+
+[sub_resource type="BTAction" id="BTAction_sij74"]
+script = ExtResource("7_yrwdy")
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_6ax7o"]
+custom_name = "Follow squad command"
+children = [SubResource("BTCondition_hw5ec"), SubResource("BTAction_sij74")]
+
+[sub_resource type="BTCondition" id="BTCondition_qamor"]
+script = ExtResource("2_cj8g8")
+
+[sub_resource type="BTCondition" id="BTCondition_oxsb5"]
+script = ExtResource("2_cj8g8")
+flag = &"target_visible"
+
+[sub_resource type="BTAction" id="BTAction_o37fi"]
+script = ExtResource("4_cdwxj")
+destination_var = &"target_position"
+profile_context = &"combat"
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_4im4p"]
+custom_name = "Chase"
+children = [SubResource("BTCondition_qamor"), SubResource("BTCondition_oxsb5"), SubResource("BTAction_o37fi")]
+
+[sub_resource type="BTCondition" id="BTCondition_7ldmk"]
+script = ExtResource("2_cj8g8")
+flag = &"has_enemy_memory"
+
+[sub_resource type="BTAction" id="BTAction_joutp"]
+script = ExtResource("11_xtfew")
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_jjgal"]
+custom_name = "Search"
+children = [SubResource("BTCondition_7ldmk"), SubResource("BTAction_joutp")]
+
+[sub_resource type="BTCondition" id="BTCondition_ifqcb"]
+script = ExtResource("2_cj8g8")
+flag = &"at_objective"
+expected = false
+
+[sub_resource type="BTAction" id="BTAction_gh8fo"]
+script = ExtResource("4_cdwxj")
+run = true
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_4dnp5"]
+custom_name = "Move to objective"
+children = [SubResource("BTCondition_ifqcb"), SubResource("BTAction_gh8fo")]
+
+[sub_resource type="BTAction" id="BTAction_6elea"]
+custom_name = "Patrol objective (hold)"
+script = ExtResource("3_dm6fp")
+
+[sub_resource type="BTDynamicSelector" id="BTDynamicSelector_ovlpm"]
+custom_name = "Decide (top = highest priority)"
+children = [SubResource("BTDynamicSequence_a5ecl"), SubResource("BTDynamicSequence_tfwdu"), SubResource("BTDynamicSequence_pdmet"), SubResource("BTDynamicSequence_mpjee"), SubResource("BTDynamicSequence_asgsr"), SubResource("BTDynamicSequence_2eyeh"), SubResource("BTDynamicSequence_tdx3c"), SubResource("BTDynamicSequence_61x4k"), SubResource("BTDynamicSequence_6ax7o"), SubResource("BTDynamicSequence_4im4p"), SubResource("BTDynamicSequence_jjgal"), SubResource("BTDynamicSequence_4dnp5"), SubResource("BTAction_6elea")]
+
+[sub_resource type="BTDynamicSequence" id="BTDynamicSequence_eq7kp"]
+custom_name = "AI Root"
+children = [SubResource("BTAction_w0jk4"), SubResource("BTDynamicSelector_ovlpm")]
 
 [resource]
-root_task = SubResource("BTAction_ai_tick")
+description = "Default AIPlayer behaviour: sense, then the highest-priority branch whose conditions hold."
+root_task = SubResource("BTDynamicSequence_eq7kp")
