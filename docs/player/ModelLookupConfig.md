@@ -1,6 +1,6 @@
 # ModelLookupConfig
 
-**文件路径：** `Classes/Player/model_lookup_config.gd`
+**文件路径：** `classes/player/config/model_lookup_config.gd`
 **继承自：** `Resource`
 
 ## 功能概述

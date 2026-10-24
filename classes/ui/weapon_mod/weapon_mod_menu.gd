@@ -1,5 +1,8 @@
 extends CanvasLayer
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 ## 武器改装界面（军械档案 / Ordnance Dossier 风格）
 ##
 ## 布局：武器 3D 侧视图居中，各挂载点用贝塞尔引线牵引到左右两侧的槽位卡片；
@@ -1123,7 +1126,7 @@ func _apply_changes() -> void:
 	for slot_name in _draft_rail_offsets:
 		am.set_rail_offset(slot_name, float(_draft_rail_offsets[slot_name]))
 	_dirty = false
-	GlobalLogger.info("WeaponMod", "改装已应用到武器")
+	_logger.info("WeaponMod", "改装已应用到武器")
 	_rebuild_all()
 
 

@@ -3,7 +3,7 @@ extends CanvasLayer
 ## 本地暂停菜单：阻断本地玩家输入，不暂停场景树，兼容未来多人游戏。
 
 const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
-const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
+const SettingsText = preload("res://classes/services/settings_text.gd")
 const BLUR_SHADER_PATH := "res://assets/shaders/death_blur.gdshader"
 const TITLE_SCENE := "res://assets/title/title_screen.tscn"
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)

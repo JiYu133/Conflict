@@ -1,6 +1,9 @@
 class_name StaminaSystem
 extends Node
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 # ============================================================
 # 体力子系统
 # 功能：跟踪玩家体力值，依据运动状态消耗/恢复体力，
@@ -51,7 +54,7 @@ func initialize(player: BasePlayer, config: StaminaConfig) -> void:
 	if _player:
 		_player.revived.connect(_on_player_revived)
 
-	GlobalLogger.info("StaminaSystem", "Initialized. max_stamina=%.1f" % max_stamina)
+	_logger.info("StaminaSystem", "Initialized. max_stamina=%.1f" % max_stamina)
 
 # 生命周期 ──────────────────────────────────────────────────────
 func _physics_process(delta: float) -> void:
@@ -111,13 +114,13 @@ func _physics_process(delta: float) -> void:
 	if not _is_exhausted and stamina <= _config.exhaustion_threshold:
 		_is_exhausted = true
 		became_exhausted.emit()
-		GlobalLogger.debug("StaminaSystem", "Exhausted!")
+		_logger.debug("StaminaSystem", "Exhausted!")
 	elif _is_exhausted and stamina >= _config.recovery_threshold \
 			and _movement_state != MovementState.SPRINTING \
 			and _movement_state != MovementState.RUNNING:
 		_is_exhausted = false
 		recovered_from_exhaustion.emit()
-		GlobalLogger.debug("StaminaSystem", "Recovered from exhaustion.")
+		_logger.debug("StaminaSystem", "Recovered from exhaustion.")
 
 	# 4. 发信号（仅在值变化时）
 	if stamina != prev_stamina:
@@ -253,4 +256,4 @@ func _on_player_revived() -> void:
 	_recovery_timer = 0.0
 	_movement_state = MovementState.IDLE
 	stamina_changed.emit(get_stamina_pct())
-	GlobalLogger.info("StaminaSystem", "Reset on revive.")
+	_logger.info("StaminaSystem", "Reset on revive.")

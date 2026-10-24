@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="AimConfig" format=3]
+
+[ext_resource type="Script" path="res://classes/player/config/aim_config.gd" id="1_aim"]
+
+[resource]
+script = ExtResource("1_aim")
+raise_speed = 1.0
+lower_speed = 1.0
+breathing_frequency_hz = 0.3
+breathing_position = Vector3(0.0015, 0.0025, 0.0008)
+breathing_rotation_degrees = Vector3(0.12, 0.08, 0.15)
+hold_blend_time = 0.25
+release_blend_time = 0.4

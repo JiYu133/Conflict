@@ -1,6 +1,9 @@
 class_name DeathBloodEffect
 extends Node3D
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 ## 独立的死亡后外部渗血表现。
 ##
 ## 依赖方向：BasePlayer died/revived + 注入的出血点 Callable -> 本节点。
@@ -134,7 +137,7 @@ func _start_effect() -> void:
 	_ground_ray.force_raycast_update()
 	var ground_point: Vector3 = _ground_ray.get_collision_point() if _ground_ray.is_colliding() else _player.global_position
 	if not _ground_ray.is_colliding():
-		GlobalLogger.warn("DeathBloodEffect", "No ground below wound; using player origin for blood pool fallback.")
+		_logger.warn("DeathBloodEffect", "No ground below wound; using player origin for blood pool fallback.")
 	_create_pool(ground_point)
 	_start_drips()
 

@@ -29,8 +29,8 @@ extends Resource
 @export var recoil_yaw_damping: float = 28.0
 @export_range(0.0, 1.5, 0.001) var recoil_max_pitch_rad: float = 0.18
 @export_range(0.0, 1.5, 0.001) var recoil_max_yaw_rad: float = 0.10
-## ADS increases spring stiffness, reducing visible displacement while aiming.
-@export var recoil_ads_stiffness_multiplier: float = 2.0
+## Deprecated compatibility field. ADS never changes recoil recovery.
+@export_storage var recoil_ads_stiffness_multiplier: float = 2.0
 
 # 弹簧稳定器 ─────────────────────────────────────────────
 @export_group("弹簧稳定器")

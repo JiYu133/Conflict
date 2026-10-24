@@ -9,7 +9,7 @@
 
 ## 文件
 
-实现位于 `classes/player/screen_post_process.gd`，全局类名为 `ScreenPostProcess`。
+实现位于 `classes/player/system/screen_post_process.gd`，全局类名为 `ScreenPostProcess`。
 
 ## 使用方式
 

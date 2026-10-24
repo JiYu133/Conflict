@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="SpineAimConfig" format=3 uid="uid://dajgluoo4sy1f"]
 
-[ext_resource type="Script" uid="uid://jc0pbcd3bsyq" path="res://classes/player/spine_aim_config.gd" id="1_spine"]
+[ext_resource type="Script" uid="uid://jc0pbcd3bsyq" path="res://classes/player/config/spine_aim_config.gd" id="1_spine"]
 
 [resource]
 script = ExtResource("1_spine")

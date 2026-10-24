@@ -1,74 +1,83 @@
 class_name WeaponObstructionDetector
 extends Node
 
-# ============================================================
-# 武器遮挡检测器
-# 功能：每帧从摄像机位置向前发射短射线，检测武器前方是否有障碍物。
-#       有障碍时按距离比例将武器沿 -Z 轴平滑缩回，
-#       障碍消失时自动归位。
-#       射线长度动态读取当前武器配置（weapon_length + 枪口配件修正），
-#       确保安装消音器等枪口装置后也能正确检测。
-# 用法：由 BasePlayer 在模型加载后初始化，传入玩家、摄像机、武器管理器、晃动支点。
-# 注意：纯本地视觉效果，不影响任何物理或网络同步状态。
-# ============================================================
+## Physics probe only; transforms and settings are injected by composition.
+signal obstruction_changed(weight: float)
 
-const RETRACT_SPEED: float = 12.0  # 归位插值速度
-const MAX_RETRACT: float = 0.35    # 最大缩进距离（m）
-const FALLBACK_RAY_LENGTH: float = 0.75  # 无武器时的默认检测距离
-
-var _player: CharacterBody3D
-var _camera: Camera3D
-var _weapon_manager: WeaponManager
-var _sway_pivot: Node3D
-
-var _retract_amount: float = 0.0
+var _body: Node3D
+var _eye_provider: Callable
+var _muzzle_provider: Callable
+var _radius_provider: Callable
+var _weight := 0.0
+var _warned_missing := false
 
 
-func initialize(player: CharacterBody3D, camera: Camera3D, weapon_manager: WeaponManager, sway_pivot: Node3D) -> void:
-	_player = player
-	_camera = camera
-	_weapon_manager = weapon_manager
-	_sway_pivot = sway_pivot
+func initialize(body: Node3D, eye_provider: Callable, muzzle_provider: Callable, radius_provider: Callable) -> void:
+	_body = body
+	_eye_provider = eye_provider
+	_muzzle_provider = muzzle_provider
+	_radius_provider = radius_provider
 
 
-func _physics_process(delta: float) -> void:
-	if not _player or not _camera or not _sway_pivot:
-		return
-
-	var target_retract: float = _get_target_retract()
-	_retract_amount = lerp(_retract_amount, target_retract, clamp(delta * RETRACT_SPEED, 0.0, 1.0)) as float
-	_sway_pivot.position.z = -_retract_amount
+func _physics_process(_delta: float) -> void:
+	refresh()
 
 
-func _get_ray_length() -> float:
-	if not _weapon_manager or not _weapon_manager.current_weapon:
-		return FALLBACK_RAY_LENGTH
-
-	var weapon: BaseWeapon = _weapon_manager.current_weapon
-	if not weapon.config:
-		return FALLBACK_RAY_LENGTH
-
-	var length: float = weapon.config.weapon_length
-	if weapon.attachment_manager:
-		length += weapon.attachment_manager.get_total_length_modifier()
-	return max(length, 0.1)
+func refresh() -> void:
+	_weight = _probe()
+	obstruction_changed.emit(_weight)
 
 
-func _get_target_retract() -> float:
-	var ray_length: float = _get_ray_length()
-	var space_state: PhysicsDirectSpaceState3D = _player.get_world_3d().direct_space_state
-	var from: Vector3 = _camera.global_position
-	var forward: Vector3 = -_camera.global_transform.basis.z
-	var to: Vector3 = from + forward * ray_length
-
-	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(from, to)
-	query.collision_mask = PhysicsLayers.WEAPON_OBSTRUCTION
-	query.exclude = [_player.get_rid()]
-
-	var result: Dictionary = space_state.intersect_ray(query)
-	if result.is_empty():
+func _probe() -> float:
+	if not is_instance_valid(_body) or not _eye_provider.is_valid() or not _muzzle_provider.is_valid():
+		_report_missing()
 		return 0.0
+	var muzzle: Dictionary = _muzzle_provider.call()
+	if muzzle.is_empty():
+		return 0.0
+	var world := _body.get_world_3d()
+	if not world:
+		_report_missing()
+		return 0.0
+	var origin: Vector3 = _eye_provider.call()
+	var position: Vector3 = muzzle["position"]
+	var direction: Vector3 = muzzle["direction"]
+	# Keep the sweep long enough during withdrawal so retracting the weapon
+	# does not hide the wall that triggered it.
+	var length := maxf(origin.distance_to(position), float(muzzle.get("length", 0.1)))
+	var shape := SphereShape3D.new()
+	shape.radius = maxf(float(_radius_provider.call()) if _radius_provider.is_valid() else 0.035, 0.001)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = shape
+	query.transform = Transform3D(Basis.IDENTITY, origin)
+	query.collision_mask = PhysicsLayers.WEAPON_OBSTRUCTION
+	query.exclude = _collect_exclusions(_body)
+	var space := world.direct_space_state
+	# Sweeps ignore initial overlaps, so test the starting sphere explicitly.
+	if not space.intersect_shape(query, 1).is_empty():
+		return 1.0
+	query.motion = direction.normalized() * length
+	var fractions := space.cast_motion(query)
+	if fractions.size() != 2:
+		_report_missing()
+		return 0.0
+	return clampf(1.0 - float(fractions[0]), 0.0, 1.0)
 
-	var hit_dist: float = from.distance_to(result["position"])
-	var ratio: float = 1.0 - clamp(hit_dist / ray_length, 0.0, 1.0)
-	return ratio * MAX_RETRACT
+
+func _collect_exclusions(root: Node) -> Array[RID]:
+	var result: Array[RID] = []
+	if root is CollisionObject3D:
+		result.append((root as CollisionObject3D).get_rid())
+	for child in root.find_children("*", "CollisionObject3D", true, false):
+		result.append((child as CollisionObject3D).get_rid())
+	return result
+
+
+func _report_missing() -> void:
+	if not _warned_missing:
+		GlobalLogger.debug("WeaponObstruction", "Probe unavailable; shooting remains enabled")
+		_warned_missing = true
+
+
+func get_obstruction_weight() -> float:
+	return _weight

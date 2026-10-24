@@ -1,10 +1,11 @@
+class_name SettingsService
 extends Node
 
 ## BasePlayer 拥有的玩家偏好组件。
 ## 只保存玩家可自行决定的偏好；武器、瞄具光学和其他游戏平衡参数不属于这里。
 
-const KeybindStore = preload("res://classes/ui/settings/keybind_store.gd")
-const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
+const KeybindStore = preload("res://classes/services/keybind_store.gd")
+const SettingsText = preload("res://classes/services/settings_text.gd")
 
 const SAVE_PATH := "user://settings.cfg"
 const VERSION := 7
@@ -37,7 +38,7 @@ const DEFAULTS := {
 	"controls/invert_y": false,
 	"controls/ads_input_mode": "hold",
 	"graphics/window_mode": "fullscreen",
-	"graphics/magnified_scope_mode": "pixel_zoom",
+	"graphics/magnified_scope_mode": "dual_camera",
 	"graphics/hit_camera_impact": 1.0,
 	"graphics/damage_blur": 1.0,
 	"graphics/coma_effect": true,

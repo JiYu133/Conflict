@@ -1,6 +1,9 @@
 class_name FreeCameraController
 extends Node
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 # 调试用自由视角，F 键切换，仅在 debug 构建下生效
 # 鼠标左键 / T/Y/U 键从准星方向发射 hitscan 测试伤害系统
 
@@ -183,7 +186,7 @@ func _enter() -> void:
 	_player.add_child(_free_cam)
 	_free_cam.current = true
 	_crosshair_canvas.visible = true
-	GlobalLogger.info("FreeCam", "自由视角已启用，WASD/QE 移动，Shift 加速，左键/T/Y/U 射击，F 退出")
+	_logger.info("FreeCam", "自由视角已启用，WASD/QE 移动，Shift 加速，左键/T/Y/U 射击，F 退出")
 
 
 func _exit() -> void:
@@ -219,7 +222,7 @@ func _exit() -> void:
 	if animator:
 		animator.speed_scale = 1.0
 
-	GlobalLogger.info("FreeCam", "自由视角已退出")
+	_logger.info("FreeCam", "自由视角已退出")
 
 
 func _input(event: InputEvent) -> void:
@@ -261,13 +264,13 @@ func _fire_hitscan(energy: float, dmg_type: MedicalEnums.DamageType, forced_part
 
 	var result := _player.get_world_3d().direct_space_state.intersect_ray(query)
 	if result.is_empty():
-		GlobalLogger.debug("FreeCam", "射击未命中")
+		_logger.debug("FreeCam", "射击未命中")
 		return
 
 	var collider: Object = result.collider
 	var health_system := _find_health_system(collider)
 	if not health_system:
-		GlobalLogger.debug("FreeCam", "命中 %s，无 HealthSystem" % collider.name)
+		_logger.debug("FreeCam", "命中 %s，无 HealthSystem" % collider.name)
 		return
 
 	# 走正式命中解析管线：HitResolver 会填入伤道局部信息
@@ -284,7 +287,7 @@ func _fire_hitscan(energy: float, dmg_type: MedicalEnums.DamageType, forced_part
 
 	health_system.apply_damage(info)
 	_spawn_hit_marker(result.position)
-	GlobalLogger.info("FreeCam", "命中 %s @ %s  %.0f J" % [
+	_logger.info("FreeCam", "命中 %s @ %s  %.0f J" % [
 		PART_NAMES.get(info.body_part, "未知"), result.position, energy
 	])
 

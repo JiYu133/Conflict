@@ -1,8 +1,11 @@
-extends SceneTree
+extends Node
 
 ## 力系统端到端集成测试：加载真实玩家场景，验证修饰器插槽顺序、
 ## 受击信号接线、以及骨骼姿态在真实动画管线下的实际变化。
-## 运行：godot --headless --path . --script res://tests/force_integration_runner.gd
+## 运行：godot --headless --path . res://tests/force_integration_runner.tscn
+## 历史：原为 extends SceneTree（--script 模式）。但 --script 不注册 autoload，
+## 本项目脚本链引用 GlobalLogger 等单例会导致编译失败、运行器静默失效（见 F24）。
+## 已改为场景模式，与 tests/ 其余 runner 统一。
 ##
 ## 与 force_system_runner.gd 同理，运行器本身不能静态引用依赖 autoload
 ## 的脚本，动态 load() 必须在延迟调用里执行。
@@ -10,7 +13,7 @@ extends SceneTree
 const PLAYER_SCENE := "res://assets/map/test_map.tscn"
 
 
-func _init() -> void:
+func _ready() -> void:
 	_run.call_deferred()
 
 
@@ -23,10 +26,10 @@ func _run() -> void:
 		return
 	results["scene_loaded"] = true
 	var map := packed.instantiate()
-	root.add_child(map)
+	add_child(map)
 	# 等待模型异步加载与各子系统初始化完成
 	for _frame in 30:
-		await process_frame
+		await get_tree().process_frame
 
 	var player := _find_player(map)
 	results["player_found"] = player != null
@@ -159,9 +162,18 @@ func _find_player(node: Node) -> Node:
 
 
 func _finish(results: Dictionary) -> void:
-	var passed := true
+	var failed_keys: Array[String] = []
 	for key in results:
 		if results[key] != true:
-			passed = false
-	print(JSON.stringify({"status": "passed" if passed else "failed", "results": results}))
-	quit(0 if passed else 1)
+			failed_keys.append(key)
+	var passed := failed_keys.is_empty()
+	if not passed:
+		push_error("force_integration_runner FAILED: %s" % ", ".join(failed_keys))
+	print(JSON.stringify({
+		"status": "passed" if passed else "failed",
+		"ok": passed,
+		"failed": failed_keys.size(),
+		"total": results.size(),
+		"results": results,
+	}))
+	get_tree().quit(0 if passed else 1)

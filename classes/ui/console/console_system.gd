@@ -5,7 +5,7 @@ extends CanvasLayer
 ## 但通过 PlayerControlState 独立锁阻断当前玩家输入。
 
 const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
-const SETTINGS_TEXT = preload("res://classes/ui/settings/settings_text.gd")
+const SETTINGS_TEXT = preload("res://classes/services/settings_text.gd")
 const HISTORY_PATH := "user://console_history.cfg"
 const HISTORY_LIMIT := 50
 const DEBUG_API_SCRIPT := preload("res://classes/debug/debug_api.gd")
@@ -101,6 +101,7 @@ func _ready() -> void:
 		_theme.default_font = load(FONT_PATH)
 	_theme.default_font_size = 15
 	_load_history()
+	_assert_command_registry()
 	_build_ui()
 	visible = false
 
@@ -233,211 +234,306 @@ func _execute_line(command_line: String) -> void:
 		_append_log(String(result.get("message", "命令执行完成。")), COL_SUCCESS if result.get("ok", false) else COL_ERROR)
 
 
+# 命令分派表：命令名 -> 处理器（Callable）。
+#
+# 这里原本是一个 205 行的巨型 match：命令一多，只能在 match 里逐段翻找，
+# 「有哪些命令」也散落在 30 多个臂里。改成表之后，命令与处理器的对应关系在
+# 一处可读完；新增命令 = 表里加一行 + 写一个 _run_* 函数，不用再动分派逻辑。
+#
+# 本表与 COMMANDS（面向用户的 usage / help / debug_only 元数据）是两张表，
+# 职责不同：COMMANDS 是常量数据，help、补全、参数提示都要读它；而处理器必须
+# 是运行期的 Callable，写不进 const。两张表的同步由 _assert_command_registry()
+# 强制校验，不依赖人记住。
+var _command_handlers: Dictionary = {
+	"help": _run_help,
+	"clear": _run_clear,
+	"fps": _run_fps,
+	"status": _run_status,
+	"timescale": _run_timescale,
+	"freecam": _run_freecam,
+	"revive": _run_revive,
+	"kill": _run_kill,
+	"health": _run_health,
+	"physical_damage": _run_physical_damage,
+	"clear_wounds": _run_clear_wounds,
+	"clear_blood": _run_clear_blood,
+	"medical_wound": _run_medical_wound,
+	"medical_kill": _run_medical_kill,
+	"screen_hit": _run_screen_hit,
+	"screen_stamina": _run_screen_stamina,
+	"screen_pain": _run_screen_pain,
+	"screen_coma": _run_screen_coma,
+	"screen_death": _run_screen_death,
+	"screen_clear": _run_screen_clear,
+	"give_ammo": _run_give_ammo,
+	"press_trigger": _run_press_trigger,
+	"release_trigger": _run_release_trigger,
+	"cycle_fire_mode": _run_cycle_fire_mode,
+	"bolt_release": _run_bolt_release,
+	"clear_malfunction": _run_clear_malfunction,
+	"set_aiming": _run_set_aiming,
+	"reload": _run_reload,
+	"teleport": _run_teleport,
+	"bot": _run_bot_command,
+	"encounter_start": _run_encounter_start,
+}
+
+
+func _assert_command_registry() -> void:
+	# 把「两张表保持同步」从纪律变成代码强制。COMMANDS 里的每个命令都必须有
+	# 处理器，否则 help 会列出一条打不出来的命令；反过来，分派表里也不该出现
+	# COMMANDS 之外的名字，那意味着存在 _execute_line 根本放行不了的死命令。
+	for name in COMMANDS:
+		assert(_command_handlers.has(name), "命令分派表缺少处理器：%s" % name)
+	for name in _command_handlers:
+		assert(COMMANDS.has(name), "命令分派表存在无文档命令：%s" % name)
+
+
 func _run_command(command: String, args: Array[String]) -> Dictionary:
-	match command:
-		"help":
-			if args.size() > 1:
-				return _error_result("参数数量错误：help 最多接受一个命令名。")
-			if args.is_empty():
-				var lines: Array[String] = ["可用命令："]
-				for name in COMMAND_ORDER:
-					var item: Dictionary = COMMANDS[name]
-					if item.get("debug_only", false) and not OS.is_debug_build():
-						continue
-					lines.append("  %-22s %s" % [item["usage"], item["help"]])
-				return _ok_result("\n".join(lines))
-			var target := args[0].to_lower()
-			if target == "giveammo" or target == "give_magazine":
-				target = "give_ammo"
-			if not COMMANDS.has(target):
-				return _error_result("未知命令：%s。" % target)
-			var target_spec: Dictionary = COMMANDS[target]
-			if target_spec.get("debug_only", false) and not OS.is_debug_build():
-				return _error_result("命令不可用：该命令仅在 Debug 构建中开放。")
-			return _ok_result("%s\n用法：%s" % [target_spec["help"], target_spec["usage"]])
-		"clear":
-			if not args.is_empty():
-				return _error_result("参数数量错误：clear 不接受参数。")
-			return {"ok": true, "clear": true}
-		"fps":
-			if not args.is_empty():
-				return _error_result("参数数量错误：fps 不接受参数。")
-			return _ok_result("当前帧率：%d FPS" % Engine.get_frames_per_second())
-		"status":
-			if not args.is_empty():
-				return _error_result("参数数量错误：status 不接受参数。")
-			return _ok_result(_status_text())
-		"timescale":
-			if args.size() != 1:
-				return _error_result("参数数量错误：用法为 timescale <value>。")
-			if not args[0].is_valid_float():
-				return _error_result("参数错误：时间倍率必须是数字。")
-			var scale := float(args[0])
-			if scale < 0.05 or scale > 4.0:
-				return _error_result("范围错误：时间倍率必须在 0.05 到 4.00 之间。")
-			return _api_result(_debug_api.set_time_scale(scale), "时间倍率已设置为 %.2f。" % scale)
-		"freecam":
-			if not args.is_empty():
-				return _error_result("参数数量错误：freecam 不接受参数。")
-			if not _player.free_camera_controller:
-				return _error_result("当前系统不可用：自由相机未初始化。")
-			_player.free_camera_controller.toggle()
-			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-			return _ok_result("自由相机：%s。" % ("已开启" if _player.free_camera_controller.is_active() else "已关闭"))
-		"revive":
-			if not args.is_empty():
-				return _error_result("参数数量错误：revive 不接受参数。")
-			if not _player.is_alive:
-				var revive_result := _debug_api.revive(_player)
-				Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
-				return _api_result(revive_result, "玩家已复活。")
-			return _ok_result("玩家当前已经存活。")
-		"kill":
-			if not args.is_empty():
-				return _error_result("参数数量错误：kill 不接受参数。")
-			if _player.is_alive:
-				return _api_result(_debug_api.kill(_player), "玩家已被杀死。")
-			return _ok_result("玩家当前已经死亡。")
-		"health":
-			if args.size() != 1:
-				return _error_result("参数数量错误：用法为 health <0-100>。")
-			if not args[0].is_valid_float():
-				return _error_result("参数错误：血量必须是数字。")
-			var health := float(args[0])
-			if health < 0.0 or health > 100.0:
-				return _error_result("范围错误：血量必须在 0 到 100 之间。")
-			if not _player.health_system:
-				return _error_result("当前系统不可用：医疗系统未初始化。")
-			return _api_result(_debug_api.set_player_health(health, _player), "血量已设置为 %.1f%%。" % health)
-		"physical_damage":
-			if args.size() != 1:
-				return _error_result("参数数量错误：用法为 physical_damage <1|0>。")
-			var physical_damage_value: Variant = _parse_bool_arg(args[0])
-			if physical_damage_value == null or args[0].to_lower() not in ["0", "1"]:
-				return _error_result("参数错误：physical_damage 只能是 1 或 0。")
-			var physical_damage_enabled := bool(physical_damage_value)
-			return _api_result(
-				_debug_api.set_physical_damage(physical_damage_enabled, _player),
-				"物理伤害%s。" % ("已开启" if physical_damage_enabled else "已关闭")
-			)
-		"clear_wounds":
-			if not args.is_empty():
-				return _error_result("参数数量错误：clear_wounds 不接受参数。")
-			if not _player.health_system:
-				return _error_result("当前系统不可用：医疗系统未初始化。")
-			return _api_result(_debug_api.clear_wounds(_player), "全部伤口已清除。")
-		"clear_blood":
-			if not args.is_empty():
-				return _error_result("参数数量错误：clear_blood 不接受参数。")
-			var cleared := 0
-			for effect in get_tree().get_nodes_in_group("blood_effects"):
-				if is_instance_valid(effect) and effect.has_method("clear_bloodstains"):
-					cleared += int(effect.clear_bloodstains())
-			return _ok_result("已清除 %d 处血迹。" % cleared)
-		"medical_wound":
-			return _run_medical_wound(args)
-		"medical_kill":
-			return _run_medical_kill(args)
-		"screen_hit":
-			return _run_screen_hit(args)
-		"screen_stamina":
-			return _run_screen_scalar(args, "stamina")
-		"screen_pain":
-			return _run_screen_scalar(args, "pain")
-		"screen_coma":
-			return _run_screen_coma(args)
-		"screen_death":
-			if not args.is_empty():
-				return _error_result("参数数量错误：screen_death 不接受参数。")
-			if not _get_screen_effects():
-				return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
-			_player.screen_effects.trigger_death_blur()
-			return _ok_result("已触发死亡屏幕效果；输入 screen_clear 清除。")
-		"screen_clear":
-			if not args.is_empty():
-				return _error_result("参数数量错误：screen_clear 不接受参数。")
-			if not _get_screen_effects():
-				return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
-			_player.screen_effects.clear_debug_effects()
-			if _player.camera_controller:
-				_player.camera_controller.clear_pain_impulse()
-			return _ok_result("已清除全部屏幕效果测试状态。")
-		"give_ammo":
-			return _run_give_ammo(args)
-		"giveammo":
-			return _run_give_ammo(args)
-		"press_trigger":
-			if not args.is_empty():
-				return _error_result("参数数量错误：press_trigger 不接受参数。")
-			if not _get_current_weapon():
-				return _error_result("当前系统不可用：没有已装备武器。")
-			return _api_result(_debug_api.press_trigger(_player), "已模拟按下扳机。")
-		"release_trigger":
-			if not args.is_empty():
-				return _error_result("参数数量错误：release_trigger 不接受参数。")
-			if not _get_current_weapon():
-				return _error_result("当前系统不可用：没有已装备武器。")
-			return _api_result(_debug_api.release_trigger(_player), "已模拟松开扳机。")
-		"cycle_fire_mode":
-			if not args.is_empty():
-				return _error_result("参数数量错误：cycle_fire_mode 不接受参数。")
-			if not _get_current_weapon():
-				return _error_result("当前系统不可用：没有已装备武器。")
-			if _player.weapon_manager.cycle_fire_mode():
-				return _ok_result("已切换射击模式。")
-			return _error_result("当前武器没有可操作的快慢机，无法切换射击模式。")
-		"bolt_release":
-			if not args.is_empty():
-				return _error_result("参数数量错误：bolt_release 不接受参数。")
-			var bolt_release_weapon: BaseWeapon = _get_current_weapon()
-			if not bolt_release_weapon:
-				return _error_result("当前系统不可用：没有已装备武器。")
-			if bolt_release_weapon.release_bolt():
-				return _ok_result("枪机已释放。")
-			return _error_result("当前枪机未处于空仓挂机状态，无法释放。")
-		"clear_malfunction":
-			if not args.is_empty():
-				return _error_result("参数数量错误：clear_malfunction 不接受参数。")
-			var clearance_weapon: BaseWeapon = _get_current_weapon()
-			if not clearance_weapon:
-				return _error_result("当前系统不可用：没有已装备武器。")
-			clearance_weapon.attempt_malfunction_clearance()
-			return _ok_result("已推进一次排障流程。")
-		"set_aiming":
-			if args.size() != 1:
-				return _error_result("参数数量错误：用法为 set_aiming <0|1>。")
-			var aiming_parse: Variant = _parse_bool_arg(args[0])
-			if aiming_parse == null:
-				return _error_result("参数错误：set_aiming 只能是 0 或 1。")
-			if not _get_current_weapon():
-				return _error_result("当前系统不可用：没有已装备武器。")
-			_player.weapon_manager.set_aiming(bool(aiming_parse))
-			return _ok_result("武器举枪状态已设置为 %s。" % ("开启" if bool(aiming_parse) else "关闭"))
-		"reload":
-			if not args.is_empty():
-				return _error_result("参数数量错误：reload 不接受参数。")
-			if not _player.weapon_manager or not _player.weapon_manager.current_weapon:
-				return _error_result("当前系统不可用：没有已装备武器。")
-			return _api_result(_debug_api.reload(_player), "已调用换弹流程。")
-		"teleport":
-			if args.size() != 3:
-				return _error_result("参数数量错误：用法为 teleport <x> <y> <z>。")
-			for value in args:
-				if not value.is_valid_float():
-					return _error_result("参数错误：坐标必须全部是数字。")
-			var destination := Vector3(float(args[0]), float(args[1]), float(args[2]))
-			return _api_result(_debug_api.set_player_position(destination, _player), "玩家已传送到 %s。" % str(destination))
-		"bot":
-			return _run_bot_command(args)
-		"encounter_start":
-			if not args.is_empty():
-				return _error_result("encounter_start 不接受参数。")
-			var scene := load("res://assets/map/encounter_prototype.tscn") as PackedScene
-			if not scene:
-				return _error_result("遭遇战场景加载失败。")
-			get_tree().change_scene_to_packed(scene)
-			return _ok_result("正在进入 4v4 对称遭遇战原型。")
-	return _error_result("命令尚未实现：%s。" % command)
+	# 表驱动分派。全覆盖由 _assert_command_registry() 保证；下面这个兜底分支是
+	# 给断言被剥除的发行构建留的：宁可明确报错，也不要静默吞掉。
+	var handler: Variant = _command_handlers.get(command)
+	if handler == null:
+		return _error_result("命令尚未实现：%s。" % command)
+	return handler.call(args)
+
+
+func _run_help(args: Array[String]) -> Dictionary:
+	if args.size() > 1:
+		return _error_result("参数数量错误：help 最多接受一个命令名。")
+	if args.is_empty():
+		var lines: Array[String] = ["可用命令："]
+		for name in COMMAND_ORDER:
+			var item: Dictionary = COMMANDS[name]
+			if item.get("debug_only", false) and not OS.is_debug_build():
+				continue
+			lines.append("  %-22s %s" % [item["usage"], item["help"]])
+		return _ok_result("\n".join(lines))
+	var target := args[0].to_lower()
+	if target == "giveammo" or target == "give_magazine":
+		target = "give_ammo"
+	if not COMMANDS.has(target):
+		return _error_result("未知命令：%s。" % target)
+	var target_spec: Dictionary = COMMANDS[target]
+	if target_spec.get("debug_only", false) and not OS.is_debug_build():
+		return _error_result("命令不可用：该命令仅在 Debug 构建中开放。")
+	return _ok_result("%s\n用法：%s" % [target_spec["help"], target_spec["usage"]])
+
+
+func _run_clear(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：clear 不接受参数。")
+	return {"ok": true, "clear": true}
+
+
+func _run_fps(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：fps 不接受参数。")
+	return _ok_result("当前帧率：%d FPS" % Engine.get_frames_per_second())
+
+
+func _run_status(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：status 不接受参数。")
+	return _ok_result(_status_text())
+
+
+func _run_timescale(args: Array[String]) -> Dictionary:
+	if args.size() != 1:
+		return _error_result("参数数量错误：用法为 timescale <value>。")
+	if not args[0].is_valid_float():
+		return _error_result("参数错误：时间倍率必须是数字。")
+	var scale := float(args[0])
+	if scale < 0.05 or scale > 4.0:
+		return _error_result("范围错误：时间倍率必须在 0.05 到 4.00 之间。")
+	return _api_result(_debug_api.set_time_scale(scale), "时间倍率已设置为 %.2f。" % scale)
+
+
+func _run_freecam(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：freecam 不接受参数。")
+	if not _player.free_camera_controller:
+		return _error_result("当前系统不可用：自由相机未初始化。")
+	_player.free_camera_controller.toggle()
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	return _ok_result("自由相机：%s。" % ("已开启" if _player.free_camera_controller.is_active() else "已关闭"))
+
+
+func _run_revive(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：revive 不接受参数。")
+	if not _player.is_alive:
+		var revive_result := _debug_api.revive(_player)
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		return _api_result(revive_result, "玩家已复活。")
+	return _ok_result("玩家当前已经存活。")
+
+
+func _run_kill(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：kill 不接受参数。")
+	if _player.is_alive:
+		return _api_result(_debug_api.kill(_player), "玩家已被杀死。")
+	return _ok_result("玩家当前已经死亡。")
+
+
+func _run_health(args: Array[String]) -> Dictionary:
+	if args.size() != 1:
+		return _error_result("参数数量错误：用法为 health <0-100>。")
+	if not args[0].is_valid_float():
+		return _error_result("参数错误：血量必须是数字。")
+	var health := float(args[0])
+	if health < 0.0 or health > 100.0:
+		return _error_result("范围错误：血量必须在 0 到 100 之间。")
+	if not _player.health_system:
+		return _error_result("当前系统不可用：医疗系统未初始化。")
+	return _api_result(_debug_api.set_player_health(health, _player), "血量已设置为 %.1f%%。" % health)
+
+
+func _run_physical_damage(args: Array[String]) -> Dictionary:
+	if args.size() != 1:
+		return _error_result("参数数量错误：用法为 physical_damage <1|0>。")
+	var physical_damage_value: Variant = _parse_bool_arg(args[0])
+	if physical_damage_value == null or args[0].to_lower() not in ["0", "1"]:
+		return _error_result("参数错误：physical_damage 只能是 1 或 0。")
+	var physical_damage_enabled := bool(physical_damage_value)
+	return _api_result(
+		_debug_api.set_physical_damage(physical_damage_enabled, _player),
+		"物理伤害%s。" % ("已开启" if physical_damage_enabled else "已关闭")
+	)
+
+
+func _run_clear_wounds(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：clear_wounds 不接受参数。")
+	if not _player.health_system:
+		return _error_result("当前系统不可用：医疗系统未初始化。")
+	return _api_result(_debug_api.clear_wounds(_player), "全部伤口已清除。")
+
+
+func _run_clear_blood(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：clear_blood 不接受参数。")
+	var cleared := 0
+	for effect in get_tree().get_nodes_in_group("blood_effects"):
+		if is_instance_valid(effect) and effect.has_method("clear_bloodstains"):
+			cleared += int(effect.clear_bloodstains())
+	return _ok_result("已清除 %d 处血迹。" % cleared)
+
+
+func _run_screen_stamina(args: Array[String]) -> Dictionary:
+	return _run_screen_scalar(args, "stamina")
+
+
+func _run_screen_pain(args: Array[String]) -> Dictionary:
+	return _run_screen_scalar(args, "pain")
+
+
+func _run_screen_death(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：screen_death 不接受参数。")
+	if not _get_screen_effects():
+		return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
+	_player.screen_effects.trigger_death_blur()
+	return _ok_result("已触发死亡屏幕效果；输入 screen_clear 清除。")
+
+
+func _run_screen_clear(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：screen_clear 不接受参数。")
+	if not _get_screen_effects():
+		return _error_result("当前系统不可用：玩家屏幕效果未初始化。")
+	_player.screen_effects.clear_debug_effects()
+	if _player.camera_controller:
+		_player.camera_controller.clear_pain_impulse()
+	return _ok_result("已清除全部屏幕效果测试状态。")
+
+
+func _run_press_trigger(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：press_trigger 不接受参数。")
+	if not _get_current_weapon():
+		return _error_result("当前系统不可用：没有已装备武器。")
+	return _api_result(_debug_api.press_trigger(_player), "已模拟按下扳机。")
+
+
+func _run_release_trigger(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：release_trigger 不接受参数。")
+	if not _get_current_weapon():
+		return _error_result("当前系统不可用：没有已装备武器。")
+	return _api_result(_debug_api.release_trigger(_player), "已模拟松开扳机。")
+
+
+func _run_cycle_fire_mode(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：cycle_fire_mode 不接受参数。")
+	if not _get_current_weapon():
+		return _error_result("当前系统不可用：没有已装备武器。")
+	if _player.weapon_manager.cycle_fire_mode():
+		return _ok_result("已切换射击模式。")
+	return _error_result("当前武器没有可操作的快慢机，无法切换射击模式。")
+
+
+func _run_bolt_release(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：bolt_release 不接受参数。")
+	var bolt_release_weapon: BaseWeapon = _get_current_weapon()
+	if not bolt_release_weapon:
+		return _error_result("当前系统不可用：没有已装备武器。")
+	if bolt_release_weapon.release_bolt():
+		return _ok_result("枪机已释放。")
+	return _error_result("当前枪机未处于空仓挂机状态，无法释放。")
+
+
+func _run_clear_malfunction(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：clear_malfunction 不接受参数。")
+	var clearance_weapon: BaseWeapon = _get_current_weapon()
+	if not clearance_weapon:
+		return _error_result("当前系统不可用：没有已装备武器。")
+	clearance_weapon.attempt_malfunction_clearance()
+	return _ok_result("已推进一次排障流程。")
+
+
+func _run_set_aiming(args: Array[String]) -> Dictionary:
+	if args.size() != 1:
+		return _error_result("参数数量错误：用法为 set_aiming <0|1>。")
+	var aiming_parse: Variant = _parse_bool_arg(args[0])
+	if aiming_parse == null:
+		return _error_result("参数错误：set_aiming 只能是 0 或 1。")
+	if not _get_current_weapon():
+		return _error_result("当前系统不可用：没有已装备武器。")
+	_player.weapon_manager.set_aiming(bool(aiming_parse))
+	return _ok_result("武器举枪状态已设置为 %s。" % ("开启" if bool(aiming_parse) else "关闭"))
+
+
+func _run_reload(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("参数数量错误：reload 不接受参数。")
+	if not _player.weapon_manager or not _player.weapon_manager.current_weapon:
+		return _error_result("当前系统不可用：没有已装备武器。")
+	return _api_result(_debug_api.reload(_player), "已调用换弹流程。")
+
+
+func _run_teleport(args: Array[String]) -> Dictionary:
+	if args.size() != 3:
+		return _error_result("参数数量错误：用法为 teleport <x> <y> <z>。")
+	for value in args:
+		if not value.is_valid_float():
+			return _error_result("参数错误：坐标必须全部是数字。")
+	var destination := Vector3(float(args[0]), float(args[1]), float(args[2]))
+	return _api_result(_debug_api.set_player_position(destination, _player), "玩家已传送到 %s。" % str(destination))
+
+
+func _run_encounter_start(args: Array[String]) -> Dictionary:
+	if not args.is_empty():
+		return _error_result("encounter_start 不接受参数。")
+	var scene := load("res://assets/map/encounter_prototype.tscn") as PackedScene
+	if not scene:
+		return _error_result("遭遇战场景加载失败。")
+	get_tree().change_scene_to_packed(scene)
+	return _ok_result("正在进入 4v4 对称遭遇战原型。")
 
 
 func _run_bot_command(args: Array[String]) -> Dictionary:

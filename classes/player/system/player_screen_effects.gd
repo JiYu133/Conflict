@@ -1,6 +1,9 @@
 class_name PlayerScreenEffects
 extends Node
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 # ============================================================
 # 玩家屏幕效果系统
 # 效果层级（CanvasLayer.layer）：
@@ -80,7 +83,7 @@ func _ready() -> void:
 	if canvas:
 		_setup_overlay_nodes(canvas)
 	else:
-		GlobalLogger.warn("ScreenEffects", "UI CanvasLayer not found — screen effects disabled")
+		_logger.warn("ScreenEffects", "UI CanvasLayer not found — screen effects disabled")
 
 
 func _exit_tree() -> void:
@@ -368,7 +371,7 @@ func _setup_overlay_nodes(canvas: CanvasLayer) -> void:
 	_death_rect.visible = false
 	_death_canvas.add_child(_death_rect)
 
-	GlobalLogger.info("ScreenEffects", "Overlay nodes created.")
+	_logger.info("ScreenEffects", "Overlay nodes created.")
 
 
 func _cleanup_partial_overlay_nodes() -> void:

@@ -1,15 +1,13 @@
 class_name BasePlayer
 extends CharacterBody3D
 
-const SETTINGS_SERVICE_SCRIPT := preload("res://classes/ui/settings/settings_service.gd")
-const SETTINGS_MENU_SCRIPT := preload("res://classes/ui/settings/settings_menu.gd")
-const PAUSE_MENU_SCRIPT := preload("res://classes/ui/pause_menu.gd")
-const WEAPON_MOD_MENU_SCRIPT := preload("res://classes/ui/weapon_mod/weapon_mod_menu.gd")
-const AMMO_HUD_SCRIPT := preload("res://classes/ui/weapon_ammo_hud.gd")
-const CONTROL_STATE_SCRIPT := preload("res://classes/player/player_control_state.gd")
-const CONSOLE_SYSTEM_SCRIPT := preload("res://classes/ui/console/console_system.gd")
+## Override with a LoggerService implementation to inject player logging.
+var _logger: LoggerService = GlobalLogger
+
+const SETTINGS_SERVICE_SCRIPT := preload("res://classes/services/settings_service.gd")
+const CONTROL_STATE_SCRIPT := preload("res://classes/player/system/player_control_state.gd")
 const DEATH_BLOOD_EFFECT_SCRIPT := preload("res://classes/player/medical/death_blood_effect.gd")
-const WEAPON_DROP_SYSTEM_SCRIPT := preload("res://classes/player/weapon_drop_system.gd")
+const WEAPON_DROP_SYSTEM_SCRIPT := preload("res://classes/player/system/weapon_drop_system.gd")
 
 # 在定义玩家对象时绑定给玩家的脚本 同时也要绑定玩家配置文件
 
@@ -80,6 +78,9 @@ var stance_controller: StanceController
 var model_manager: PlayerModelManager
 var look_controller: PlayerLookController
 var camera_controller: PlayerCameraController
+var weapon_presentation_controller: WeaponPresentationController
+var aim_breathing_controller: AimBreathingController
+var weapon_obstruction_detector: WeaponObstructionDetector
 var optic_render_controller: OpticRenderController
 var ragdoll_system: PlayerRagdollSystem
 var movement_controller: PlayerMovementController
@@ -87,6 +88,7 @@ var collision_controller: PlayerCollisionController
 var ik_rig: IKRig
 var spine_aim_controller: SpineAimController
 var weapon_manager: WeaponManager
+var weapon_feedback: PlayerWeaponFeedback
 var weapon_drop_system: WeaponDropSystem
 var animation_controller: PlayerAnimationController
 var turn_controller: PlayerTurnController
@@ -98,6 +100,7 @@ var audio_controller: PlayerAudioController
 var force_receiver: ForceReceiver
 var screen_effects
 var settings_service
+var ui_layer: PlayerUILayer
 var settings_menu
 var pause_menu
 var weapon_mod_menu
@@ -164,8 +167,40 @@ func is_ai_runtime_ready() -> bool:
 
 # 子系统初始化
 
+func _require_absent(stage: String, deps: Dictionary) -> void:
+	for key in deps:
+		assert(
+			not is_instance_valid(deps[key]),
+			"[Player 装配顺序] %s 应在本阶段创建「%s」，但它已经存在 —— 该阶段被执行了两次，或被提前。" % [stage, key]
+		)
+
+
+func _require_ready(stage: String, deps: Dictionary) -> void:
+	for key in deps:
+		assert(
+			is_instance_valid(deps[key]),
+			"[Player 装配顺序] %s 需要「%s」已就绪，但当前为空 —— 该阶段被推后，或它依赖的阶段未执行。" % [stage, key]
+		)
+
+
 func _initialize_subsystems() -> void:
-	GlobalLogger.info("Player", "Initializing player subsystems.")
+	_logger.info("Player", "Initializing player subsystems.")
+	# 本函数只做调度；每个阶段的依赖声明写在各阶段函数开头（依赖图见上方）。
+	_create_core_subsystems()
+	_initialize_controllers()
+	_initialize_combat_feedback()
+	_create_ui_subsystems()
+	_connect_signals()
+
+
+func _create_core_subsystems() -> void:
+	_require_absent("_create_core_subsystems", {
+		"control_state": control_state,
+		"settings_service": settings_service,
+		"model_manager": model_manager,
+		"weapon_manager": weapon_manager,
+		"health_system": health_system,
+	})
 	# 创建子系统
 	control_state = _create_subsystem(CONTROL_STATE_SCRIPT.new(), "ControlState") as PlayerControlState
 	control_state.set_alive(_is_alive)
@@ -183,6 +218,9 @@ func _initialize_subsystems() -> void:
 	ik_rig = _create_subsystem(IKRig.new(), "IKRig") as IKRig
 	spine_aim_controller = _create_subsystem(SpineAimController.new(), "SpineAimController")
 	weapon_manager = _create_subsystem(WeaponManager.new(), "WeaponManager")
+	weapon_presentation_controller = _create_subsystem(WeaponPresentationController.new(), "WeaponPresentationController") as WeaponPresentationController
+	aim_breathing_controller = _create_subsystem(AimBreathingController.new(), "AimBreathingController") as AimBreathingController
+	weapon_obstruction_detector = _create_subsystem(WeaponObstructionDetector.new(), "WeaponObstructionDetector") as WeaponObstructionDetector
 	weapon_drop_system = _create_subsystem(WEAPON_DROP_SYSTEM_SCRIPT.new(), "WeaponDropSystem") as WeaponDropSystem
 	animation_controller = _create_subsystem(PlayerAnimationController.new(), "AnimationController")
 	turn_controller = _create_subsystem(PlayerTurnController.new(), "TurnController")
@@ -191,6 +229,25 @@ func _initialize_subsystems() -> void:
 	audio_controller = _create_subsystem(PlayerAudioController.new(), "PlayerAudioController") as PlayerAudioController
 	force_receiver = _create_subsystem(ForceReceiver.new(), "ForceReceiver") as ForceReceiver
 
+
+func _initialize_controllers() -> void:
+	_require_ready("_initialize_controllers", {
+		"settings_service": settings_service,
+		"model_manager": model_manager,
+		"look_controller": look_controller,
+		"camera_controller": camera_controller,
+		"stance_controller": stance_controller,
+		"movement_controller": movement_controller,
+		"ik_rig": ik_rig,
+		"weapon_presentation_controller": weapon_presentation_controller,
+		"aim_breathing_controller": aim_breathing_controller,
+		"weapon_obstruction_detector": weapon_obstruction_detector,
+		"animation_controller": animation_controller,
+		"weapon_manager": weapon_manager,
+		"weapon_drop_system": weapon_drop_system,
+		"health_system": health_system,
+		"force_receiver": force_receiver,
+	})
 	# 初始化子系统
 	settings_service.initialize()
 	look_controller.initialize(
@@ -217,11 +274,30 @@ func _initialize_subsystems() -> void:
 		camera_controller
 		)
 
+	weapon_presentation_controller.initialize(_get_weapon_presentation_state)
+	var aim_config := player_config.aim_config if player_config else null
+	camera_controller.set_aim_config(aim_config)
+	aim_breathing_controller.initialize(aim_config, _get_aim_breathing_state)
+	aim_breathing_controller.idle_pause_changed.connect(animation_controller.set_idle_paused)
+	# Read the new camera blend before animation evaluates and IK samples it.
+	aim_breathing_controller.process_priority = -10
+	weapon_manager.weapon_changed.connect(weapon_presentation_controller.bind_weapon)
+	camera_controller.set_weapon_presentation_controller(weapon_presentation_controller)
+	weapon_obstruction_detector.initialize(self, _get_weapon_probe_origin, _get_weapon_probe_muzzle,
+		weapon_presentation_controller.get_obstruction_probe_radius)
+	weapon_obstruction_detector.obstruction_changed.connect(weapon_presentation_controller.set_obstruction_target)
+	weapon_manager.set_fire_gate(_is_weapon_path_clear)
+	# Camera reads look input first; the skeleton arm stage then advances weapon
+	# springs using the animation pose before either hand modifies the bones.
+	camera_controller.process_priority = -20
+	if optic_render_controller:
+		optic_render_controller.process_priority = 100
+
 	ik_rig.initialize(
 		self,
 		model_manager,
 		player_config.ik_config if player_config else null,
-		camera_controller
+		weapon_presentation_controller
 		)
 
 
@@ -229,6 +305,7 @@ func _initialize_subsystems() -> void:
 	weapon_manager.set_settings_service(settings_service)
 	if optic_render_controller:
 		optic_render_controller.initialize(self, weapon_manager, camera_controller)
+		ik_rig.arms_processed.connect(optic_render_controller.refresh_render)
 	weapon_drop_system.initialize(self, weapon_manager)
 
 	health_system.initialize(
@@ -240,6 +317,22 @@ func _initialize_subsystems() -> void:
 		self,
 		player_config.force_config if player_config else null
 		)
+
+
+func _initialize_combat_feedback() -> void:
+	_require_ready("_initialize_combat_feedback", {
+		"settings_service": settings_service,
+		"health_system": health_system,
+		"stamina_system": stamina_system,
+		"audio_controller": audio_controller,
+		"movement_controller": movement_controller,
+		"collision_controller": collision_controller,
+	})
+	_require_absent("_initialize_combat_feedback", {
+		"death_blood_effect": death_blood_effect,
+		"combat_effects": combat_effects,
+		"weapon_feedback": weapon_feedback,
+	})
 	var movement_config := (
 		player_config.movement_config
 		if player_config and player_config.movement_config
@@ -267,59 +360,43 @@ func _initialize_subsystems() -> void:
 	stamina_system.initialize(self, player_config.stamina_config if player_config else null)
 	audio_controller.initialize(self, settings_service)
 
+	weapon_feedback = _create_subsystem(PlayerWeaponFeedback.new(), "WeaponFeedback") as PlayerWeaponFeedback
+	weapon_feedback.initialize(force_receiver, ik_rig, camera_controller, stamina_system, weapon_manager)
+
+
+func _create_ui_subsystems() -> void:
+	_require_ready("_create_ui_subsystems", {
+		"settings_service": settings_service,
+		"weapon_manager": weapon_manager,
+	})
+	_require_absent("_create_ui_subsystems", {
+		"ui_layer": ui_layer,
+		"medical_treatment_component": medical_treatment_component,
+	})
+	# 仅非 AI 的本地玩家：屏幕效果、医疗治疗组件、自由相机仍由玩家核心创建；
+	# 全部「具体界面」（HUD / 菜单 / 控制台 / 径向菜单）交给 UI 层，玩家核心不碰界面类型。
 	if not is_ai_player:
 		screen_effects = _create_subsystem(PlayerScreenEffects.new(), "ScreenEffects")
 		screen_effects.initialize(self, settings_service)
 
-		# 弹药 HUD（右下角）：显示膛内状态、弹匣余弹 / 备弹、射击模式
-		var ammo_hud := _create_subsystem(AMMO_HUD_SCRIPT.new(), "WeaponAmmoHUD")
-		ammo_hud.initialize(self)
-
-		# 战斗通知桥接：连接 HealthSystem 信号到右上角通知栏
-		var _combat_notif := _create_subsystem(CombatNotificationBridge.new(), "CombatNotifBridge")
-		_combat_notif.initialize(self)
-
-		# 暂停菜单拥有本地输入阻断；设置页由它打开，避免 ESC 直接跳入设置。
-		settings_menu = _create_subsystem(SETTINGS_MENU_SCRIPT.new(), "SettingsMenu")
-		settings_menu.initialize(settings_service, self)
-		pause_menu = _create_subsystem(PAUSE_MENU_SCRIPT.new(), "PauseMenu")
-		pause_menu.initialize(self, settings_menu)
-
-		# 武器改装界面：接口已就绪（open/close/toggle/is_open + opened/closed 信号），
-		# 正式入口（军械库/装备界面）接入前，暂由 debug 构建的 weapon_mod_menu 动作
-		# （默认 N，可在设置→控制→调试 中改绑）打开。
-		weapon_mod_menu = _create_subsystem(WEAPON_MOD_MENU_SCRIPT.new(), "WeaponModMenu")
-		weapon_mod_menu.initialize(self)
-		console_system = _create_subsystem(CONSOLE_SYSTEM_SCRIPT.new(), "ConsoleSystem") as ConsoleSystem
-		console_system.initialize(self)
-		radial_menu_service = RadialMenuService
-		radial_menu_service.set_player(self)
-		radial_menu_service.register_wheel(
-			"fire_mode",
-			"cycle_fire_mode",
-			func(): weapon_manager.cycle_fire_mode(),
-			_get_fire_mode_wheel_options
-		)
+		# 医疗治疗组件：节点名 "MedicalTreatment" 被 encounter_prototype 按路径读取，须留在玩家下。
 		medical_treatment_component = _create_subsystem(preload("res://classes/encounter/medical_treatment_component.gd").new(), "MedicalTreatment") as MedicalTreatmentComponent
 		medical_treatment_component.initialize(self)
-		radial_menu_service.register_wheel(
-			"medical",
-			"medical_radial",
-			func(): medical_treatment_component.begin_treatment(MedicalEnums.TreatmentType.BANDAGE),
-			medical_treatment_component.get_wheel_options
-		)
-		radial_menu_service.register_wheel(
-			"squad_command",
-			"squad_command_radial",
-			func(): _issue_squad_command(AIBlackboard.SquadCommand.FOLLOW_PLAYER),
-			_get_squad_command_options
-		)
+
+		# UI 层：自己创建并持有 HUD / 设置 / 暂停 / 改装 / 控制台，并注册径向菜单轮盘。
+		# 依赖显式注入；玩家核心只把产物引用回填到自己的字段上
+		# （这些字段被 console_system、medical_debug_hud 等按名读取，必须保留）。
+		ui_layer = _create_subsystem(PlayerUILayer.new(), "UILayer") as PlayerUILayer
+		ui_layer.initialize(self, settings_service, weapon_manager, medical_treatment_component)
+		settings_menu = ui_layer.settings_menu
+		pause_menu = ui_layer.pause_menu
+		weapon_mod_menu = ui_layer.weapon_mod_menu
+		console_system = ui_layer.console_system
+		radial_menu_service = ui_layer.radial_menu_service
 
 		if OS.is_debug_build():
 			free_camera_controller = _create_subsystem(FreeCameraController.new(), "FreeCameraController") as FreeCameraController
 
-	# 连接信号
-	_connect_signals()
 
 func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子系统
 	subsystem.name = node_name
@@ -327,9 +404,20 @@ func _create_subsystem(subsystem: Node, node_name: String) -> Node: # 创建子�
 	return subsystem
 
 func _connect_signals() -> void:
+	_require_ready("_connect_signals", {
+		"model_manager": model_manager,
+		"weapon_manager": weapon_manager,
+		"stance_controller": stance_controller,
+		"collision_controller": collision_controller,
+		"movement_controller": movement_controller,
+		"stamina_system": stamina_system,
+		"health_system": health_system,
+		"force_receiver": force_receiver,
+		"weapon_feedback": weapon_feedback,
+	})
 	model_manager.model_loaded.connect(_on_model_loaded)
-	weapon_manager.weapon_changed.connect(_on_weapon_changed)
-	weapon_manager.weapon_stats_changed.connect(_sync_weapon_weight_to_stamina)
+	weapon_manager.weapon_changed.connect(weapon_feedback.on_weapon_changed)
+	weapon_manager.weapon_stats_changed.connect(weapon_feedback.sync_carry_weight_to_stamina)
 	# 连接姿态变化信号
 	stance_controller.stance_changed.connect(_on_stance_changed)
 	stance_controller.prone_geometry_changed.connect(_on_prone_geometry_changed)
@@ -357,13 +445,28 @@ func _connect_signals() -> void:
 	# 受击反馈：本期唯一接入点。力系统消费 damage_taken，
 	# 姿态偏移由 ForceBodyModifier 叠加，冲量缓存供布娃娃消费。
 	health_system.damage_taken.connect(force_receiver.apply_impact)
-	GlobalLogger.debug("Player", "Signals have been connected. ")
+	_logger.debug("Player", "Signals have been connected. ")
 
 
 func _on_model_loaded(_model: Node3D) -> void:
+	# 模型接入装配管线：按「布娃娃 → 挂模型 → 动画/控制器 → 骨骼相关 → 相机 → 武器挂点 → 初始武器」
+	# 的顺序分步执行。原先这是一个 87 行的单体函数，拆开后每一步都能单独读懂与定位。
 	var weapon_mount := model_manager.find_node_by_names(["WeaponMount"], "Node3D") as Node3D
+	_setup_ragdoll(weapon_mount)
+	_attach_model_to_player(_model)
+	_activate_animation_and_controllers()
+	_bind_skeleton_systems()
+	_setup_camera_activation(_model)
+	_setup_weapon_mount(weapon_mount, _model)
+	_equip_starting_weapon()
+	if OS.is_debug_build() and free_camera_controller:
+		free_camera_controller.initialize(self, camera_controller)
 
-	# 初始化布娃娃系统（需要骨骼、动画系统及配置）
+
+## 初始化布娃娃系统（需要骨骼、动画系统及配置）
+
+
+func _setup_ragdoll(weapon_mount: Node3D) -> void:
 	ragdoll_system.initialize(
 		model_manager.skeleton,
 		model_manager.animator,
@@ -372,18 +475,26 @@ func _on_model_loaded(_model: Node3D) -> void:
 		weapon_mount
 	)
 
-	# 将模型从 ModelManager 移到自己身下，确保变换跟随
-	# 必须在 animation_controller.initialize() 之前完成，
-	# 否则动画状态机可能在模型离开场景树时初始化，重挂载后状态会丢失
-	if _model.get_parent():
-		_model.get_parent().remove_child(_model)
-	add_child(_model)
-	# 模型面朝+Z时需旋转180°对齐角色朝向(-Z = forward)
-	_model.rotation.y = PI
+
+## 将模型从 ModelManager 移到自己身下，确保变换跟随。
+## 必须在 animation_controller.initialize() 之前完成，
+## 否则动画状态机可能在模型离开场景树时初始化，重挂载后状态会丢失。
+
+
+func _attach_model_to_player(model: Node3D) -> void:
+	if model.get_parent():
+		model.get_parent().remove_child(model)
+	add_child(model)
+	# 模型面朝 +Z 时需旋转 180° 对齐角色朝向（-Z = forward）
+	model.rotation.y = PI
 	_sync_pose_geometry()
 
-	# 模型就位后再启用动画组件并初始化控制器。Bot 没有本地相机来间接驱动
-	# 模型动画，因此必须在读取 playback 和进入 Idle 前显式启用它们。
+
+## 模型就位后再启用动画组件并初始化控制器。Bot 没有本地相机来间接驱动
+## 模型动画，因此必须在读取 playback 和进入 Idle 前显式启用它们。
+
+
+func _activate_animation_and_controllers() -> void:
 	if is_instance_valid(model_manager.animator):
 		model_manager.animator.active = true
 	if is_instance_valid(model_manager.animation_tree):
@@ -396,44 +507,63 @@ func _on_model_loaded(_model: Node3D) -> void:
 		camera_controller,
 		player_config.spine_aim_config if player_config else null
 	)
-	# 力系统在骨骼就绪后接管姿态叠加，并成为布娃娃的力提供者。
-	# IKRig 把自己的 modifier 排在这些姿态叠加之后，IK 拥有最终发言权。
+
+
+## 力系统在骨骼就绪后接管姿态叠加，并成为布娃娃的力提供者。
+## IKRig 把自己的 modifier 排在这些姿态叠加之后，IK 拥有最终发言权。
+
+
+func _bind_skeleton_systems() -> void:
 	force_receiver.set_skeleton(model_manager.skeleton)
 	_setup_force_modifier(model_manager.skeleton)
 	ragdoll_system.set_force_provider(force_receiver)
 	ik_rig.bind_skeleton(model_manager.skeleton)
+
+
+## 本地玩家：直接启用相机。
+## Bot：保留模型层级里的 authored 相机节点（动画/附件路径可能依赖它们），
+## 但绝不允许它们成为活动的 bot 相机。
+
+
+func _setup_camera_activation(model: Node3D) -> void:
 	if not is_ai_player:
 		camera_controller._find_camera_nodes()
 		camera_controller.enable_camera()
-	else:
-		# Keep authored camera nodes in the model hierarchy. They may be required
-		# by animation/attachment paths, but must never become active bot cameras.
-		for camera_node in _model.find_children("*", "Camera3D", true, false):
-			var model_camera := camera_node as Camera3D
-			if model_camera:
-				model_camera.current = false
-				model_camera.process_mode = Node.PROCESS_MODE_DISABLED
-		_configure_bot_visuals(_model)
+		return
+	for camera_node in model.find_children("*", "Camera3D", true, false):
+		var model_camera := camera_node as Camera3D
+		if model_camera:
+			model_camera.current = false
+			model_camera.process_mode = Node.PROCESS_MODE_DISABLED
+	_configure_bot_visuals(model)
 
-	if weapon_mount:
-		GlobalLogger.info("Player", "Weapon mount has been set: " + weapon_mount.name)
-		# WeaponMount remains an animation pose source only. The actual weapon is
-		# parented to an independent rig so both hands can solve toward its grips
-		# without the old right-hand -> weapon -> right-hand feedback loop.
-		var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(weapon_mount, _model)
-		if sway_pivot:
-			weapon_manager.set_mount(sway_pivot)
-			ragdoll_system.set_weapon_mount(camera_controller.get_weapon_pose_root())
-			GlobalLogger.info("Player", "Weapon sway pivot created, weapons attach under: " + sway_pivot.name)
-		else:
-			weapon_manager.set_mount(weapon_mount)
-			ragdoll_system.set_weapon_mount(weapon_mount)
-	else:
-		GlobalLogger.error("Player", "Cannot find any weapon mount,the weapon will be not visible.")
-		GlobalLogger.error("Player", "If there's already a weapon mount,try to check if its name is \"WeaponMount\" ")
 
+## 绑定武器挂点。WeaponMount 只作为动画姿态来源，真正的武器挂在独立骨架上，
+## 让双手都能向握把求解，避免旧的「右手→武器→右手」反馈环。
+
+
+func _setup_weapon_mount(weapon_mount: Node3D, model: Node3D) -> void:
+	if not weapon_mount:
+		_logger.error("Player", "Cannot find any weapon mount,the weapon will be not visible.")
+		_logger.error("Player", "If there's already a weapon mount,try to check if its name is \"WeaponMount\" ")
+		return
+	_logger.info("Player", "Weapon mount has been set: " + weapon_mount.name)
+	var sway_pivot: Node3D = camera_controller.setup_weapon_sway_pivot(weapon_mount, model)
+	if sway_pivot:
+		weapon_manager.set_mount(sway_pivot)
+		ragdoll_system.set_weapon_mount(camera_controller.get_weapon_pose_root())
+		_logger.info("Player", "Weapon sway pivot created, weapons attach under: " + sway_pivot.name)
+	else:
+		weapon_manager.set_mount(weapon_mount)
+		ragdoll_system.set_weapon_mount(weapon_mount)
+
+
+## 装备配置里的初始武器；AI 走延迟加载，避免多 bot 同帧构建场景树。
+
+
+func _equip_starting_weapon() -> void:
 	if player_config and player_config.starting_weapon:
-		GlobalLogger.debug("Player", "Initializing player's starting weapon...")
+		_logger.debug("Player", "Initializing player's starting weapon...")
 		if is_ai_player:
 			_load_ai_starting_weapon.call_deferred(player_config.starting_weapon)
 		else:
@@ -441,12 +571,11 @@ func _on_model_loaded(_model: Node3D) -> void:
 	elif is_ai_player:
 		_mark_ai_runtime_ready()
 
-	if OS.is_debug_build() and free_camera_controller:
-		free_camera_controller.initialize(self, camera_controller)
-
 
 ## 创建力姿态修饰器。IKRig 会把它排在 IK 之前，IK 在力偏移之上求解，
 ## 把被推开的双手拉回武器；摄像机不参与本期力系统。
+
+
 func _setup_force_modifier(skeleton: Skeleton3D) -> void:
 	if not is_instance_valid(skeleton) or not force_receiver:
 		return
@@ -501,117 +630,9 @@ func _is_medical_debug_mesh(mesh: MeshInstance3D, model: Node3D) -> bool:
 
 ## Distribute one weapon recoil wrench over the active stock and hand contacts.
 func apply_weapon_recoil(weapon: BaseWeapon, recoil_data: Dictionary) -> void:
-	if not is_instance_valid(weapon) or not force_receiver or is_ragdolled:
+	if is_ragdolled:
 		return
-	var model: RecoilPhysicsModel = weapon.recoil_component.physics_model if weapon.recoil_component else null
-	if not model:
-		return
-	var local_linear: Vector3 = recoil_data.get("linear_impulse_local", Vector3.ZERO)
-	var local_angular: Vector3 = recoil_data.get("angular_impulse_local", Vector3.ZERO)
-	if not local_linear.is_finite() or not local_angular.is_finite():
-		return
-	var config := force_receiver.get_config()
-	var skeleton := force_receiver.get_skeleton()
-	if not is_instance_valid(skeleton):
-		return
-	var contacts: Array[Dictionary] = []
-	var shoulder_bone := "mixamorig_RightShoulder"
-	if model.shoulder_contact.is_finite() and config.recoil_shoulder_stiffness > 0.0 \
-			and skeleton.find_bone(shoulder_bone) >= 0:
-		contacts.append({
-			"name": "shoulder",
-			"bone": shoulder_bone,
-			"point_local": model.shoulder_contact,
-			"stiffness": config.recoil_shoulder_stiffness,
-		})
-	_add_recoil_hand_contact(
-		weapon, contacts, "RightHandGrip", "mixamorig_RightHand",
-		config.recoil_primary_hand_stiffness
-	)
-	_add_recoil_hand_contact(
-		weapon, contacts, "LeftHandGrip", "mixamorig_LeftHand",
-		config.recoil_support_hand_stiffness
-	)
-	if contacts.is_empty():
-		return
-
-	var weapon_basis := weapon.global_basis.orthonormalized()
-	var impulse_world := weapon_basis * local_linear
-	var target_angular_world := weapon_basis * local_angular
-	var shoulder_world := weapon.global_transform * model.shoulder_contact
-	var recoil_duration := model.get_recoil_response_duration_s(config.decay_floor)
-	var total_stiffness := 0.0
-	for contact in contacts:
-		total_stiffness += float(contact["stiffness"])
-	if total_stiffness <= 0.0:
-		return
-
-	var contact_moments := Vector3.ZERO
-	for contact in contacts:
-		var share := float(contact["stiffness"]) / total_stiffness
-		var contact_impulse := impulse_world * share
-		var point_world: Vector3 = weapon.global_transform * (contact["point_local"] as Vector3)
-		contact_moments += (point_world - shoulder_world).cross(contact_impulse)
-	var residual_angular := target_angular_world - contact_moments
-	for contact in contacts:
-		var share := float(contact["stiffness"]) / total_stiffness
-		var contact_impulse := impulse_world * share
-		var point_world: Vector3 = weapon.global_transform * (contact["point_local"] as Vector3)
-		force_receiver.apply_recoil_impulse(
-			contact_impulse,
-			(point_world - shoulder_world).cross(contact_impulse) + residual_angular * share,
-			String(contact["bone"]),
-			recoil_duration
-		)
-
-
-func _add_recoil_hand_contact(
-	weapon: BaseWeapon,
-	contacts: Array[Dictionary],
-	marker_name: String,
-	bone_name: String,
-	stiffness: float
-) -> void:
-	var skeleton := force_receiver.get_skeleton()
-	if stiffness <= 0.0 or not is_instance_valid(skeleton):
-		return
-	if skeleton.find_bone(bone_name) < 0:
-		return
-	var marker := weapon.find_grip_node(marker_name)
-	if not is_instance_valid(marker):
-		return
-	var point_local := weapon.to_local(marker.global_position) if weapon.is_inside_tree() else marker.position
-	contacts.append({
-		"name": marker_name,
-		"bone": bone_name,
-		"point_local": point_local,
-		"stiffness": stiffness,
-	})
-
-
-func _on_weapon_changed(new_weapon: BaseWeapon) -> void:
-	# A weapon's contact points and inertia may change, so discard the previous
-	# weapon's persistent recoil state before binding the new component.
-	if force_receiver:
-		force_receiver.clear_forces()
-	var weight := new_weapon.config.left_hand_ik_weight if new_weapon and new_weapon.config else 1.0
-	ik_rig.set_weapon(new_weapon, weight)
-	if camera_controller:
-		camera_controller.set_recoil_component(
-			new_weapon.recoil_component if new_weapon else null
-		)
-	_sync_weapon_weight_to_stamina()
-
-
-## 将当前武器（含已装备配件）的总重量同步给耐力系统。
-func _sync_weapon_weight_to_stamina() -> void:
-	if not stamina_system:
-		return
-	var weapon := weapon_manager.current_weapon if weapon_manager else null
-	if weapon and weapon.config and weapon.config.weight_affects_movement:
-		stamina_system.set_carry_weight(weapon.get_total_weight())
-	else:
-		stamina_system.set_carry_weight(0.0)
+	weapon_feedback.apply_recoil(weapon, recoil_data)
 
 
 func _process(delta: float) -> void:
@@ -635,7 +656,8 @@ func _process(delta: float) -> void:
 	spine_aim_controller.process_aim(delta, procedural_animation_active and not prone)
 	# The independent weapon rig still samples the authored hand pose when arm IK
 	# is disabled, including the pre-physics death-animation phase.
-	camera_controller.refresh_weapon_pose()
+	if not procedural_animation_active and not is_ragdolled:
+		weapon_presentation_controller.ensure_pose_current(delta)
 	ik_rig.update(delta, procedural_animation_active, prone, movement_controller.is_sprinting())
 
 
@@ -654,151 +676,112 @@ func _sync_prone_mesh_floor_offset() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	# 暂停菜单/设置页/改装界面打开时，本地玩家让出全部输入。
-	if (settings_menu and settings_menu.is_open()) or (pause_menu and pause_menu.is_open()) \
-			or (weapon_mod_menu and weapon_mod_menu.is_open()) or (console_system and console_system.is_open()) \
-			or (radial_menu_service and radial_menu_service.is_open()):
+	# 任一界面（暂停 / 设置 / 改装 / 控制台 / 径向菜单）打开时，本地玩家让出全部输入。
+	if _is_ui_capturing_input():
 		return
-
-	if is_alive and controllable:
-		# 瞄准：按住与切换模式共享同一个可重绑定动作。
-		if event.is_action_pressed("aim"):
-			var ads_mode := String(settings_service.get_value("controls/ads_input_mode", "hold"))
-			_request_aim(not weapon_manager.is_aiming if ads_mode == "toggle" else true)
-		elif event.is_action_released("aim") \
-				and String(settings_service.get_value("controls/ads_input_mode", "hold")) == "hold":
-			_request_aim(false)
-		# 换弹
-		if event.is_action_pressed("reload"):
-			weapon_manager.reload()
-		# 开火
-		if event.is_action_pressed("fire"):
-			weapon_manager.press_trigger()
-		if event.is_action_released("fire"):
-			weapon_manager.release_trigger()
-		# 切换射击模式
-		# 排障
-		if event.is_action_pressed("clear_malfunction"):
-			weapon_manager.attempt_malfunction_clearance()
-
+	_handle_gameplay_input(event)
 	if not OS.is_debug_build():
 		return
+	_handle_debug_action_input(event)
+	_handle_debug_key_input(event)
 
+
+## 有界面正在独占输入时不响应玩家输入。
+
+
+func _is_ui_capturing_input() -> bool:
+	return (settings_menu and settings_menu.is_open()) \
+			or (pause_menu and pause_menu.is_open()) \
+			or (weapon_mod_menu and weapon_mod_menu.is_open()) \
+			or (console_system and console_system.is_open()) \
+			or (radial_menu_service and radial_menu_service.is_open())
+
+
+## 正式玩法输入：瞄准 / 换弹 / 开火 / 排障。
+
+
+func _handle_gameplay_input(event: InputEvent) -> void:
+	if not (is_alive and controllable):
+		return
+	# 瞄准：按住与切换模式共享同一个可重绑定动作。
+	if event.is_action_pressed("aim"):
+		var ads_mode := String(settings_service.get_value("controls/ads_input_mode", "hold"))
+		_request_aim(not weapon_manager.is_aiming if ads_mode == "toggle" else true)
+	elif event.is_action_released("aim") \
+			and String(settings_service.get_value("controls/ads_input_mode", "hold")) == "hold":
+		_request_aim(false)
+	# 换弹
+	if event.is_action_pressed("reload"):
+		weapon_manager.reload()
+	# 开火
+	if event.is_action_pressed("fire"):
+		weapon_manager.press_trigger()
+	if event.is_action_released("fire"):
+		weapon_manager.release_trigger()
+	# 排障
+	if event.is_action_pressed("clear_malfunction"):
+		weapon_manager.attempt_malfunction_clearance()
+
+
+## Debug 构建专属：可重绑定动作触发的调试开关（自由相机 / 调试复活 / 改装界面）。
+
+
+func _handle_debug_action_input(event: InputEvent) -> void:
 	# 自由视角切换（可在设置菜单重绑定，默认 F）
 	if event.is_action_pressed("toggle_free_cam"):
 		if free_camera_controller:
 			free_camera_controller.toggle()
-
 	# 调试复活（默认 G）：与 R 分开，把 R 留给正式换弹
 	if event.is_action_pressed("debug_revive"):
 		if not is_alive:
 			revive()
 		_debug_refill_ammo()
-
 	# 改装界面（debug 临时入口，默认 N，可在设置中改绑）
 	if event.is_action_pressed("weapon_mod_menu"):
 		if weapon_mod_menu:
 			weapon_mod_menu.toggle()
 
-	if event is InputEventKey and event.pressed and not event.echo:
-		match event.keycode:
-			# 受伤镜头效果调试：不写入医疗状态，只复用正式的 damage_taken 表现路径。
-			KEY_P:
-				_debug_trigger_pain_feedback(global_transform.basis.x)
-			KEY_O:
-				_debug_trigger_pain_feedback(-global_transform.basis.x)
-			KEY_T:
-				if free_camera_controller:
-					free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.TORSO)
-			KEY_I:
-				if free_camera_controller:
-					free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.HEAD)
-			KEY_U:
-				if free_camera_controller:
-					free_camera_controller.debug_shoot_explosion()
-			KEY_R:
-				# R = 换弹（已走正式分段换弹流程）。
-				# 备弹耗尽时补满，方便持续测试；正式流程上线后删掉这个兜底即可。
-				if weapon_manager and weapon_manager.current_weapon:
-					var weapon = weapon_manager.current_weapon
-					if weapon.get_reserve_ammo_count() <= 0:
-						_debug_refill_ammo()
-					else:
-						weapon_manager.reload()
+
+## Debug 构建专属：裸键位调试动作。
 
 
-func _get_fire_mode_wheel_options() -> Array[RadialMenuOption]:
-	var result: Array[RadialMenuOption] = []
-	if not weapon_manager or not weapon_manager.current_weapon:
-		return result
-	var weapon: BaseWeapon = weapon_manager.current_weapon
-	if not weapon.config:
-		return result
-	var available := weapon_manager.get_available_fire_modes()
-	for mode in weapon.config.fire_modes:
-		var option := RadialMenuOption.new()
-		option.id = mode
-		option.title = _fire_mode_display(mode)
-		option.is_current = mode == weapon.current_fire_mode
-		option.is_enabled = available.has(mode)
-		option.disabled_reason = "Selector switch unavailable" if not option.is_enabled else ""
-		option.execute = _make_fire_mode_callback(mode)
-		result.append(option)
-	return result
+func _handle_debug_key_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	match event.keycode:
+		# 受伤镜头效果调试：不写入医疗状态，只复用正式的 damage_taken 表现路径。
+		KEY_P:
+			_debug_trigger_pain_feedback(global_transform.basis.x)
+		KEY_O:
+			_debug_trigger_pain_feedback(-global_transform.basis.x)
+		KEY_T:
+			if free_camera_controller:
+				free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.TORSO)
+		KEY_I:
+			if free_camera_controller:
+				free_camera_controller.debug_shoot(MedicalEnums.BodyPartId.HEAD)
+		KEY_U:
+			if free_camera_controller:
+				free_camera_controller.debug_shoot_explosion()
+		KEY_R:
+			# R = 换弹（已走正式分段换弹流程）。
+			# 备弹耗尽时补满，方便持续测试；正式流程上线后删掉这个兜底即可。
+			if weapon_manager and weapon_manager.current_weapon:
+				var weapon = weapon_manager.current_weapon
+				if weapon.get_reserve_ammo_count() <= 0:
+					_debug_refill_ammo()
+				else:
+					weapon_manager.reload()
 
 
-func _make_fire_mode_callback(mode: String) -> Callable:
-	return func(): weapon_manager.set_fire_mode(mode)
-
-
-func _fire_mode_display(mode: String) -> String:
-	match mode:
-		"safe": return "SAFE"
-		"semi": return "SEMI"
-		"auto": return "AUTO"
-		"burst": return "BURST"
-		_: return mode.to_upper()
-
-
-func _get_squad_command_options() -> Array[RadialMenuOption]:
-	var result: Array[RadialMenuOption] = []
-	var commands := [
-		[AIBlackboard.SquadCommand.FOLLOW_PLAYER, "跟随我", "跟随玩家移动"],
-		[AIBlackboard.SquadCommand.MOVE_TO_OBJECTIVE, "前往目标", "移动并占领目标区"],
-		[AIBlackboard.SquadCommand.ADVANCE, "推进", "向敌情或目标方向推进"],
-		[AIBlackboard.SquadCommand.HOLD, "坚守", "原地警戒并保持阵地"],
-		[AIBlackboard.SquadCommand.FALL_BACK, "撤回", "撤回到玩家附近"],
-		[AIBlackboard.SquadCommand.ATTACK, "攻击", "攻击当前共享敌情"],
-	]
-	var director := _get_encounter_bot_director()
-	for entry in commands:
-		var option := RadialMenuOption.new()
-		option.id = AIBlackboard.command_name(entry[0])
-		option.title = entry[1]
-		option.description = entry[2]
-		option.is_enabled = director != null
-		option.disabled_reason = "当前没有可指挥的队友" if not director else ""
-		option.execute = _make_squad_command_callback(entry[0])
-		result.append(option)
-	return result
-
-
-func _issue_squad_command(command: AIBlackboard.SquadCommand) -> void:
-	var director := _get_encounter_bot_director()
-	if director:
-		director.issue_player_command(command, self)
-
-
-func _make_squad_command_callback(command: AIBlackboard.SquadCommand) -> Callable:
-	return func(): _issue_squad_command(command)
-
-
-func _get_encounter_bot_director() -> EncounterAIDirector:
-	var scene := get_tree().current_scene if get_tree() else null
-	return scene.find_child("EncounterAIDirector", true, false) as EncounterAIDirector if scene else null
+## 径向菜单「内容构建 + 轮盘注册」已整体下移到 UI 层：
+## classes/ui/player_ui_layer.gd（_register_radial_wheels / _get_*_wheel_options / _issue_squad_command）。
+## 玩家核心不再持有任何轮盘内容或回调构造逻辑。
 
 
 ## 调试用弹药重置：补满当前武器全部弹匣并上膛
+
+
 func _debug_refill_ammo() -> void:
 	var weapon = weapon_manager.current_weapon if weapon_manager else null
 	if weapon:
@@ -918,7 +901,7 @@ func go_unconscious(
 	)
 	if screen_effects:
 		screen_effects.trigger_unconscious_blur()
-	GlobalLogger.info("Player", get_parent().name + " fell unconscious")
+	_logger.info("Player", get_parent().name + " fell unconscious")
 
 
 func regain_consciousness() -> void:
@@ -936,7 +919,7 @@ func regain_consciousness() -> void:
 	_set_collision_enabled(true)
 	if screen_effects:
 		screen_effects.clear_death_blur()
-	GlobalLogger.info("Player", get_parent().name + " regained consciousness")
+	_logger.info("Player", get_parent().name + " regained consciousness")
 
 
 func die(
@@ -961,7 +944,7 @@ func die(
 	)
 	if screen_effects:
 		screen_effects.trigger_death_blur()
-	GlobalLogger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
+	_logger.info("Player", "Player " + get_parent().name + "has died. (type: %d)" % death_type)
 
 
 ## 启动布娃娃物理的公共逻辑，die() 和 go_unconscious() 共用
@@ -1030,7 +1013,7 @@ func revive() -> void:
 		force_receiver.clear_pending_impulse()
 	is_alive = true
 
-	GlobalLogger.info("Player", "Player " + get_parent().name + "has revived.")
+	_logger.info("Player", "Player " + get_parent().name + "has revived.")
 
 
 ## 初始化遭遇战出生状态，清理死亡、昏迷、布娃娃和控制锁残留。
@@ -1068,7 +1051,7 @@ func prepare_for_encounter_spawn(spawn_transform: Transform3D) -> void:
 
 func set_controllable(enabled: bool) -> void:
 	controllable = enabled
-	GlobalLogger.info("Player", "Controller of player " + get_parent().name + " has been" + ("ENABLED" if enabled else "DISABLED"))
+	_logger.info("Player", "Controller of player " + get_parent().name + " has been" + ("ENABLED" if enabled else "DISABLED"))
 
 ## Debug-only Bot motion bridge. The actual movement remains in the normal
 ## CharacterBody3D movement controller and is therefore visible to ragdoll.
@@ -1237,3 +1220,53 @@ func _set_collision_enabled(enabled: bool) -> void:
 	for child in get_children():
 		if child is CollisionShape3D:
 			child.disabled = not enabled
+
+
+func _get_weapon_probe_origin() -> Vector3:
+	var camera := camera_controller.get_active_camera()
+	return camera.global_position if is_instance_valid(camera) else global_position + Vector3.UP * 1.6
+
+
+func _get_weapon_probe_muzzle() -> Dictionary:
+	var weapon := weapon_manager.current_weapon
+	if not is_instance_valid(weapon) or is_ragdolled:
+		return {}
+	var length := weapon.config.weapon_length if weapon.config else 0.7
+	if weapon.attachment_manager:
+		length += weapon.attachment_manager.get_total_length_modifier()
+	return {"position": weapon.get_muzzle_position(), "direction": weapon.get_muzzle_direction(), "length": length}
+
+
+func _is_weapon_path_clear() -> bool:
+	if not is_instance_valid(weapon_presentation_controller) or not is_instance_valid(weapon_obstruction_detector):
+		return true
+	var threshold := weapon_presentation_controller.get_obstruction_fire_threshold()
+	return maxf(weapon_obstruction_detector.get_obstruction_weight(),
+		weapon_presentation_controller.get_obstruction_weight()) < threshold
+
+
+func _get_weapon_presentation_state() -> Dictionary:
+	var camera := camera_controller.get_active_camera()
+	var view := camera.global_transform if is_instance_valid(camera) else Transform3D(
+		Basis.from_euler(Vector3(camera_controller.get_vertical_angle(), camera_controller.get_view_yaw(), 0.0)), global_position)
+	return {
+		"active": not is_ragdolled,
+		"view": view,
+		"ads_blend": camera_controller.get_ads_blend(),
+		"ads_breath_pose": aim_breathing_controller.get_breath_pose(),
+		"local_velocity": global_basis.orthonormalized().inverse() * velocity,
+		"stability": health_system.get_aim_stability_multiplier() if health_system else 1.0,
+	}
+
+
+func _get_aim_breathing_state() -> Dictionary:
+	var aiming := weapon_manager.is_aiming and is_alive and not is_ragdolled and controllable
+	var input_allowed := not is_ai_player and controllable
+	input_allowed = input_allowed and not (
+		(settings_menu and settings_menu.is_open()) or (pause_menu and pause_menu.is_open())
+		or (weapon_mod_menu and weapon_mod_menu.is_open()) or (console_system and console_system.is_open())
+		or (radial_menu_service and radial_menu_service.is_open()))
+	return {
+		"aiming": aiming,
+		"hold_requested": input_allowed and Input.is_action_pressed("hold_breath"),
+	}

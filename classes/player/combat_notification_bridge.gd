@@ -1,6 +1,9 @@
 class_name CombatNotificationBridge
 extends Node
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 # ============================================================
 # 战斗通知桥接器
 # 监听 HealthSystem 各信号，通过 TopRightNotificationManager 显示伤情提示。
@@ -32,7 +35,7 @@ func initialize(player: BasePlayer) -> void:
 	_player = player
 	_lib = load(DEFAULT_LIBRARY_PATH)
 	if not _lib:
-		GlobalLogger.warn("CombatNotif", "CombatNotificationLibrary 未找到，通知样式使用代码内置值")
+		_logger.warn("CombatNotif", "CombatNotificationLibrary 未找到，通知样式使用代码内置值")
 
 	player.health_system.wound_added.connect(_on_wound_added)
 	player.health_system.bone_fractured.connect(_on_bone_fractured)
@@ -46,7 +49,7 @@ func _find_notif_manager_deferred() -> void:
 	await get_tree().process_frame
 	_notif_manager = _find_recursive(get_tree().root, "NotificationManager")
 	if not _notif_manager:
-		GlobalLogger.warn("CombatNotif", "TopRightNotificationManager 未找到，通知功能不可用")
+		_logger.warn("CombatNotif", "TopRightNotificationManager 未找到，通知功能不可用")
 
 
 func _find_recursive(node: Node, target: String) -> Node:

@@ -20,6 +20,8 @@
 
 ## 架构概览
 
+目录迁移及版本合并决策见 [队友代码集成说明](TeammateIntegration.md)。玩家配置、控制器、独立系统分别位于 `classes/player/config/`、`controller/`、`system/`，通用服务位于 `classes/services/`。
+
 ```
 BasePlayer (CharacterBody3D)
 ├── PlayerConfig               移动/模型/武器参数
@@ -35,6 +37,8 @@ BasePlayer (CharacterBody3D)
 ├── ForceReceiver              通用力反馈（受击姿态偏移 + 冲量缓存）
 │   └── ForceBodyModifier      SkeletonModifier3D：还原基准姿态后叠加力偏移
 ├── IKRig                      双臂握枪 + 双脚贴地 IK
+├── PlayerWeaponFeedback       后坐力分配、换枪绑定与携行重量同步
+├── PlayerUILayer              本地 HUD、菜单、控制台与轮盘装配（AI 不创建）
 ├── HealthSystem               伤害、生理状态与医疗死亡
 │   ├── VitalsModel            血量、呼吸与身体部位状态
 │   └── AnatomyConfig          器官/骨骼/大血管及伤道参数
@@ -68,17 +72,17 @@ BasePlayer (CharacterBody3D)
 ```
 BasePlayer._ready()
   └── _initialize_subsystems()          创建并初始化所有子系统
-        ├── camera_controller.initialize()
-        ├── movement_controller.initialize()
-        ├── foot_ik_controller.initialize()
-        └── connect_movement_signals()   落地/起跳信号接入摄像机
+        ├── _create_core_subsystems()
+        ├── _initialize_controllers()
+        ├── _initialize_combat_feedback()
+        ├── _create_ui_subsystems()
+        └── _connect_signals()
   └── model_manager.load_model()        异步加载模型场景
         └── model_loaded 信号 →  _on_model_loaded()
               ├── ragdoll_system.initialize()
               ├── animation_controller.initialize()
               ├── camera_controller._find_camera_nodes()
               ├── setup_weapon_sway_pivot()
-              ├── obstruction_detector.initialize()
               └── weapon_manager.load_and_equip()
 ```
 
@@ -120,17 +124,17 @@ BaseWeapon
 
 | 类 | 文件 | 说明 |
 |---|---|---|
-| [BasePlayer](player/BasePlayer.md) | `Classes/Player/base_player.gd` | 玩家根节点，协调所有子系统 |
-| [PlayerConfig](player/PlayerConfig.md) | `Classes/Player/player_config.gd` | 移动/模型/武器参数数据档案 |
-| [CameraConfig](player/CameraConfig.md) | `Classes/Player/camera_config.gd` | 摄像机效果参数数据档案 |
-| [ModelLookupConfig](player/ModelLookupConfig.md) | `Classes/Player/model_lookup_config.gd` | 模型节点自动查找规则 |
-| [PlayerModelManager](player/PlayerModelManager.md) | `Classes/Player/player_model_manager.gd` | 模型加载与骨骼缓存 |
-| [PlayerMovementController](player/PlayerMovementController.md) | `Classes/Player/player_movement_controller.gd` | 移动物理与信号发射 |
-| [PlayerCollisionController](player/PlayerCollisionController.md) | `classes/player/player_collision_controller.gd` | 主碰撞体唯一所有者、3D hitbox 包络动态拟合 |
-| [PlayerCameraController](player/PlayerCameraController.md) | `Classes/Player/player_camera_controller.gd` | 摄像机挂载与5层程序化效果 |
-| [ScreenPostProcess](player/ScreenPostProcess.md) | `classes/player/screen_post_process.gd` | 可独立挂载到 Camera3D 的多效果屏幕后处理模块 |
-| [PlayerAnimationController](player/PlayerAnimationController.md) | `Classes/Player/player_animation_controller.gd` | 信号驱动的动画状态机 |
-| [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `Classes/Player/player_ragdoll_system.gd` | 死亡布娃娃开关 |
+| [BasePlayer](player/BasePlayer.md) | `classes/player/base_player.gd` | 玩家根节点，协调所有子系统 |
+| [PlayerConfig](player/PlayerConfig.md) | `classes/player/config/player_config.gd` | 移动/模型/武器参数数据档案 |
+| [CameraConfig](player/CameraConfig.md) | `classes/player/config/camera_config.gd` | 摄像机效果参数数据档案 |
+| [ModelLookupConfig](player/ModelLookupConfig.md) | `classes/player/config/model_lookup_config.gd` | 模型节点自动查找规则 |
+| [PlayerModelManager](player/PlayerModelManager.md) | `classes/player/player_model_manager.gd` | 模型加载与骨骼缓存 |
+| [PlayerMovementController](player/PlayerMovementController.md) | `classes/player/controller/player_movement_controller.gd` | 移动物理与信号发射 |
+| [PlayerCollisionController](player/PlayerCollisionController.md) | `classes/player/controller/player_collision_controller.gd` | 主碰撞体唯一所有者、3D hitbox 包络动态拟合 |
+| [PlayerCameraController](player/PlayerCameraController.md) | `classes/player/controller/player_camera_controller.gd` | 摄像机挂载与5层程序化效果 |
+| [ScreenPostProcess](player/ScreenPostProcess.md) | `classes/player/system/screen_post_process.gd` | 可独立挂载到 Camera3D 的多效果屏幕后处理模块 |
+| [PlayerAnimationController](player/PlayerAnimationController.md) | `classes/player/controller/player_animation_controller.gd` | 信号驱动的动画状态机 |
+| [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `classes/player/system/player_ragdoll_system.gd` | 死亡布娃娃开关 |
 | [ForceSystem](player/ForceSystem.md) | `classes/player/force/` | 通用力反馈：骨骼链衰减传播、姿态偏移与冲量缓存 |
 | [IKRig](player/IKRig.md) | `classes/player/ik/` | 双臂握枪 + 双脚贴地 IK，modifier 执行顺序 |
 | [WeaponObstructionDetector](player/WeaponObstructionDetector.md) | `Classes/Weapon/Weapon/weapon_obstruction_detector.gd` | 顶墙收枪射线检测 |
@@ -256,7 +260,7 @@ BaseWeapon
 
 | 类 | 文件 | 说明 |
 |---|---|---|
-| [GameLogger](utils/GameLogger.md) | `Classes/GameLogger/game_logger.gd` | 分级日志（DEBUG/INFO/WARN/ERROR） |
+| [GameLogger](utils/GameLogger.md) | `classes/services/game_logger.gd` | 分级日志（DEBUG/INFO/WARN/ERROR） |
 
 ## 调试
 

@@ -39,9 +39,12 @@ func set_player(player) -> void:
 	_player = player
 
 
-func clear_player(player) -> void:
+func clear_player(player, wheel_ids: Array[String] = []) -> void:
 	if _player == player:
 		close(false)
+		for action_id in wheel_ids:
+			unregister_wheel(action_id)
+		_all_options.clear()
 		_player = null
 
 

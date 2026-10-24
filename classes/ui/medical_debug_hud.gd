@@ -1,5 +1,8 @@
 extends RichTextLabel
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 # ============================================================
 # 医疗数据调试 HUD
 # 功能：实时显示玩家血量、伤口、状态等医疗数据（左下角）
@@ -42,7 +45,7 @@ func _input(event: InputEvent) -> void:
 			if _health_system:
 				_health_system.set_hitboxes_visible(_is_visible)
 			else:
-				GlobalLogger.warn("MedicalHUD", "No health_system found to toggle hitboxes")
+				_logger.warn("MedicalHUD", "No health_system found to toggle hitboxes")
 
 func _find_health_system() -> void:
 	# 遍历场景树查找 BasePlayer

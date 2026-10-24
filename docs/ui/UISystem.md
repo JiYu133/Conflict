@@ -72,9 +72,9 @@ Conflict 的 UI 系统采用**统一的视觉语言**：扁平、克制、单一
 **文件位置**:
 - 暂停菜单: `classes/ui/pause_menu.gd`
 - 设置界面: `classes/ui/settings/settings_menu.gd`
-- 玩家偏好组件: `classes/ui/settings/settings_service.gd`
-- 键位数据: `classes/ui/settings/keybind_store.gd`
-- 玩家可见文本: `classes/ui/settings/settings_text.gd`
+- 玩家偏好组件: `classes/services/settings_service.gd`
+- 键位数据: `classes/services/keybind_store.gd`
+- 玩家可见文本: `classes/services/settings_text.gd`
 
 **功能**:
 - ESC 打开本地暂停菜单，再进入设置；不会暂停整个场景树
@@ -85,7 +85,7 @@ Conflict 的 UI 系统采用**统一的视觉语言**：扁平、克制、单一
 
 **设计特点**:
 - 设置界面纯代码构建，文本均集中于 `SettingsText`
-- `SettingsService` 由 `BasePlayer` 创建并注入依赖；不依赖新的 Autoload 或全局类
+- `SettingsService` 位于通用服务层，由 `BasePlayer` 创建，再注入 `PlayerUILayer` 及具体界面；不新增 Autoload
 - 画面分类已接入窗口模式设置；音频、界面与辅助功能分类仍预留，未接入的分类不提供虚假选项
 - 暂停菜单、设置页均以淡入和 8 px 位移动画开关；从暂停页进入设置时先完成退出动画，设置关闭后再重播暂停页进入动画，切换期间不会提前恢复玩家控制
 - `is_open()` 在打开/关闭过渡期间仍返回 true，输入处理会忽略过渡期事件，避免快速重复按键造成重入

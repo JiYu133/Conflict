@@ -1,23 +1,23 @@
 # BasePlayer
 
-**文件路径：** `Classes/Player/base_player.gd`
+**文件路径：** `classes/player/base_player.gd`
 **继承自：** `CharacterBody3D`
 
 ## 功能概述
 
-玩家实体的根节点脚本。负责在 `_ready()` 时创建并初始化全部子系统，管理子系统间的信号连接，并对外暴露玩家生命周期（死亡/复活）与可控状态的公开 API。子系统均作为子节点挂载在 BasePlayer 下，通过成员变量引用访问。
+玩家实体的组合根。负责在 `_ready()` 时创建并初始化子系统，管理信号连接，并对外暴露玩家生命周期（死亡/复活）与可控状态的公开 API。核心组件挂在玩家下，具体 HUD 和菜单由 `PlayerUILayer` 持有，玩家保留兼容引用。
 
 ## 初始化
 
 `_ready()` 调用 `_initialize_subsystems()`，按以下顺序完成初始化：
 
-1. 创建并添加全部子系统节点（ModelManager、CameraController、RagdollSystem、MovementController、CollisionController、IKRig、WeaponManager、AnimationController）
-2. 依次调用各子系统的 `initialize()` 方法，传入所需依赖
-3. 将 `movement_controller` 的落地/起跳信号连接到 `camera_controller`
-4. 连接 `model_manager.model_loaded` 与 `weapon_manager.weapon_changed` 信号
-5. 若 `player_config.model_scene` 存在，调用 `model_manager.load_model()` 加载模型
+1. `_create_core_subsystems()` 创建核心组件。
+2. `_initialize_controllers()` 初始化控制器并注入配置及状态提供者。
+3. `_initialize_combat_feedback()` 初始化碰撞、医疗表现、体力、音频及 `PlayerWeaponFeedback`。
+4. `_create_ui_subsystems()` 为本地玩家创建 `PlayerUILayer` 等组件，AI 跳过本地 UI。
+5. `_connect_signals()` 连接组件事件；随后按配置加载角色模型。
 
-模型加载完成后，`_on_model_loaded()` 回调负责：初始化布娃娃系统、动画控制器、查找武器挂载点、创建武器晃动支点、初始化 `WeaponObstructionDetector`，以及装备初始武器。
+模型加载完成后，`_on_model_loaded()` 分步完成布娃娃初始化、模型挂载、动画激活、骨骼绑定、相机与武器挂点接入，以及初始武器装备。武器阻挡检测在控制器阶段初始化，通过状态提供者读取实际武器数据。
 
 ## 信号（Signals）
 
@@ -42,6 +42,8 @@
 | `collision_controller` | `PlayerCollisionController` | 主环境碰撞体唯一所有者 |
 | `ik_rig` | `IKRig` | 双臂握枪 + 双脚贴地 IK |
 | `weapon_manager` | `WeaponManager` | 武器管理器引用 |
+| `weapon_feedback` | `PlayerWeaponFeedback` | 后坐力分配、换枪接线和携行重量同步 |
+| `ui_layer` | `PlayerUILayer` | 本地玩家界面装配层；AI 为空 |
 | `animation_controller` | `PlayerAnimationController` | 动画控制器引用 |
 
 `BasePlayer` 同时是玩家子系统的组合根：它负责连接 stance 信号，并通过公开的纯数值接口更新 movement、camera、model 与 collision。在这条姿态/碰撞数据流中，业务组件不互相保存引用；医疗 hitbox 包络以 `Callable -> AABB` 注入碰撞控制器。
@@ -68,5 +70,5 @@
 ## 注意事项
 
 - `faction_changed` 信号已声明但代码中暂无主动 emit，外部若依赖该信号需自行调用或扩展 setter。
-- `WeaponObstructionDetector` 是在 `_on_model_loaded()` 内动态创建的，比其他子系统晚一帧初始化，不可在模型加载前访问。
+- 模型加载前骨骼和武器挂点可能尚未就绪，组件应通过注入的状态提供者处理这种情况。
 - `_on_model_loaded()` 中会将模型从 `ModelManager` 下移到 `BasePlayer` 自身下，以确保变换跟随玩家根节点。

@@ -3,8 +3,8 @@ extends CanvasLayer
 ## 设置页只编辑玩家偏好草稿；PauseMenu 负责暂停与恢复玩家控制。
 
 const FONT_PATH := "res://assets/fonts/ConflictCJKUI.ttf"
-const KeybindStore = preload("res://classes/ui/settings/keybind_store.gd")
-const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
+const KeybindStore = preload("res://classes/services/keybind_store.gd")
+const SettingsText = preload("res://classes/services/settings_text.gd")
 const AnimatedToggle = preload("res://classes/ui/settings/animated_toggle.gd")
 const BLUR_SHADER_PATH := "res://assets/shaders/death_blur.gdshader"
 const COL_BACKDROP := Color(0.0, 0.0, 0.0, 0.68)
@@ -645,16 +645,6 @@ func _build_video_page() -> void:
 	_content_subtitle.text = "调整窗口显示方式、视觉特效和血腥内容显示。"
 	_add_section(SettingsText.SECTION_DISPLAY)
 	_add_window_mode_row()
-	_add_section(SettingsText.SECTION_OPTICS)
-	_add_option_row(
-		SettingsText.VIDEO_MAGNIFIED_SCOPE_MODE,
-		SettingsText.VIDEO_MAGNIFIED_SCOPE_MODE_HINT,
-		"graphics/magnified_scope_mode",
-		[
-			{"label": SettingsText.SCOPE_MODE_PIXEL_ZOOM, "value": "pixel_zoom"},
-			{"label": SettingsText.SCOPE_MODE_DUAL_CAMERA, "value": "dual_camera"},
-		]
-	)
 	_add_section(SettingsText.SECTION_COMFORT)
 	_add_slider_row(SettingsText.VIDEO_HIT_CAMERA_IMPACT, SettingsText.VIDEO_HIT_CAMERA_IMPACT_HINT, "graphics/hit_camera_impact", 0.0, 1.0, 0.05)
 	_add_slider_row(SettingsText.VIDEO_DAMAGE_BLUR, SettingsText.VIDEO_DAMAGE_BLUR_HINT, "graphics/damage_blur", 0.0, 1.0, 0.05)

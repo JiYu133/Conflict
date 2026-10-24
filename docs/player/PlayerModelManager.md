@@ -1,6 +1,6 @@
 # PlayerModelManager
 
-**文件路径：** `Classes/Player/player_model_manager.gd`  
+**文件路径：** `classes/player/player_model_manager.gd`  
 **继承自：** `Node`
 
 ## 功能概述

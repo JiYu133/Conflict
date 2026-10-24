@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tests/player_audio_interface_runner.gd" id="1_pair"]
+
+[node name="PlayerAudioInterfaceRunner" type="Node"]
+script = ExtResource("1_pair")

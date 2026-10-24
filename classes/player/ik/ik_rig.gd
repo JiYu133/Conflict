@@ -25,7 +25,11 @@ var right_leg := LegIK.new()
 var _player: CharacterBody3D
 var _model_manager: PlayerModelManager
 var _config: IKRigConfig
-var _weapon_pose: PlayerCameraController
+var _weapon_pose: WeaponPresentationController
+var _trigger_marker: Node3D
+var _wrist_from_grip := Transform3D.IDENTITY
+var _trigger_calibrated := false
+var _pose_delta := 0.016
 var _skeleton: Skeleton3D
 var _legs_modifier: IKLegsModifier
 var _arms_modifier: IKArmsModifier
@@ -45,7 +49,7 @@ var _body_hit: Dictionary = {"colliding": false, "point": Vector3.ZERO, "normal"
 const PELVIS_FADE_SPEED := 0.5
 
 
-func initialize(player: CharacterBody3D, model_manager: PlayerModelManager, config: IKRigConfig, weapon_pose: PlayerCameraController) -> void:
+func initialize(player: CharacterBody3D, model_manager: PlayerModelManager, config: IKRigConfig, weapon_pose: WeaponPresentationController) -> void:
 	_player = player
 	_config = config if config else IKRigConfig.new()
 	_weapon_pose = weapon_pose
@@ -109,6 +113,7 @@ func clear() -> void:
 	_pelvis = -1
 	_pelvis_drop = 0.0
 	_arm_weight = 0.0
+	_trigger_calibrated = false
 	_grip_slide = 0.0
 	for limb in [left_arm, right_arm, left_leg, right_leg]:
 		limb.clear()
@@ -120,6 +125,7 @@ func set_weapon(weapon: BaseWeapon, support_weight: float = 1.0) -> void:
 			and _weapon.attachment_manager.attachments_changed.is_connected(_refresh_support_marker):
 		_weapon.attachment_manager.attachments_changed.disconnect(_refresh_support_marker)
 	_weapon = weapon if is_instance_valid(weapon) else null
+	_trigger_calibrated = false
 	_support_weight = clampf(support_weight, 0.0, 1.0)
 	if _weapon and is_instance_valid(_weapon.attachment_manager):
 		_weapon.attachment_manager.attachments_changed.connect(_refresh_support_marker)
@@ -128,6 +134,7 @@ func set_weapon(weapon: BaseWeapon, support_weight: float = 1.0) -> void:
 
 ## 每帧由 BasePlayer 调用。active = 存活且未进入布娃娃。
 func update(delta: float, active: bool, prone: bool, sprinting: bool) -> void:
+	_pose_delta = delta
 	var config := _config if _config else IKRigConfig.new()
 	if active:
 		var goal := config.sprint_arm_weight if sprinting else 1.0
@@ -233,7 +240,20 @@ func _process_arms() -> void:
 	if _arm_weight <= 0.0 or not is_instance_valid(_weapon):
 		return
 	if is_instance_valid(_weapon_pose):
-		_weapon_pose.refresh_weapon_pose()
+		# Capture the wrist offset before solving either arm. The mount may attach
+		# to a finger bone, so RightHandGrip needs this authored wrist calibration.
+		if not _trigger_calibrated and is_instance_valid(_trigger_marker) and right_arm.is_bound():
+			var source := _weapon_pose.get_pose_source()
+			var root := _weapon_pose.get_pose_root()
+			if is_instance_valid(source) and is_instance_valid(root):
+				var grip_from_root := root.global_transform.affine_inverse() * _trigger_marker.global_transform
+				var attachment := source.get_parent() as BoneAttachment3D
+				if attachment:
+					attachment.on_skeleton_update()
+				var authored_grip := source.global_transform * grip_from_root
+				_wrist_from_grip = authored_grip.affine_inverse() * TwoBoneIK.bone_world_transform(_skeleton, right_arm.hand)
+				_trigger_calibrated = true
+		_weapon_pose.ensure_pose_current(_pose_delta)
 	_aim_trigger_hand()
 	_aim_support_hand()
 	var chest := TwoBoneIK.bone_world_position(_skeleton, _chest) if _chest >= 0 else _player.global_position
@@ -246,14 +266,9 @@ func _process_arms() -> void:
 
 func _aim_trigger_hand() -> void:
 	right_arm.has_target = false
-	if not right_arm.is_bound() or not is_instance_valid(_weapon_pose):
+	if not right_arm.is_bound() or not is_instance_valid(_trigger_marker) or not _trigger_calibrated:
 		return
-	var mount := _weapon_pose.get_weapon_pose_source()
-	var carrier := _weapon.get_parent() as Node3D
-	if not is_instance_valid(mount) or not is_instance_valid(carrier):
-		return
-	var hand_from_mount := mount.global_transform.affine_inverse() * TwoBoneIK.bone_world_transform(_skeleton, right_arm.hand)
-	right_arm.target = carrier.global_transform * hand_from_mount
+	right_arm.target = _trigger_marker.global_transform * _wrist_from_grip
 	right_arm.weight = _arm_weight
 	right_arm.has_target = true
 
@@ -296,6 +311,8 @@ func _outward(arm: ArmIK, chest: Vector3, torso_down: Vector3) -> Vector3:
 # ── 内部 ─────────────────────────────────────────────────────
 
 func _refresh_support_marker() -> void:
+	_trigger_marker = _weapon.find_grip_node("RightHandGrip") if is_instance_valid(_weapon) else null
+	_trigger_calibrated = false
 	var config := _config if _config else IKRigConfig.new()
 	_support_marker = _weapon.find_grip_node(String(config.support_hand_marker)) if is_instance_valid(_weapon) else null
 	if is_instance_valid(_weapon) and not _support_marker:

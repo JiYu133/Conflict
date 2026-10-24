@@ -1,6 +1,9 @@
 class_name SpineAimController
 extends Node
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 const HEAD_MUZZLE_TARGET_DISTANCE: float = 1000.0
 
 var _player: BasePlayer
@@ -33,7 +36,7 @@ func setup(
 	_modifier = null
 
 	if not is_instance_valid(_skeleton):
-		GlobalLogger.warn("SpineAim", "未找到 Skeleton3D，脊柱视角旋转已禁用")
+		_logger.warn("SpineAim", "未找到 Skeleton3D，脊柱视角旋转已禁用")
 		return
 
 	_modifier = SpineAimModifier.new()
@@ -42,9 +45,9 @@ func setup(
 	_modifier.setup(_player, _config)
 
 	if _modifier.get_valid_bone_count() == 0:
-		GlobalLogger.warn("SpineAim", "未找到配置中的脊柱骨骼，脊柱视角旋转已禁用")
+		_logger.warn("SpineAim", "未找到配置中的脊柱骨骼，脊柱视角旋转已禁用")
 	else:
-		GlobalLogger.info("SpineAim", "脊柱视角旋转已启用，骨骼数=%d" % _modifier.get_valid_bone_count())
+		_logger.info("SpineAim", "脊柱视角旋转已启用，骨骼数=%d" % _modifier.get_valid_bone_count())
 
 
 func process_aim(delta: float, enabled: bool = true) -> void:

@@ -1,6 +1,6 @@
 # PlayerRagdollSystem
 
-**文件路径：** `classes/player/player_ragdoll_system.gd`
+**文件路径：** `classes/player/system/player_ragdoll_system.gd`
 **继承自：** `Node`
 
 ## 功能概述

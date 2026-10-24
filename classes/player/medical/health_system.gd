@@ -1,6 +1,9 @@
 class_name HealthSystem
 extends Node
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 # ============================================================
 # 医疗子系统
 # 功能：管理玩家的全部伤情、出血、意识状态；
@@ -79,7 +82,7 @@ func initialize(player: BasePlayer, config: HealthConfig) -> void:
 	if _player.model_manager:
 		_player.model_manager.model_loaded.connect(_on_model_loaded)
 	else:
-		GlobalLogger.warn("HealthSystem", "No model_manager found!")
+		_logger.warn("HealthSystem", "No model_manager found!")
 
 	# 死亡时销毁 hitbox（命中检测交给布娃娃 PhysicalBone3D）；复活时重建并重置生理状态
 	_player.died.connect(_on_player_died)
@@ -560,7 +563,7 @@ func _limb_bleed_multiplier(region: BodyRegion, arterial_mult: float, venous_mul
 func _apply_structural_damage(info: DamageInfo) -> void:
 	var region := vitals.get_region(info.body_part)
 	if not region:
-		GlobalLogger.warn("HealthSystem", "Unknown body part: %d" % info.body_part)
+		_logger.warn("HealthSystem", "Unknown body part: %d" % info.body_part)
 		return
 
 	# 动能 → 伤口严重度（无 HP 概念）
@@ -619,7 +622,7 @@ func _apply_vessel_damage(s: AnatomyStructure, wound: Wound) -> void:
 		wound.bleed_rate = maxi(wound.bleed_rate, s.severed_bleed) as MedicalEnums.BleedRate
 		if wound.type in [MedicalEnums.WoundType.PENETRATING, MedicalEnums.WoundType.LACERATION]:
 			wound.is_packable = true
-	GlobalLogger.info("HealthSystem", "Vessel severed: %s (%s, %s)" % [
+	_logger.info("HealthSystem", "Vessel severed: %s (%s, %s)" % [
 		s.display_name, MedicalEnums.BleedRate.keys()[s.severed_bleed],
 		"internal" if s.bleed_is_internal else "external"
 	])
@@ -643,7 +646,7 @@ func _apply_organ_damage(s: AnatomyStructure, wound: Wound, damage: float, regio
 		_lethal_organ_destroyed = true
 
 	organ_damaged.emit(s.body_part, s.structure_id, new_state)
-	GlobalLogger.info("HealthSystem", "Organ %s: damage %.2f (total %.2f) → %s" % [
+	_logger.info("HealthSystem", "Organ %s: damage %.2f (total %.2f) → %s" % [
 		s.display_name, damage, total, MedicalEnums.OrganState.keys()[new_state]
 	])
 
@@ -655,7 +658,7 @@ func _apply_bone_fracture(s: AnatomyStructure, wound: Wound, region: BodyRegion)
 	region.add_fracture(s.structure_id)
 	wound.pain_contribution += 0.3  # 骨折剧痛（P4 神经系统消费）
 	bone_fractured.emit(s.body_part, s.structure_id)
-	GlobalLogger.info("HealthSystem", "Bone fractured: %s" % s.display_name)
+	_logger.info("HealthSystem", "Bone fractured: %s" % s.display_name)
 
 ## 根据 DamageInfo 和 severity 构建 Wound 实例。
 ## WoundType 由伤害类型决定：BULLET→PENETRATING，EXPLOSION→BLAST_TRAUMA，其余→BLUNT_TRAUMA。
@@ -847,7 +850,7 @@ func _trigger_death(impact_direction: Vector3, include_impact_data: bool = true)
 	_is_dead = true
 
 	var death_type := _resolve_death_type(impact_direction)
-	GlobalLogger.info("HealthSystem", "Medical death (type: %s, dir: %s)" % [
+	_logger.info("HealthSystem", "Medical death (type: %s, dir: %s)" % [
 		PlayerRagdollSystem.DeathType.keys()[death_type],
 		impact_direction
 	])
@@ -931,7 +934,7 @@ func _create_hitboxes() -> void:
 	_destroy_hitboxes()
 
 	if not _player or not _player.model_manager or not _player.model_manager.skeleton:
-		GlobalLogger.warn("HealthSystem", "Cannot create hitboxes: skeleton not found")
+		_logger.warn("HealthSystem", "Cannot create hitboxes: skeleton not found")
 		return
 
 	var skeleton := _player.model_manager.skeleton
@@ -960,7 +963,7 @@ func _create_hitboxes() -> void:
 		var part_id: MedicalEnums.BodyPartId = bone_mapping[bone_name]
 		var bone_idx := skeleton.find_bone(bone_name)
 		if bone_idx < 0:
-			GlobalLogger.warn("HealthSystem", "Bone not found: " + bone_name)
+			_logger.warn("HealthSystem", "Bone not found: " + bone_name)
 			continue
 
 		# 创建 BoneAttachment3D 作为 hitbox 的父节点

@@ -1,6 +1,6 @@
 extends Node3D
 
-const SETTINGS_SERVICE_SCRIPT := preload("res://classes/ui/settings/settings_service.gd")
+const SETTINGS_SERVICE_SCRIPT := preload("res://classes/services/settings_service.gd")
 const SETTINGS_MENU_SCRIPT := preload("res://classes/ui/settings/settings_menu.gd")
 const CREDITS_SCENE := preload("res://assets/credits.tscn")
 const GAME_SCENE := "res://assets/map/TestMap.tscn"

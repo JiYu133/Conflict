@@ -48,7 +48,7 @@ func show_loading() -> void:
 	progress.modulate.a = 1.0
 	actions.visible = false
 	actions.modulate.a = 0.0
-	set_status("正在准备测试区域")
+	set_status("正在前往区域...")
 	_fade_control(loading_content, 1.0, 0.45)
 
 func show_ready() -> void:
@@ -59,7 +59,7 @@ func show_ready() -> void:
 	actions.visible = true
 	tween.tween_property(actions, "modulate:a", 1.0, 0.42).set_delay(0.16)
 	tween.chain().tween_callback(func(): progress.visible = false)
-	set_status("区域已准备完毕")
+	set_status("准备部署")
 	deploy_button.grab_focus()
 
 func _begin_deployment() -> void:

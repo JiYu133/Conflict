@@ -1,6 +1,6 @@
 # PlayerCollisionController
 
-**文件：** `classes/player/player_collision_controller.gd`
+**文件：** `classes/player/controller/player_collision_controller.gd`
 
 ## 职责与组件边界
 

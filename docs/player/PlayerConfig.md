@@ -1,6 +1,6 @@
 # PlayerConfig
 
-**文件路径：** `Classes/Player/player_config.gd`
+**文件路径：** `classes/player/config/player_config.gd`
 **继承自：** `Resource`
 
 ## 功能概述

@@ -1,14 +1,14 @@
-extends SceneTree
+extends Node
 
-## Regression check for thresholded velocity-driven lower-body yaw, backward
-## locomotion, and independent spine aim.
-## Run: godot --headless --path . --script res://tests/movement_body_yaw_runner.gd
+## Regression check for view-aligned locomotion, backward movement,
+## and independent spine aim when body and view temporarily diverge.
+## Run: godot --headless --path . res://tests/movement_body_yaw_runner.tscn
 
 const PLAYER_SCENE := "res://assets/map/test_map.tscn"
 const EPSILON := 0.01
 
 
-func _init() -> void:
+func _ready() -> void:
 	_run.call_deferred()
 
 
@@ -21,10 +21,10 @@ func _run() -> void:
 	results["scene_loaded"] = true
 
 	var map := packed.instantiate()
-	root.add_child(map)
+	add_child(map)
 	var player: Node = null
 	for _frame in 120:
-		await physics_frame
+		await get_tree().physics_frame
 		player = _find_player(map)
 		if player and player.is_on_floor():
 			break
@@ -44,8 +44,7 @@ func _run() -> void:
 		_finish(results)
 		return
 
-	# Aim straight ahead while moving right. The body must turn toward velocity,
-	# not snap back to the view yaw.
+	# Strafing keeps the body aligned with the view; animation owns its direction.
 	look.set_base_yaw(0.0)
 	player.rotation.y = 0.0
 	player.velocity = Vector3.RIGHT
@@ -53,11 +52,18 @@ func _run() -> void:
 	var body_yaw := float(player.rotation.y)
 	results["body_stays_view_aligned"] = absf(angle_difference(body_yaw, 0.0)) < EPSILON
 
-	# Keep the same velocity-driven body pose and ask the spine modifier to aim at
-	# the view direction. A non-zero correction proves the upper body is separate.
+	# Aligned view and body need no upper-body correction. Then explicitly
+	# create a turn lag so independent spine aiming is actually exercised.
+	spine.process_aim(1.0)
+	results["aligned_body_needs_no_aim_offset"] = absf(float(spine.get("_current_yaw"))) < EPSILON
+	player.rotation.y = deg_to_rad(35.0)
 	spine.process_aim(1.0)
 	var spine_yaw := float(spine.get("_current_yaw"))
-	results["upper_body_keeps_aim_offset"] = absf(spine_yaw) > 0.5
+	var spine_config: SpineAimConfig = spine.get("_config")
+	var max_yaw := deg_to_rad(spine_config.max_look_yaw_degrees)
+	var expected_yaw := clampf(float(camera.get_body_yaw_offset()), -max_yaw, max_yaw) * spine_config.influence
+	results["upper_body_keeps_aim_offset"] = absf(spine_yaw) > EPSILON \
+			and absf(spine_yaw - expected_yaw) < EPSILON
 
 	# Backward velocity lies outside the configured velocity-follow threshold.
 	# The root must remain view-aligned so the locomotion BlendSpace receives a
@@ -119,4 +125,4 @@ func _finish(results: Dictionary) -> void:
 			passed = false
 	results["status"] = "passed" if passed else "failed"
 	print(JSON.stringify({"status": results["status"], "results": results}))
-	quit(0 if passed else 1)
+	get_tree().quit(0 if passed else 1)

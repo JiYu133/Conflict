@@ -1,14 +1,14 @@
-extends SceneTree
+extends Node
 
 ## 力系统测试入口。
-## 运行：godot --headless --path . --script res://tests/force_system_runner.gd
+## 运行：godot --headless --path . res://tests/force_system_runner.tscn
 ## 打印 JSON 结果，通过退出码 0/1 表示成功/失败。
 ##
-## 注意：--script 模式下 autoload 标识符（GlobalLogger 等）在 _init() 的
-## 编译期不可解析。因此运行器本身不能静态引用任何依赖 autoload 的脚本，
-## 必须在延迟调用里通过 load() 动态取用——此时 autoload 已注册完毕。
+## 历史：原为 extends SceneTree（--script 模式）。为纳入 tools/check.ps1 的场景回归
+## 并与 tests/ 其余 runner 统一，已改为场景模式（同 force_integration_runner）。
+## 运行器本身仍不静态引用任何依赖 autoload 的脚本，测试体在延迟调用里 load()。
 
-func _init() -> void:
+func _ready() -> void:
 	_run.call_deferred()
 
 
@@ -19,7 +19,7 @@ func _run() -> void:
 			"status": "failed",
 			"results": {"test_script_loaded": false},
 		}))
-		quit(1)
+		get_tree().quit(1)
 		return
 	var results: Dictionary = test_script.run_all()
 	var passed := true
@@ -27,4 +27,4 @@ func _run() -> void:
 		if not results[key]:
 			passed = false
 	print(JSON.stringify({"status": "passed" if passed else "failed", "results": results}))
-	quit(0 if passed else 1)
+	get_tree().quit(0 if passed else 1)

@@ -48,6 +48,7 @@
 
 ## 开发文档
 
+- [队友代码集成说明](docs/TeammateIntegration.md) — 目录迁移、组件边界和版本冲突处理
 - [DebugAPI 无头调试接口](docs/debug/DebugAPI.md) — AI、自动化测试和控制台的统一调试入口
 
 完整的类 API 文档位于 [`docs/`](docs/README.md)，涵盖项目全部 34 个类：

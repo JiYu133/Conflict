@@ -176,8 +176,10 @@ func get_posture_snapshot(target: Node = null) -> Dictionary:
 	var turn = player.get("turn_controller")
 	var animator = player.get("model_manager").get("animator") if player.get("model_manager") else null
 	var animation_name := String(animator.current_animation) if animator else ""
-	var animation_position := float(animator.current_animation_position) if animator else 0.0
-	var animation_length := float(animator.current_animation_length) if animator else 0.0
+	# AnimationTree-driven players can have no active AnimationPlayer clip.
+	# Querying its position/length in that state produces engine errors.
+	var animation_position := float(animator.current_animation_position) if not animation_name.is_empty() else 0.0
+	var animation_length := float(animator.current_animation_length) if not animation_name.is_empty() else 0.0
 	if animation and animation.has_method("get_prone_animation_name"):
 		var prone_name: StringName = animation.get_prone_animation_name()
 		if not prone_name.is_empty():

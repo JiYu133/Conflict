@@ -19,6 +19,8 @@ extends Resource
 @export var model_config: ModelLookupConfig
 ## 摄像机与视角效果配置
 @export var camera_config: CameraConfig
+## ADS transition rate and procedural breathing (presentation only).
+@export var aim_config: AimConfig
 
 # 动画配置 ─────────────────────────────────────────────────
 @export_group("动画配置")

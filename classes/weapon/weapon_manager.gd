@@ -16,6 +16,7 @@ var weapon_mount: Node3D
 var camera_controller: PlayerCameraController
 var settings_service
 var is_aiming: bool = false
+var _fire_gate: Callable
 
 var _weapon_anim_controller: WeaponAnimationController
 var _moving_parts_controller: WeaponMovingPartsController
@@ -41,6 +42,7 @@ func equip_weapon(weapon: BaseWeapon, emit_changed: bool = true) -> void:
 		_weapon_anim_controller = null
 		_moving_parts_controller = null
 	current_weapon = weapon
+	weapon.set_fire_gate(_fire_gate)
 	if weapon.fx_controller:
 		weapon.fx_controller.set_settings_service(settings_service)
 	if weapon_mount:
@@ -371,3 +373,13 @@ func _on_weapon_attachment_detached(slot: AttachmentSlot, attachment: BaseAttach
 	var slot_name: String = slot.get_slot_key()
 	attachment_detached.emit(slot_name)
 	_apply_ads_state()
+
+
+func set_fire_gate(gate: Callable) -> void:
+	_fire_gate = gate
+	if is_instance_valid(current_weapon):
+		current_weapon.set_fire_gate(gate)
+
+
+func can_fire() -> bool:
+	return is_instance_valid(current_weapon) and current_weapon.can_fire()

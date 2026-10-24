@@ -1,6 +1,9 @@
 class_name PlayerCameraController
 extends Node
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 # ============================================================
 # 玩家摄像机控制器
 # 功能：
@@ -44,6 +47,7 @@ var _model_manager: PlayerModelManager
 var _look_controller: PlayerLookController
 var _model_lookup_config: ModelLookupConfig
 var _camera_config: CameraConfig
+var _aim_config := AimConfig.new()
 var _player: BasePlayer
 var _settings_service
 var _bone_attachment: BoneAttachment3D
@@ -77,8 +81,8 @@ var _recoil_pitch_spring := CameraSpring1D.new()
 var _recoil_yaw_spring := CameraSpring1D.new()
 
 var _sway_pivot: Node3D = null
-var _weapon_pose_root: Node3D = null
-var _weapon_pose_source: Node3D = null
+var _weapon_presentation: WeaponPresentationController
+var _eye_anchor: Node3D
 
 # 蹲下眼部高度插值
 var _eye_height: float = 1.6
@@ -240,10 +244,11 @@ func enable_camera() -> void:
 		_active_camera.near = _camera_config.near_plane
 
 	_bone_attachment = _find_bone_attachment()
+	_eye_anchor = _bone_attachment.find_child("EyeAnchor", true, false) as Node3D if _bone_attachment else null
 	if _bone_attachment:
-		GlobalLogger.info("Camera", "Head BoneAttachment found: " + _bone_attachment.bone_name)
+		_logger.info("Camera", "Head BoneAttachment found: " + _bone_attachment.bone_name)
 	else:
-		GlobalLogger.warn("Camera", "Head BoneAttachment not found, using fallback position")
+		_logger.warn("Camera", "Head BoneAttachment not found, using fallback position")
 	_sync_springs_to_head()
 
 
@@ -282,7 +287,7 @@ func disable_camera(skeleton: Skeleton3D = null) -> void:
 		_active_camera.global_transform = saved_xform
 		_active_camera.current = true
 	if not is_instance_valid(_ragdoll_head_bone):
-		GlobalLogger.warn("Camera", "Ragdoll camera waiting for PhysicalBone3D: " + skeleton.get_bone_name(head_idx))
+		_logger.warn("Camera", "Ragdoll camera waiting for PhysicalBone3D: " + skeleton.get_bone_name(head_idx))
 
 
 ## 布娃娃物理启动后调用（由 base_player 连接 ragdoll_physics_started 信号触发）
@@ -300,9 +305,9 @@ func on_ragdoll_physics_started() -> void:
 		# 当前骨架姿态可用于建立一次性的头部/物理父骨骼相对变换。
 		_cache_ragdoll_head_conversion()
 	if _ragdoll_head_bone:
-		GlobalLogger.info("Camera", "Ragdoll head bone found: " + _ragdoll_head_bone.name)
+		_logger.info("Camera", "Ragdoll head bone found: " + _ragdoll_head_bone.name)
 	else:
-		GlobalLogger.warn("Camera", "Ragdoll PhysicalBone3D not found for: " + head_bone_name + ", falling back to skeleton pose")
+		_logger.warn("Camera", "Ragdoll PhysicalBone3D not found for: " + head_bone_name + ", falling back to skeleton pose")
 
 
 ## 缓存当前头部相对物理骨骼的变换。
@@ -400,8 +405,7 @@ func _on_model_unloaded() -> void:
 	_camera_mount = null
 	_bone_attachment = null
 	_sway_pivot = null
-	_weapon_pose_root = null
-	_weapon_pose_source = null
+	_eye_anchor = null
 
 
 func _find_camera_nodes() -> void:
@@ -538,7 +542,6 @@ func _process(delta: float) -> void:
 
 	if _update_prone_roll_head_camera():
 		_update_ads(delta)
-		_update_weapon_spring(delta)
 		return
 	if controllable and (
 		not is_instance_valid(_look_controller) or not _look_controller.is_free_look_active()
@@ -598,7 +601,6 @@ func _process(delta: float) -> void:
 	)
 
 	_update_ads(delta)
-	_update_weapon_spring(delta)
 
 
 func _should_lock_turn_in_place_height() -> bool:
@@ -612,6 +614,9 @@ func _should_lock_turn_in_place_height() -> bool:
 # 头部位置读取（玩家局部空间）
 # ============================================================
 func _get_head_local_position() -> Vector3:
+	if is_instance_valid(_eye_anchor) and is_instance_valid(_player):
+		_bone_attachment.on_skeleton_update()
+		return _player.global_transform.affine_inverse() * _eye_anchor.global_position
 	if _bone_attachment and is_instance_valid(_bone_attachment) and is_instance_valid(_player):
 		var bone_local := _player.global_transform.affine_inverse() * _bone_attachment.global_position
 		return bone_local + _camera_config.head_offset
@@ -638,7 +643,9 @@ func apply_stance_value(value: float) -> void:
 # ============================================================
 func _update_ads(delta: float) -> void:
 	var target: float = 1.0 if _is_ads else 0.0
-	_ads_progress = move_toward(_ads_progress, target, delta / max(_ads_transition_time, 0.001))
+	var rate := _aim_config.raise_speed if _is_ads else _aim_config.lower_speed
+	_ads_progress = move_toward(_ads_progress, target,
+		delta * maxf(rate, 0.05) / max(_ads_transition_time, 0.001))
 	# Keep timing deterministic while removing the hard linear start/stop from
 	# the visible weapon and FOV transition.
 	_ads_blend = _smoothstep(_ads_progress)
@@ -648,6 +655,10 @@ func _update_ads(delta: float) -> void:
 func _smoothstep(value: float) -> float:
 	var t := clampf(value, 0.0, 1.0)
 	return t * t * (3.0 - 2.0 * t)
+
+
+func set_aim_config(config: AimConfig) -> void:
+	_aim_config = config if config else AimConfig.new()
 
 
 func set_ads_state(
@@ -684,27 +695,12 @@ func _update_weapon_spring(_delta: float) -> void:
 ## it toward the camera-centred ADS pose. This is also called from the hand IK
 ## modifier so both arm targets consume the current weapon transform.
 func refresh_weapon_pose() -> void:
-	if not is_instance_valid(_weapon_pose_root) or not is_instance_valid(_weapon_pose_source):
-		return
-	_refresh_pose_source_attachment()
-	var hip_global := _weapon_pose_source.global_transform
-	if is_instance_valid(_ads_anchor) and is_instance_valid(_active_camera):
-		var anchor_from_pose := _weapon_pose_root.global_transform.affine_inverse() \
-					* _ads_anchor.global_transform
-		var ads_global := _active_camera.global_transform * anchor_from_pose.affine_inverse()
-		_weapon_pose_root.global_transform = hip_global.interpolate_with(ads_global, _ads_blend)
-		return
-	var fallback_ads := hip_global * Transform3D(Basis.IDENTITY, _ads_center_offset)
-	_weapon_pose_root.global_transform = hip_global.interpolate_with(fallback_ads, _ads_blend)
+	if is_instance_valid(_weapon_presentation):
+		_weapon_presentation.ensure_pose_current()
 
 
-func _refresh_pose_source_attachment() -> void:
-	var node: Node = _weapon_pose_source
-	while is_instance_valid(node):
-		if node is BoneAttachment3D:
-			(node as BoneAttachment3D).on_skeleton_update()
-			return
-		node = node.get_parent()
+func set_weapon_presentation_controller(controller: WeaponPresentationController) -> void:
+	_weapon_presentation = controller
 
 
 func set_recoil_component(component: RecoilComponent) -> void:
@@ -738,14 +734,9 @@ func _on_physical_recoil_applied(recoil_data: Dictionary) -> void:
 func _update_recoil_camera(delta: float) -> void:
 	if not _camera_config:
 		return
-	var ads_multiplier := lerpf(
-		1.0,
-		maxf(_camera_config.recoil_ads_stiffness_multiplier, 0.01),
-		_ads_progress
-	)
-	_recoil_pitch_spring.stiffness = _camera_config.recoil_pitch_stiffness * ads_multiplier
+	_recoil_pitch_spring.stiffness = _camera_config.recoil_pitch_stiffness
 	_recoil_pitch_spring.damping = _camera_config.recoil_pitch_damping
-	_recoil_yaw_spring.stiffness = _camera_config.recoil_yaw_stiffness * ads_multiplier
+	_recoil_yaw_spring.stiffness = _camera_config.recoil_yaw_stiffness
 	_recoil_yaw_spring.damping = _camera_config.recoil_yaw_damping
 	_recoil_pitch_spring.update(delta, 0.0)
 	_recoil_yaw_spring.update(delta, 0.0)
@@ -852,24 +843,13 @@ func _update_ragdoll_camera_shake(delta: float) -> Dictionary:
 # 公开 API
 # ============================================================
 func setup_weapon_sway_pivot(weapon_mount: Node3D, pose_parent: Node3D = null) -> Node3D:
-	if not weapon_mount:
+	if not is_instance_valid(_weapon_presentation) or not is_instance_valid(weapon_mount):
 		return null
-	if _sway_pivot and is_instance_valid(_sway_pivot):
+	if is_instance_valid(_sway_pivot) and _weapon_presentation.get_pose_source() == weapon_mount:
 		return _sway_pivot
-	_weapon_pose_source = weapon_mount
-	_weapon_pose_root = Node3D.new()
-	_weapon_pose_root.name = "WeaponPoseRoot"
-	var root_parent := pose_parent if is_instance_valid(pose_parent) else weapon_mount.get_parent() as Node3D
-	if not is_instance_valid(root_parent):
-		return null
-	root_parent.add_child(_weapon_pose_root)
-	_refresh_pose_source_attachment()
-	_weapon_pose_root.global_transform = weapon_mount.global_transform
-	var pivot: Node3D = Node3D.new()
-	pivot.name = "WeaponSwayPivot"
-	_weapon_pose_root.add_child(pivot)
-	_sway_pivot = pivot
-	return pivot
+	var parent := pose_parent if is_instance_valid(pose_parent) else weapon_mount.get_parent() as Node3D
+	_sway_pivot = _weapon_presentation.setup_weapon_rig(weapon_mount, parent)
+	return _sway_pivot
 
 
 func get_active_camera() -> Camera3D:
@@ -885,11 +865,16 @@ func get_ads_blend() -> float:
 
 
 func get_weapon_pose_root() -> Node3D:
-	return _weapon_pose_root
+	return _weapon_presentation.get_pose_root() if is_instance_valid(_weapon_presentation) else null
 
 
 func get_weapon_pose_source() -> Node3D:
-	return _weapon_pose_source
+	return _weapon_presentation.get_pose_source() if is_instance_valid(_weapon_presentation) else null
+
+
+func get_eye_anchor() -> Node3D:
+	return _eye_anchor
+
 
 func _update_prone_roll_head_camera() -> bool:
 	var rolling := is_instance_valid(_player) \

@@ -1,6 +1,6 @@
 extends RefCounted
 
-const SettingsText = preload("res://classes/ui/settings/settings_text.gd")
+const SettingsText = preload("res://classes/services/settings_text.gd")
 const SAVE_PATH := "user://keybinds.cfg"
 const CONFIG_SECTION := "keybinds"
 

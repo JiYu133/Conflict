@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tests/force_system_runner.gd" id="1_fsr"]
+
+[node name="ForceSystemRunner" type="Node"]
+script = ExtResource("1_fsr")

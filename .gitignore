@@ -25,3 +25,7 @@ Thumbs.db
 *.TMP
 *.log
 *.uid
+
+.claude/
+.codex/
+.tmp_inspect/

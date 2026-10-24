@@ -1,6 +1,6 @@
 # PlayerAnimationController
 
-**文件路径：** `Classes/Player/player_animation_controller.gd`  
+**文件路径：** `classes/player/controller/player_animation_controller.gd`  
 **继承自：** `Node`
 
 ## 功能概述

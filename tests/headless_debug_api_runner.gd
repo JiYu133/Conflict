@@ -40,7 +40,7 @@ func _run() -> void:
 
 
 func _run_keybind_checks() -> void:
-	var keybind_store = load("res://classes/ui/settings/keybind_store.gd")
+	var keybind_store = load("res://classes/services/keybind_store.gd")
 	var snapshot: Dictionary = keybind_store.snapshot_bindings()
 	keybind_store.apply_saved()
 	var loaded_events := InputMap.action_get_events("crouch")

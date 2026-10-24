@@ -67,6 +67,8 @@ signal malfunction_cleared()
 # 公开属性
 # ============================================================
 var config: WeaponConfig                       # 武器配置
+var _fire_gate: Callable
+
 var current_fire_mode: String = "safe"         # 当前射击模式
 
 # 枪机循环状态 ──────────────────────────────
@@ -741,6 +743,8 @@ func _on_burst_started() -> void:
 ##   3. 有弹药可用（has_ammo）
 ##   4. 枪机已闭锁（is_locked）
 func _fire_one_round() -> void:
+	if not can_fire():
+		return
 	if is_cycling or is_reloading:
 		return
 	if not ammo_component.has_ammo():
@@ -1038,3 +1042,19 @@ func _grip_node_score(node: Node3D) -> float:
 	if is_inside_tree():
 		local_z = to_local(node.global_position).z
 	return priority - local_z * 0.001
+
+
+func set_fire_gate(gate: Callable) -> void:
+	_fire_gate = gate
+
+
+func can_fire() -> bool:
+	if not config or not config.logic_enabled or current_fire_mode == "safe":
+		return false
+	if is_cycling or is_reloading or not ammo_component or not ammo_component.has_ammo():
+		return false
+	if not bolt_component or not bolt_component.is_locked():
+		return false
+	if malfunction_component and malfunction_component.has_malfunction():
+		return false
+	return bool(_fire_gate.call()) if _fire_gate.is_valid() else true

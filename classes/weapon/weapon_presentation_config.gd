@@ -4,13 +4,6 @@ extends Resource
 ## Procedural first-person weapon motion. Values are presentation-only; the
 ## muzzle transform remains the authority for projectile origin and direction.
 
-@export_group("Pose spring")
-@export var position_stiffness: float = 150.0
-@export var position_damping: float = 25.0
-@export var rotation_stiffness: float = 130.0
-@export var rotation_damping: float = 23.0
-@export_range(0.0, 0.2, 0.001) var max_substep: float = 0.016
-
 @export_group("Breathing")
 @export var breathing_frequency_hz: float = 0.6
 @export var hip_breath_position: Vector3 = Vector3(0.005, 0.007, 0.002)

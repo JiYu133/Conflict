@@ -36,7 +36,7 @@ const PARAM_WALK_BLEND         := "parameters/Walk/blend_position"
 const PARAM_CROUCH_WALK_BLEND  := "parameters/CrouchWalk/blend_position"
 const PARAM_RUN_BLEND          := "parameters/Run/blend_position"
 const PARAM_SPRINT_BLEND       := "parameters/Sprint/blend_position"
-const PARAM_STANCE_BLEND       := "parameters/Idle/blend_position"
+const PARAM_STANCE_BLEND       := "parameters/Idle/Pose/blend_position"
 ## The authored prone lateral clips are also used by the independent prone
 ## turn controller. Keep the resource mapping in one place without coupling
 ## the movement and turn state machines.
@@ -88,6 +88,9 @@ var _external_turn_position: float = 0.0
 var _prone_animation_override: StringName = &""
 var _direct_prone_turn: bool = false
 var _prone_turn_release_pending: bool = false
+var _idle_paused := false
+var _prone_idle_paused := false
+var _prone_resume_speed := 1.0
 
 
 # 初始化 ────────────────────────────────────────────────────
@@ -118,6 +121,8 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 		GlobalLogger.debug("AnimationController", "未找到 AnimationTree，动画禁用。")
 		return
 
+	# Idle playback rates belong to this character, including turn base layers.
+	_animation_tree.tree_root = _animation_tree.tree_root.duplicate(true)
 	_playback = _animation_tree.get(PARAM_PLAYBACK) as AnimationNodeStateMachinePlayback
 	if not _playback:
 		GlobalLogger.warn("AnimationController", "无法获取状态机 playback，请确认 AnimationTree 根节点为 AnimationNodeStateMachine。")
@@ -127,6 +132,7 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 	_setup_animations()
 	_normalize_prone_hips_height()
 	_setup_turn_filters()
+	_setup_idle_time_controls()
 	_setup_turn_transitions()
 	_apply_config_to_transitions()
 	# _state 默认就是 IDLE，但状态机启动时仍停在 Start 节点；直接 start
@@ -321,6 +327,54 @@ func _setup_turn_filters() -> void:
 		_animation_tree.set("parameters/%s/Base/blend_position" % state_name, _current_stance_value())
 
 
+func _setup_idle_time_controls() -> void:
+	var sm := _animation_tree.tree_root as AnimationNodeStateMachine
+	if not sm or not sm.has_node(SM_IDLE):
+		return
+	sm.replace_node(SM_IDLE, _with_idle_time_control(sm.get_node(SM_IDLE)))
+	for state_name in TURN_STATE_NAMES:
+		var turn := sm.get_node(state_name) as AnimationNodeBlendTree
+		if turn and turn.has_node("Base"):
+			var base := turn.get_node("Base")
+			turn.remove_node("Base")
+			turn.add_node("Base", _with_idle_time_control(base))
+			turn.connect_node("Layer", 0, "Base")
+			_animation_tree.set("parameters/%s/Base/Pose/blend_position" % state_name, _current_stance_value())
+	_animation_tree.set(PARAM_STANCE_BLEND, _current_stance_value())
+	set_idle_paused(_idle_paused)
+
+
+func _with_idle_time_control(pose: AnimationNode) -> AnimationNodeBlendTree:
+	var tree := AnimationNodeBlendTree.new()
+	tree.add_node("Pose", pose)
+	tree.add_node("Rate", AnimationNodeTimeScale.new())
+	tree.connect_node("Rate", 0, "Pose")
+	tree.connect_node("output", 0, "Rate")
+	return tree
+
+
+## Freeze only authored idle time; locomotion, turn legs and modifiers keep running.
+func set_idle_paused(paused: bool) -> void:
+	_idle_paused = paused
+	if _animation_tree and _playback:
+		_animation_tree.set("parameters/Idle/Rate/scale", 0.0 if paused else 1.0)
+		for state_name in TURN_STATE_NAMES:
+			_animation_tree.set("parameters/%s/Base/Rate/scale" % state_name, 0.0 if paused else 1.0)
+	_update_prone_idle_pause()
+
+
+func _update_prone_idle_pause() -> void:
+	if not _animator:
+		return
+	var pause_idle := _idle_paused and _prone_animation_override == &"prone_idle/mixamo_com"
+	if pause_idle and not _prone_idle_paused:
+		_prone_resume_speed = _animator.speed_scale
+		_animator.speed_scale = 0.0
+	elif not pause_idle and _prone_idle_paused:
+		_animator.speed_scale = _prone_resume_speed
+	_prone_idle_paused = pause_idle
+
+
 func _get_animation_for_node(animation_node: AnimationNodeAnimation) -> Animation:
 	if not animation_node or not _animation_tree:
 		return null
@@ -393,6 +447,7 @@ func _is_root_motion_track(track_path: NodePath) -> bool:
 
 
 func _process(delta: float) -> void:
+	_update_prone_idle_pause()
 	if not is_instance_valid(_player) or not is_instance_valid(_animation_tree) or not _playback:
 		return
 	if _prone_animation_override != &"":
@@ -494,7 +549,7 @@ func _on_stance_changed(value: float) -> void:
 		return
 	_animation_tree.set(PARAM_STANCE_BLEND, value)
 	for turn_state_name in TURN_STATE_NAMES:
-		_animation_tree.set("parameters/%s/Base/blend_position" % turn_state_name, value)
+		_animation_tree.set("parameters/%s/Base/Pose/blend_position" % turn_state_name, value)
 	# Ground locomotion is resolved once per frame in _process(). Keeping the
 	# stance signal focused on blend parameters avoids a second transition path.
 
@@ -614,6 +669,7 @@ func play_prone_transition(kind: String) -> bool:
 	if not player:
 		return false
 	_prone_animation_override = &"prone_enter/mixamo_com" if kind == "enter" else &"prone_exit/mixamo_com"
+	_update_prone_idle_pause()
 	if not player.has_animation(_prone_animation_override):
 		_prone_animation_override = &""
 		if _animation_tree:
@@ -637,6 +693,7 @@ func get_prone_transition_length(kind: String) -> float:
 
 func clear_prone_override() -> void:
 	_prone_animation_override = &""
+	_update_prone_idle_pause()
 	if _animator:
 		_animator.stop()
 	if _animation_tree:
@@ -711,6 +768,7 @@ func _play_prone_clip(
 	var clip := player.get_animation(anim)
 	clip.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
 	_prone_animation_override = anim
+	_update_prone_idle_pause()
 	if player.current_animation != anim:
 		player.play(anim, blend_time)
 
@@ -737,6 +795,7 @@ func begin_external_turn(turn_state: State, playback_speed: float) -> void:
 			if _animation_tree:
 				_animation_tree.active = false
 			_prone_animation_override = clip
+			_update_prone_idle_pause()
 			# Prone lateral crawl and prone turn share authored resources. Blend
 			# into the turn clip so a large-look turn never hard-cuts the head.
 			player.play(clip, PRONE_LOCOMOTION_BLEND_TIME)
@@ -814,7 +873,10 @@ func set_turn_playback_speed(speed: float) -> void:
 	if not animator and _animation_tree:
 		animator = _animation_tree.get_node_or_null(_animation_tree.anim_player) as AnimationPlayer
 	if animator:
-		animator.speed_scale = _external_turn_speed
+		if _prone_idle_paused:
+			_prone_resume_speed = _external_turn_speed
+		else:
+			animator.speed_scale = _external_turn_speed
 
 func get_turn_playback_speed() -> float:
 	return _external_turn_speed

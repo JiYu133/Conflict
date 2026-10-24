@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="PlayerConfig" format=3 uid="uid://6j1op088306v"]
 
 [ext_resource type="Resource" uid="uid://v1h5icka80bd" path="res://assets/config/player/player_model_lookup_default.tres" id="1_6gouf"]
-[ext_resource type="Script" uid="uid://6u3qnxvobvio" path="res://classes/player/player_config.gd" id="1_vyh63"]
+[ext_resource type="Script" uid="uid://6u3qnxvobvio" path="res://classes/player/config/player_config.gd" id="1_vyh63"]
 [ext_resource type="PackedScene" uid="uid://b56qxlux3spui" path="res://assets/models/player/test_model/swat.tscn" id="3_f37k6"]
 [ext_resource type="Resource" uid="uid://bak12001" path="res://assets/config/weapons/ak12_config.tres" id="4_f37k6"]
 [ext_resource type="Resource" uid="uid://juhdg5d5h5ju" path="res://assets/config/player/camera_config_default.tres" id="5_camcfg"]
@@ -13,12 +13,15 @@
 [ext_resource type="Resource" path="res://assets/config/player/spine_aim_config_default.tres" id="11_spine"]
 [ext_resource type="Resource" uid="uid://c1fx0rcem1ld8" path="res://assets/config/player/force_config_default.tres" id="12_force"]
 
+[ext_resource type="Resource" path="res://assets/config/player/aim_config_default.tres" id="13_aim"]
+
 [resource]
 script = ExtResource("1_vyh63")
 movement_config = ExtResource("9_movcfg")
 model_scene = ExtResource("3_f37k6")
 model_config = ExtResource("1_6gouf")
 camera_config = ExtResource("5_camcfg")
+aim_config = ExtResource("13_aim")
 camera_stand_eye_height = 1.08
 camera_crouch_eye_height = 0.6
 ragdoll_config = ExtResource("6_ragdoll")

@@ -1,6 +1,9 @@
 class_name WeaponDropSystem
 extends Node
 
+## Defaults to the shared logger; callers may inject another LoggerService.
+var _logger: LoggerService = GlobalLogger
+
 ## Shared death-time weapon physics for local players and Bots. The existing
 ## weapon instance is detached into an official RigidBody3D and restored on revive.
 
@@ -28,7 +31,7 @@ func drop_current_weapon() -> bool:
 	if not is_instance_valid(weapon) or not weapon.config:
 		return false
 	if not weapon.config.dropped_collision_shape:
-		GlobalLogger.warn("WeaponDropSystem", "Weapon '%s' has no dropped collision shape." % weapon.name)
+		_logger.warn("WeaponDropSystem", "Weapon '%s' has no dropped collision shape." % weapon.name)
 		return false
 
 	var world_parent := get_tree().current_scene

@@ -1,6 +1,6 @@
 # CameraConfig
 
-**文件路径：** `Classes/Player/camera_config.gd`  
+**文件路径：** `classes/player/config/camera_config.gd`  
 **继承自：** `Resource`
 
 ## 功能概述

@@ -66,7 +66,7 @@ extends Resource
 ## 配件局部质心偏移，默认在挂载点中心
 @export var center_of_mass_local: Vector3 = Vector3.ZERO
 
-## 瞄准速度修正：正值 = 更快瞄准 / ADS speed modifier; positive = faster aim
+## ADS 时间修正（秒）：叠加到武器 ads_time；负值更快，正值更慢。
 @export var ads_speed_modifier: float = 0.0
 
 # ──────────────────────────── 视野与光学 ────────────────────────────

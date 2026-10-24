@@ -1,6 +1,12 @@
 class_name OpticAttachment
 extends BaseAttachment
 
+@export var eye_box_config: OpticEyeBoxConfig = OpticEyeBoxConfig.new()
+
+
+func get_eye_box_config() -> Resource:
+	return eye_box_config
+
 # ════════════════════════════════════════════════════════════════════════
 # 瞄具基类 (OpticAttachment)
 # ════════════════════════════════════════════════════════════════════════

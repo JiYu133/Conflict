@@ -1,0 +1,6 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tests/medical_system_p4_runner.gd" id="1_mpr"]
+
+[node name="MedicalSystemP4Runner" type="Node"]
+script = ExtResource("1_mpr")

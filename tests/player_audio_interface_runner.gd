@@ -1,12 +1,15 @@
-extends SceneTree
+extends Node
 
 ## Regression check for the reserved, no-op player audio interface.
-## Run: godot --headless --path . --script res://tests/player_audio_interface_runner.gd
+## Run: godot --headless --path . res://tests/player_audio_interface_runner.tscn
+##
+## 历史：原为 extends SceneTree（--script 模式）。为纳入 tools/check.ps1 的场景回归
+## 并与 tests/ 其余 runner 统一，已改为场景模式。
 
 const PLAYER_SCENE := "res://assets/map/test_map.tscn"
 
 
-func _init() -> void:
+func _ready() -> void:
 	_run.call_deferred()
 
 
@@ -19,7 +22,7 @@ func _run() -> void:
 	results["scene_loaded"] = true
 
 	var map := packed.instantiate()
-	root.add_child(map)
+	add_child(map)
 	var player := _find_player(map)
 	results["player_ready"] = player != null
 	if not player:
@@ -59,4 +62,4 @@ func _finish(results: Dictionary) -> void:
 			passed = false
 	results["status"] = "passed" if passed else "failed"
 	print(JSON.stringify({"status": results["status"], "results": results}))
-	quit(0 if passed else 1)
+	get_tree().quit(0 if passed else 1)

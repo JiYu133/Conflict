@@ -7,23 +7,12 @@ extends Node
 
 const VIEWPORT_SIZE := Vector2i(512, 512)
 const LOCAL_WEAPON_RENDER_LAYER := 20
+# Deprecated compatibility constant; unavailable at runtime.
 const MODE_PIXEL_ZOOM := "pixel_zoom"
 const MODE_DUAL_CAMERA := "dual_camera"
-const PIXEL_ZOOM_SHADER := """
-shader_type spatial;
-render_mode unshaded, cull_disabled;
+const LENS_SHADER := preload("res://assets/shaders/optic_lens.gdshader")
 
-uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
-uniform float magnification = 4.0;
-
-void fragment() {
-	vec2 sample_uv = (SCREEN_UV - vec2(0.5)) / max(magnification, 1.0) + vec2(0.5);
-	ALBEDO = textureLod(screen_texture, clamp(sample_uv, vec2(0.0), vec2(1.0)), 0.0).rgb;
-	ALPHA = 1.0;
-}
-"""
-
-var _player: BasePlayer
+var _player: Node3D
 var _weapon_manager: WeaponManager
 var _camera_controller: PlayerCameraController
 var _viewport: SubViewport
@@ -31,21 +20,20 @@ var _scope_camera: Camera3D
 var _optic: OpticAttachment
 var _lens: MeshInstance3D
 var _original_lens_material: Material
-var _scope_lens_material: StandardMaterial3D
-var _pixel_zoom_lens_material: ShaderMaterial
+var _scope_lens_material: ShaderMaterial
+var _eye_box_visibility := 1.0
 var _weapon_layers: Dictionary = {}
 var _active_render_mode := MODE_DUAL_CAMERA
 
 
 func initialize(
-	player: BasePlayer,
+	player: Node3D,
 	weapon_manager: WeaponManager,
 	camera_controller: PlayerCameraController
 ) -> void:
 	_player = player
 	_weapon_manager = weapon_manager
 	_camera_controller = camera_controller
-	_create_render_nodes()
 	_weapon_manager.weapon_changed.connect(_on_weapon_changed)
 	_weapon_manager.weapon_stats_changed.connect(_refresh_binding)
 	_weapon_manager.aiming_changed.connect(_on_aiming_changed)
@@ -60,6 +48,7 @@ func _create_render_nodes() -> void:
 	_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_viewport.msaa_3d = Viewport.MSAA_2X
 	add_child(_viewport)
+	_viewport.world_3d = _player.get_world_3d()
 
 	_scope_camera = Camera3D.new()
 	_scope_camera.name = "OpticCamera"
@@ -68,6 +57,12 @@ func _create_render_nodes() -> void:
 
 
 func _process(_delta: float) -> void:
+	refresh_render()
+
+
+## Also called after arm IK so the camera consumes the final weapon pose,
+## including when Skeleton3D evaluates modifiers after normal Node processing.
+func refresh_render() -> void:
 	if not is_instance_valid(_optic) or not is_instance_valid(_lens):
 		_disable_rendering()
 		return
@@ -78,7 +73,7 @@ func _process(_delta: float) -> void:
 		return
 
 	var progress := _camera_controller.get_ads_progress()
-	var active := _weapon_manager.is_aiming or progress > 0.001
+	var active := _weapon_manager.is_aiming or progress > 0.0
 	_lens.visible = true
 	if not active:
 		_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -86,15 +81,10 @@ func _process(_delta: float) -> void:
 		return
 
 	var magnification := maxf(_optic.get_magnification(), 1.0)
-	_active_render_mode = _resolve_render_mode(magnification)
-	if _active_render_mode == MODE_PIXEL_ZOOM:
-		_viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-		_pixel_zoom_lens_material.set_shader_parameter("magnification", magnification)
-		_lens.material_override = _pixel_zoom_lens_material
-		return
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_lens.material_override = _scope_lens_material
 
+	_update_eye_box(main_camera, camera_anchor)
 	_scope_camera.global_transform = camera_anchor.global_transform
 	_scope_camera.near = main_camera.near
 	_scope_camera.far = main_camera.far
@@ -120,17 +110,13 @@ func _refresh_binding() -> void:
 	if not is_instance_valid(_lens):
 		_optic = null
 		return
+	if not is_instance_valid(_viewport):
+		_create_render_nodes()
 	_set_local_weapon_render_layer(weapon)
 	_original_lens_material = _lens.material_override
-	_scope_lens_material = StandardMaterial3D.new()
-	_scope_lens_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_scope_lens_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_scope_lens_material.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_scope_lens_material.albedo_texture = _viewport.get_texture()
-	var pixel_shader := Shader.new()
-	pixel_shader.code = PIXEL_ZOOM_SHADER
-	_pixel_zoom_lens_material = ShaderMaterial.new()
-	_pixel_zoom_lens_material.shader = pixel_shader
+	_scope_lens_material = ShaderMaterial.new()
+	_scope_lens_material.shader = LENS_SHADER
+	_scope_lens_material.set_shader_parameter("optic_texture", _viewport.get_texture())
 	_lens.material_override = _original_lens_material
 	_lens.visible = true
 
@@ -144,21 +130,7 @@ func _unbind_optic() -> void:
 	_lens = null
 	_original_lens_material = null
 	_scope_lens_material = null
-	_pixel_zoom_lens_material = null
 	_active_render_mode = MODE_DUAL_CAMERA
-
-
-func _resolve_render_mode(magnification: float) -> String:
-	# The player choice is intentionally ignored by 1x optics. Iron sights do
-	# not bind this renderer at all, so neither class changes behavior.
-	if magnification <= 1.001:
-		return MODE_DUAL_CAMERA
-	if not is_instance_valid(_player) or not _player.settings_service:
-		return MODE_PIXEL_ZOOM
-	var value := String(_player.settings_service.get_value(
-		"graphics/magnified_scope_mode", MODE_PIXEL_ZOOM
-	))
-	return value if value in [MODE_PIXEL_ZOOM, MODE_DUAL_CAMERA] else MODE_PIXEL_ZOOM
 
 
 func _set_local_weapon_render_layer(weapon: BaseWeapon) -> void:
@@ -217,3 +189,22 @@ func get_bound_optic() -> OpticAttachment:
 
 func get_active_render_mode() -> String:
 	return _active_render_mode
+
+
+func _update_eye_box(main_camera: Camera3D, camera_anchor: Node3D) -> void:
+	var config := _optic.get_eye_box_config() as OpticEyeBoxConfig
+	var eye_marker := _optic.get_ads_anchor()
+	var calibrated := eye_marker.global_transform if is_instance_valid(eye_marker) else camera_anchor.global_transform
+	var sample := config.evaluate(main_camera.global_transform, camera_anchor.global_transform, calibrated) if config else {"visibility": 1.0, "offset": Vector2.ZERO, "shadow": 0.0}
+	_eye_box_visibility = float(sample["visibility"])
+	_scope_lens_material.set_shader_parameter("eye_visibility", _eye_box_visibility)
+	_scope_lens_material.set_shader_parameter("eye_offset", sample["offset"])
+	_scope_lens_material.set_shader_parameter("eye_shadow", sample["shadow"])
+
+
+func get_eye_box_visibility() -> float:
+	return _eye_box_visibility
+
+
+func _exit_tree() -> void:
+	_unbind_optic()

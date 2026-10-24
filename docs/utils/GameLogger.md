@@ -1,7 +1,7 @@
 # GameLogger
 
-**文件路径：** `Classes/GameLogger/game_logger.gd`  
-**继承自：** `Node`
+**文件路径：** `classes/services/game_logger.gd`  
+**继承自：** `LoggerService`（`Node`）
 
 ## 功能概述
 
@@ -9,13 +9,13 @@
 
 ## 初始化
 
-无 `initialize()` 方法。作为 `Node` 使用，通常以 Autoload 方式注册为全局单例（别名建议为 `Logger`），在场景树就绪后即可使用。
+无 `initialize()` 方法。以 Autoload `GlobalLogger` 注册。`LoggerService` 提供相同的四级接口及静默默认实现；支持注入的组件可替换其 `_logger`。
 
 典型用法：
 ```
-Logger.info("WeaponManager", "武器初始化完成")
-Logger.warn("AmmoComponent", "弹药不足")
-Logger.error("AttachmentFactory", "配件场景实例化失败")
+GlobalLogger.info("WeaponManager", "武器初始化完成")
+GlobalLogger.warn("AmmoComponent", "弹药不足")
+GlobalLogger.error("AttachmentFactory", "配件场景实例化失败")
 ```
 
 ## 信号（Signals）

@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="StaminaConfig" format=3 uid="uid://c73ndg34785ob"]
 
-[ext_resource type="Script" uid="uid://vpccxvdior7v" path="res://classes/player/stamina_config.gd" id="1_cuauq"]
+[ext_resource type="Script" uid="uid://vpccxvdior7v" path="res://classes/player/config/stamina_config.gd" id="1_cuauq"]
 
 [resource]
 script = ExtResource("1_cuauq")
