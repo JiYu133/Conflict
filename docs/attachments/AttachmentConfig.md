@@ -25,7 +25,7 @@
 ### 行为标志
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `no_visual` | `bool` | `false` | 纯数值配件，不生成 3D 节点（扳机组参数等）|
+| `no_visual` | `bool` | `false` | 不实例化视觉场景，仍创建空 BaseAttachment（Node3D）；快慢机有专用分支 |
 | `rail_adjustable` | `bool` | `false` | 可沿导轨 Z 轴前后滑动（瞄具等）|
 | `rail_offset` | `float` | `0.0` | 装配时的初始导轨偏移（m），非 0 也会应用到固定位置；`rail_adjustable` 只控制 UI 是否可滑动 |
 | `rail_offset_min/max` | `float` | `±0.05` | 滑动范围限制 |
@@ -37,9 +37,11 @@
 ### 常规参数与物理参数
 `hipfire_spread_modifier` / `ads_spread_modifier` / `ads_speed_modifier` / `weight_kg` / `center_of_mass_local` / `length_modifier` / `damage_modifier`
 
+`damage_modifier` 当前仅保存配置值，没有运行时消费者；设置它不会改变弹道伤害。
+
 后座不使用固定角度修正。`recoil_vertical_modifier`、`recoil_horizontal_modifier`、`recoil_recovery_modifier` 仅作为旧资源兼容字段保存，不显示在检查器中，也不参与运行时计算。后座效果由 `RecoilPhysicsModel` 根据质量、质心、惯量、枪口燃气、握把支撑和枪托接触点实时推导。
 
-散布和瞄准速度字段为绝对量叠加，负值 = 减少，正值 = 增加；重量、质心及子类物理参数按物理模型解释。
+hipfire_spread_modifier / ads_spread_modifier 当前仅作旧资源兼容，不参与弹丸精度。ads_speed_modifier 按秒叠加到 ADS 时间，负值缩短、正值延长；重量、质心及子类物理参数按物理模型解释。
 
 ### 配件子类
 

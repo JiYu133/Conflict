@@ -1,6 +1,7 @@
 # RedDotAttachment
 
-**文件路径：** `Classes/Weapon/WeaponAttachments/scopes/red_dot.gd`  
+**文件路径：** `classes/weapon/weaponattachments/scopes/red_dot.gd`
+
 **继承自：** `OpticAttachment`
 
 ## 功能概述

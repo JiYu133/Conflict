@@ -1,6 +1,7 @@
 # PlayerModelManager
 
-**文件路径：** `classes/player/player_model_manager.gd`  
+**文件路径：** `classes/player/player_model_manager.gd`
+
 **继承自：** `Node`
 
 ## 功能概述
@@ -27,7 +28,8 @@
 |------|------|------|
 | `model_node` | `Node3D` | 当前加载的模型场景根节点（只读） |
 | `skeleton` | `Skeleton3D` | 模型中的骨骼系统，用于挂载武器、摄像机等（只读） |
-| `animator` | `AnimationPlayer` | 模型中的动画播放器，用于播放行走/奔跑等动画（只读） |
+| `animator` | `AnimationPlayer` | 模型中的动画播放器（只读） |
+| `animation_tree` | `AnimationTree` | 当前状态机/方向混合树（只读） |
 
 ## 公开方法（Methods）
 
@@ -56,10 +58,10 @@
   - `BasePlayer` — 持有该节点并调用 `load_model()`
   - `PlayerAnimationController` — 通过 `model_manager.animator` 获取动画播放器引用
   - `PlayerRagdollSystem` — 通过外部传入的 `skeleton` / `animator` 使用其缓存结果
-  - `IKRig` — 监听 `model_unloaded` 清理 IK，并读取 `animator` 中的握枪手指参考动画
+  - `IKRig` — 模型加载后由组合根绑定骨骼，监听 model_unloaded 清理双臂/双腿 modifier
 
 ## 注意事项
 
 - 采用"先实例化新模型、验证成功后再卸载旧模型"的顺序，防止新模型失败时玩家变成隐形状态。
 - 不要把 `_create_collision_body()` 或姿态碰撞逻辑重新加入本类；模型热重载不应改变物理对象的所有权。
-- 若 `player_config` 为 `null`，会使用默认的 `PlayerConfig.new()` 和 `ModelLookupConfig.new()`，可能导致找不到骨骼或动画，并输出 `push_warning`。
+- 调用 load_model() 必须传入有效 PlayerConfig；当前函数会先解引用 model_scene/model_config，不能把签名中的 null 默认值理解为安全支持空参数。model_config 本身为空时才有 ModelLookupConfig 默认值。

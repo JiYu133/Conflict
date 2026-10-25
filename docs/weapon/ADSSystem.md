@@ -56,7 +56,7 @@ ADS 下按住左 Alt（`hold_breath`）平滑屏息，松开后恢复呼吸；�
 godot --headless --path . --fixed-fps 60 res://tests/ads_system_runner.tscn
 godot --headless --path . --fixed-fps 60 res://tests/ik_rig_check.tscn
 godot --headless --path . --fixed-fps 60 res://tests/ai_aim_check.tscn
-godot --headless --path . --fixed-fps 60 --script res://tests/force_integration_runner.gd
+godot --headless --path . --fixed-fps 60 res://tests/force_integration_runner.tscn
 ```
 
 现有正式资源只有机瞄提供 ADSAnchor；光学瞄具使用实际 LensSurface、OpticCameraAnchor 后才能启用镜内画面。专项测试通过运行时安装 1x/4x 光学瞄具验证整条链路。具体美术资源的镜片 UV 和眼距仍需按模型校准。

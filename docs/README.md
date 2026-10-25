@@ -1,6 +1,9 @@
 # Conflict — 开发文档
 
-多人战术射击游戏，基于 Godot 4 GDScript 开发。
+基于 Godot 4.7 GDScript 的战术射击原型；多人权威同步仍是后续工作。
+
+本文描述当前工作树的实现。脚本默认值与 .tres 覆盖值分开列出；概念设计文档不代表功能已落地。
+运行命令与已知覆盖缺口见 [Testing](Testing.md)，补充组件见 [RuntimeSystems](RuntimeSystems.md)。
 
 ---
 
@@ -20,7 +23,7 @@
 
 ## 架构概览
 
-目录迁移及版本合并决策见 [队友代码集成说明](TeammateIntegration.md)。玩家配置、控制器、独立系统分别位于 `classes/player/config/`、`controller/`、`system/`，通用服务位于 `classes/services/`。
+玩家配置、控制器和独立系统分别位于 `classes/player/config/`、`controller/`、`system/`，通用服务位于 `classes/services/`。目录迁移和组合接口见 [TeammateIntegration](TeammateIntegration.md)。
 
 ```
 BasePlayer (CharacterBody3D)
@@ -31,27 +34,31 @@ BasePlayer (CharacterBody3D)
 ├── PlayerModelManager         模型加载与骨骼缓存
 ├── PlayerMovementController   移动物理（起步/步态/转向/制动）
 ├── PlayerCollisionController  hitbox 驱动的主环境碰撞体
-├── PlayerCameraController     摄像机效果（5层叠加）
+├── PlayerLookController       基础视角与自由观察
+├── PlayerCameraController     头部位置过滤、FOV、疼痛/后坐镜头
+├── PlayerTurnController       下半身转身与强制大角度转身
+├── SpineAimController         脊柱瞄准与头部轴向对齐
+├── IKRig                      双臂握枪、双脚贴地与骨盆下沉
+├── WeaponPresentationController  动画右手、ADS、呼吸与遮挡姿态
+├── PlayerWeaponFeedback       武器后坐分配与负重
+├── PlayerUILayer              本地界面装配
 ├── PlayerAnimationController  动画状态机
 ├── PlayerRagdollSystem        死亡布娃娃
 ├── ForceReceiver              通用力反馈（受击姿态偏移 + 冲量缓存）
-│   └── ForceBodyModifier      SkeletonModifier3D：还原基准姿态后叠加力偏移
-├── IKRig                      双臂握枪 + 双脚贴地 IK
-├── PlayerWeaponFeedback       后坐力分配、换枪绑定与携行重量同步
-├── PlayerUILayer              本地 HUD、菜单、控制台与轮盘装配（AI 不创建）
+│   └── ForceBodyModifier      在当前帧上游骨骼姿态上叠加世界空间力偏移
 ├── HealthSystem               伤害、生理状态与医疗死亡
 │   ├── VitalsModel            血量、呼吸与身体部位状态
 │   └── AnatomyConfig          器官/骨骼/大血管及伤道参数
 │
 └── WeaponManager              武器装备/切换/改装接口
-    ├── WeaponObstructionDetector  顶墙收枪射线检测
+    │   （WeaponObstructionDetector 已由 BasePlayer 创建并注入状态）
     │
     └── BaseWeapon (Node3D)        ← 机匣场景根节点
         ├── AmmoComponent          弹药管理
         ├── BoltComponent          枪机自动循环
         ├── FireControlComponent   扳机/保险/射击模式
         ├── GasComponent           导气延时
-        ├── RecoilComponent        后座（摄像机 kick）
+        ├── RecoilComponent        单发物理冲量；镜头与骨骼独立消费
         ├── EjectionComponent      抛壳位置/速度
         ├── MalfunctionComponent   故障与排障
         ├── WeaponAnimationController  信号驱动动画
@@ -82,7 +89,8 @@ BasePlayer._ready()
               ├── ragdoll_system.initialize()
               ├── animation_controller.initialize()
               ├── camera_controller._find_camera_nodes()
-              ├── setup_weapon_sway_pivot()
+              ├── setup_weapon_mount()
+              ├── initialize spine aim and bind IKRig
               └── weapon_manager.load_and_equip()
 ```
 
@@ -93,9 +101,8 @@ BasePlayer._ready()
 ```
 PlayerMovementController
   jumped          → PlayerAnimationController._on_jumped()
-                  → PlayerCameraController.on_jumped()
   landed          → PlayerAnimationController._on_landed()
-                  → PlayerCameraController.on_landed()
+                  → PlayerTurnController._on_landed()
   started_running → PlayerAnimationController._on_started_running()
   stopped_running → PlayerAnimationController._on_stopped_running()
 
@@ -112,10 +119,13 @@ HealthSystem
 
 WeaponManager
   weapon_changed  → BasePlayer._on_weapon_changed()
+                    → PlayerWeaponFeedback 接线并同步负重
                     → PlayerCameraController.set_recoil_component()
 
-BaseWeapon
-  fired           → RecoilComponent.apply_recoil()
+BaseWeapon._fire_one_round()
+  RecoilComponent.apply_recoil()
+    physical_recoil_applied → PlayerCameraController（独立视觉弹簧）
+                            → BasePlayer.apply_weapon_recoil() → ForceReceiver
 ```
 
 ---
@@ -131,13 +141,19 @@ BaseWeapon
 | [PlayerModelManager](player/PlayerModelManager.md) | `classes/player/player_model_manager.gd` | 模型加载与骨骼缓存 |
 | [PlayerMovementController](player/PlayerMovementController.md) | `classes/player/controller/player_movement_controller.gd` | 移动物理与信号发射 |
 | [PlayerCollisionController](player/PlayerCollisionController.md) | `classes/player/controller/player_collision_controller.gd` | 主碰撞体唯一所有者、3D hitbox 包络动态拟合 |
-| [PlayerCameraController](player/PlayerCameraController.md) | `classes/player/controller/player_camera_controller.gd` | 摄像机挂载与5层程序化效果 |
+| [PlayerCameraController](player/PlayerCameraController.md) | `classes/player/controller/player_camera_controller.gd` | 相机挂载、头部位置弹簧、FOV 与镜头后坐 |
+| [PlayerLookController](player/PlayerLookController.md) | `classes/player/controller/player_look_controller.gd` | 基础视角与临时自由观察 |
+| [PlayerTurnController](player/PlayerTurnController.md) | `classes/player/controller/player_turn_controller.gd` | 下半身转身与动画进度 |
+| [IKRig](player/IKRig.md) | `classes/player/ik/ik_rig.gd` | 双臂/双脚及骨盆适配 |
+| [MovementConfig](player/MovementConfig.md) | `classes/player/config/movement_config.gd` | 运动/姿态/模型高度与碰撞配置 |
+| [SpineAimController](player/SpineAimController.md) | `classes/player/controller/spine_aim_controller.gd` | 脊柱/颈部瞄准与头部观察 |
+| [WeaponPresentationController](player/WeaponPresentationController.md) | `classes/player/controller/weapon_presentation_controller.gd` | 动画右手、ADS、呼吸与遮挡姿态 |
 | [ScreenPostProcess](player/ScreenPostProcess.md) | `classes/player/system/screen_post_process.gd` | 可独立挂载到 Camera3D 的多效果屏幕后处理模块 |
 | [PlayerAnimationController](player/PlayerAnimationController.md) | `classes/player/controller/player_animation_controller.gd` | 信号驱动的动画状态机 |
 | [PlayerRagdollSystem](player/PlayerRagdollSystem.md) | `classes/player/system/player_ragdoll_system.gd` | 死亡布娃娃开关 |
 | [ForceSystem](player/ForceSystem.md) | `classes/player/force/` | 通用力反馈：骨骼链衰减传播、姿态偏移与冲量缓存 |
-| [IKRig](player/IKRig.md) | `classes/player/ik/` | 双臂握枪 + 双脚贴地 IK，modifier 执行顺序 |
-| [WeaponObstructionDetector](player/WeaponObstructionDetector.md) | `Classes/Weapon/Weapon/weapon_obstruction_detector.gd` | 顶墙收枪射线检测 |
+| [PlayerAudioController](player/PlayerAudioController.md) | `classes/player/controller/player_audio_controller.gd` | 当前禁用的音频集成占位接口 |
+| [WeaponObstructionDetector](player/WeaponObstructionDetector.md) | `classes/weapon/weapon_obstruction_detector.gd` | 已接线的顶墙球体扫掠检测 |
 
 ---
 
@@ -226,7 +242,7 @@ BaseWeapon
 | 类 | 文件 | 说明 |
 |---|---|---|
 | [BaseWeapon](weapon/BaseWeapon.md) | `classes/weapon/base_weapon.gd` | 枪械根节点，管理组件与自动循环状态机 |
-| [WeaponConfig](weapon/WeaponConfig.md) | `classes/weapon/weapon_config.gd` | 武器基础参数（待重构，部分属性将移至配件） |
+| [WeaponConfig](weapon/WeaponConfig.md) | `classes/weapon/weapon_config.gd` | 武器基础参数；枪管、枪机框和弹匣参数由对应配件配置提供 |
 | [WeaponManager](weapon/WeaponManager.md) | `classes/weapon/weapon_manager.gd` | 武器装备/切换/改装接口 |
 | [武器交互与携行系统设计](weapon/WeaponInteractionDesign.md) | 概念设计 | 非格子背包、身体选弹匣、换弹/战术配件轮盘与单武器快捷键 |
 | [WeaponMovingPartsController](weapon/WeaponMovingPartsController.md) | `classes/weapon/weapon_moving_parts_controller.gd` | 枪机框/拉机柄位移驱动 |
@@ -234,7 +250,7 @@ BaseWeapon
 | [BoltComponent](weapon/BoltComponent.md) | `classes/weapon/bolt_component.gd` | 枪机自动循环仿真 |
 | [FireControlComponent](weapon/FireControlComponent.md) | `classes/weapon/fire_control_component.gd` | 扳机/保险/射击模式控制 |
 | [GasComponent](weapon/GasComponent.md) | `classes/weapon/gas_component.gd` | 导气延时计算 |
-| [RecoilComponent](weapon/RecoilComponent.md) | `classes/weapon/recoil_component.gd` | 摄像机 kick 冲量（pitch/yaw） |
+| [RecoilComponent](weapon/RecoilComponent.md) | `classes/weapon/recoil_component.gd` | 物理后坐冲量、事件和模型快照 |
 | [EjectionComponent](weapon/EjectionComponent.md) | `classes/weapon/ejection_component.gd` | 抛壳位置与速度 |
 
 ---
@@ -267,3 +283,5 @@ BaseWeapon
 | 文档 | 说明 |
 |---|---|
 | [DebugAPI](debug/DebugAPI.md) | 无头测试、AI 与控制台共用的进程内调试接口 |
+
+ADS、呼吸与瞄具接入见 [ADSSystem](weapon/ADSSystem.md)；目录迁移和组件组合见 [TeammateIntegration](TeammateIntegration.md)。
