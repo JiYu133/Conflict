@@ -95,6 +95,7 @@ func get_skeleton() -> Skeleton3D:
 ## origin:         点源位置；非零时按径向发力（爆炸）
 ## space:          direction/origin 所在空间
 ## mass_kg/speed_mps/impulse_ns: 真实物理量，仅对外暴露与布娃娃使用
+## Returns the accepted payload, or null if validation rejects the force.
 func apply_force(
 	direction: Vector3,
 	magnitude: float,
@@ -107,15 +108,15 @@ func apply_force(
 	speed_mps: float = 0.0,
 	impulse_ns: float = -1.0,
 	angular_impulse: Vector3 = Vector3.ZERO
-) -> void:
+) -> ForceTypes.ForcePayload:
 	if not is_finite(magnitude) or magnitude < 0.0:
-		return
+		return null
 	if not direction.is_finite():
-		return
+		return null
 	var has_origin := origin.is_finite() and origin.length_squared() > 0.000001
 	var has_angular_impulse := angular_impulse.is_finite() and angular_impulse.length_squared() > 0.000001
 	if direction.length_squared() <= 0.000001 and not has_origin and not has_angular_impulse:
-		return
+		return null
 	var direction_world := direction
 	var origin_world := origin
 	if space == ForceTypes.Space.LOCAL:
@@ -123,7 +124,7 @@ func apply_force(
 		direction_world = basis * direction
 		origin_world = _player_to_world(origin)
 	if _resolve_bone_index(hit_bone) < 0 or (magnitude <= 0.0 and not has_angular_impulse):
-		return
+		return null
 
 	var payload: ForceTypes.ForcePayload = _acquire_payload()
 	if direction_world.length_squared() > 0.0:
@@ -148,6 +149,7 @@ func apply_force(
 	_active.append(payload)
 	_trim_active()
 	force_applied.emit(payload)
+	return payload
 
 
 ## Apply a physical recoil impulse and its independently computed angular impulse.
@@ -165,8 +167,7 @@ func apply_recoil_impulse(
 	var direction := linear_impulse.normalized()
 	if direction.is_zero_approx():
 		direction = Vector3.ZERO
-	var active_count_before := _active.size()
-	apply_force(
+	var payload := apply_force(
 		direction,
 		0.0,
 		hit_bone,
@@ -179,8 +180,10 @@ func apply_recoil_impulse(
 		impulse_ns,
 		angular_impulse
 	)
-	if _active.size() > active_count_before:
-		(_active.back() as ForceTypes.ForcePayload).physical_recoil = true
+	# At capacity an accepted force replaces an old payload without growing the
+	# array. Use its identity; a signal listener may also have removed it.
+	if payload != null and _active.has(payload):
+		payload.physical_recoil = true
 		_accumulate_recoil_impulse(hit_bone, angular_impulse, duration)
 
 

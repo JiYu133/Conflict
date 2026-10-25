@@ -1,62 +1,23 @@
 # PlayerAnimationController
 
-**文件路径：** `classes/player/controller/player_animation_controller.gd`  
+**文件路径：** `classes/player/controller/player_animation_controller.gd`
+
 **继承自：** `Node`
 
-## 功能概述
+当前主要驱动 AnimationTree 的状态机与方向 BlendSpace2D；俯卧进入/退出、爬行、翻滚及俯卧转身可使用 AnimationPlayer 的直接片段覆盖。不是旧版七状态、纯信号播放器。
 
-根据玩家运动状态驱动 `AnimationPlayer`，内部维护一个七状态显式状态机（IDLE / WALK / RUN / JUMP / FALL / LAND / DEATH），通过监听 `PlayerMovementController` 和 `BasePlayer` 的信号触发状态转换，避免因每帧轮询导致的动画抖动。
+## 初始化与状态
 
-## 初始化
+`initialize(player: CharacterBody3D, movement: PlayerMovementController, model_manager: PlayerModelManager, anim_config: PlayerConfig = null) -> void`
 
-### `initialize(player: CharacterBody3D, movement: PlayerMovementController, model_manager: PlayerModelManager) -> void`
+模型加载后调用，缓存 animation_tree / playback，连接移动和生命周期信号。每帧更新局部方向混合坐标并查询地面/速度状态；walk_enter_speed_sq / walk_exit_speed_sq / land_recovery_time 来自 PlayerConfig。
 
-- **调用时机：** 由 `BasePlayer` 在模型加载完成后调用，需保证 `PlayerModelManager.animator` 已有效。
-- **参数：**
-  - `player` — `CharacterBody3D` 实例，用于查询 `is_on_floor()` 和速度。
-  - `movement` — `PlayerMovementController`，提供 `jumped` / `landed` / `started_running` / `stopped_running` 信号及 `is_running()` 方法。
-  - `model_manager` — `PlayerModelManager`，从中取得 `animator` 引用。
-- 使用 `is_connected()` 守卫防止热重载（`reload_model`）时信号重复连接。
-- 初始化结束后自动过渡到 `IDLE` 状态。
+状态包含 IDLE、WALK、CROUCH_WALK、RUN、SPRINT、JUMP、FALL、LAND、DEATH，以及站姿、蹲姿与俯卧的左右 TURN 状态。节点名取自脚本 SM_* 常量；不能只添加同名 AnimationPlayer 片段就假定状态树完成接线。
 
-## 信号（Signals）
+## 转身与全身片段
 
-该类无公开信号。
+PlayerTurnController 使用 begin_external_turn() / end_external_turn() 及播放位置/速度接口协调身体 yaw。站/蹲转身轨道只作用于下半身；俯卧片段覆盖期间避免状态树覆盖其完整姿态。
 
-## 公开属性（Properties）
+get_current_state()、get_turn_clip_length()、get_turn_playback_progress()、set_turn_playback_speed() 等公开查询/控制接口服务转身流程；脚本中并非“无公开方法”。死亡/昏迷停用常规状态树以让出布娃娃，复活恢复。
 
-该类无公开属性。
-
-## 公开方法（Methods）
-
-该类无公开方法，所有驱动逻辑通过信号回调和 `_process()` 内部触发。
-
-## 状态机说明
-
-| 状态 | 对应动画常量 | 进入条件 |
-|------|------------|---------|
-| `IDLE` | `"idle"` | 地面静止（水平速度² ≤ 0.04） |
-| `WALK` | `"walk"` | 地面移动且未奔跑 |
-| `RUN` | `"run"` | 收到 `started_running` 信号且不在空中/死亡 |
-| `JUMP` | `"jump"` | 收到 `jumped` 信号 |
-| `FALL` | `"fall"` | 离开地面且未处于跳跃状态（被动坠落） |
-| `LAND` | `"land"` | 收到 `landed` 信号，持续 0.3 秒后自动恢复 |
-| `DEATH` | `"death"` | 收到 `died` 信号，不做任何自动切换 |
-
-## 依赖关系
-
-- **依赖：**
-  - `PlayerMovementController` — 监听 `jumped` / `landed` / `started_running` / `stopped_running` 信号，调用 `is_running()`
-  - `PlayerModelManager` — 获取 `AnimationPlayer` 引用
-  - `BasePlayer`（`CharacterBody3D`）— 监听 `died` / `revived` 信号，查询 `is_on_floor()` 和 `velocity`
-  - `GlobalLogger` — 用于调试日志输出
-- **被依赖：**
-  - `BasePlayer` — 持有该节点并调用 `initialize()`
-
-## 注意事项
-
-- 动画名称通过顶部常量（`ANIM_IDLE` 等）映射，在 `AnimationPlayer` 中创建同名动画即可自动生效；若动画不存在只会打印调试日志，不会报错崩溃。
-- `LAND` 状态有 0.3 秒（`LAND_RECOVERY_TIME`）的强制保持时间，期间忽略其他地面状态转换，计时结束后调用 `_resolve_ground_state()` 恢复正确状态。
-- `DEATH` 状态是终态，`_process()` 中不做任何自动切换，只能通过 `revived` 信号退出。
-- 被动坠落（非跳跃离地）的检测依赖 `_was_on_floor` 与当前帧 `is_on_floor()` 的差值，在帧率极低时存在漏检风险。
-- `_resolve_ground_state()` 的速度阈值为水平速度平方 `0.04`（即水平速度约 0.2 单位/秒），低于此值视为静止。
+完整模型资源与默认动画见 assets/models/player/test_model/swat.tscn；验证命令及 movement_body_yaw_runner 场景入口见 [Testing](../Testing.md)。

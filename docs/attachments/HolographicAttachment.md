@@ -1,6 +1,7 @@
 # HolographicAttachment
 
-**文件路径：** `Classes/Weapon/WeaponAttachments/scopes/holographic.gd`  
+**文件路径：** `classes/weapon/weaponattachments/scopes/holographic.gd`
+
 **继承自：** `OpticAttachment`
 
 ## 功能概述

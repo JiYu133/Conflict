@@ -4,7 +4,7 @@
 
 **没有"伤害值"这个字段。** 弹头只携带质量、速度、弹道系数三个物理量；伤害是命中瞬间由动能 `KE = ½mv²` 现算出来的。因此远距离命中天然更轻、短枪管天然更弱、换更重的弹头天然更狠——这些都不是配表调出来的，是同一条公式的副产品。
 
-**弹丸是数据，不是节点。** 所有在飞弹丸存在于 `BallisticProjectileSystem` 的一个 `Array[Dictionary]` 中，由单个 `Node` 统一推进。全自动连射时不会产生几十个场景节点，也就没有节点创建/销毁的帧率尖峰。
+**弹道主体是数据。** 在飞弹丸存在 Array[Dictionary] 中，由单个 BallisticProjectileSystem 推进；如果配置了 tracer_scene，每发仍会创建可选的示踪表现节点，因此不能据此承诺无节点分配或无帧率尖峰。
 
 ## 文件结构
 
@@ -101,4 +101,4 @@ HealthSystem.apply_damage()
 
 ## 测试
 
-`tests/ballistic_physics_check.gd` 与 `tests/environment_impact_parse_check.gd` 覆盖弹道积分与表面配置解析。
+当前 combat_regression_check 验证两条发射路径的 ADS/腰射散布、换弹与缺枪管保护；历史积分/表面解析专用运行器已移除，这部分不是当前完整覆盖。命令见 [Testing](../Testing.md)。

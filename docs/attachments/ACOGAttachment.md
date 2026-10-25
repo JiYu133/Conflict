@@ -1,6 +1,7 @@
 # ACOGAttachment
 
-**文件路径：** `Classes/Weapon/WeaponAttachments/scopes/acog.gd`  
+**文件路径：** `classes/weapon/weaponattachments/scopes/acog.gd`
+
 **继承自：** `OpticAttachment`
 
 ## 功能概述

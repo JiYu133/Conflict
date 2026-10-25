@@ -87,6 +87,7 @@ var _burst_remaining: int = 0
 ## 本轮换弹中已完成的阶段（被打断后保留，下次换弹跳过；完整走完后清空）
 var _reload_done_stages: Array = []
 var is_reloading: bool = false                 # 是否正在换弹
+var _reload_generation: int = 0
 
 
 # ============================================================
@@ -347,6 +348,8 @@ func reload() -> void:
 		return
 
 	is_reloading = true
+	_reload_generation += 1
+	var reload_generation := _reload_generation
 	reload_started.emit()
 
 	# 换弹时间从已装弹匣配件读取，未装弹匣时使用安全默认值
@@ -365,7 +368,7 @@ func reload() -> void:
 		var reload_et := mag_cfg.reload_empty_time if mag_cfg else 5.0
 		var whole_duration: float = reload_t if tactical else reload_et
 		reload_countdown_started.emit(whole_duration)
-		if not await _run_reload_stage(ReloadStage.WHOLE, whole_duration):
+		if not await _run_reload_stage(ReloadStage.WHOLE, whole_duration, reload_generation):
 			return
 	else:
 		reload_countdown_started.emit(_remaining_reload_duration(staged))
@@ -373,7 +376,7 @@ func reload() -> void:
 			var stage: ReloadStage = entry["stage"]
 			if _reload_done_stages.has(stage):
 				continue  # 该阶段此前已完成，跳过
-			if not await _run_reload_stage(stage, entry["time"]):
+			if not await _run_reload_stage(stage, entry["time"], reload_generation):
 				return
 
 	if ammo_component.has_chambered_round():
@@ -409,6 +412,7 @@ func interrupt_reload() -> void:
 	if not is_reloading:
 		return
 	is_reloading = false
+	_reload_generation += 1
 	reload_interrupted.emit(_reload_done_stages.duplicate())
 	GlobalLogger.debug("BaseWeapon", "换弹被打断，已完成阶段: %s" % str(_reload_done_stages))
 
@@ -448,18 +452,20 @@ func _remaining_reload_duration(stages: Array) -> float:
 
 
 ## 执行单个换弹阶段。返回 false 表示武器在等待期间失效，调用方应立即中止。
-func _run_reload_stage(stage: ReloadStage, duration: float) -> bool:
+func _run_reload_stage(stage: ReloadStage, duration: float, generation: int) -> bool:
+	if not is_reloading or generation != _reload_generation:
+		return false
 	reload_stage_started.emit(stage, duration)
 	await get_tree().create_timer(duration).timeout
 	# 武器可能在换弹计时期间被卸下/释放
 	if not is_instance_valid(self):
 		return false
 	# 中途被 interrupt_reload() 打断：不记录本阶段，也不继续后续阶段
-	if not is_reloading:
+	if not is_reloading or generation != _reload_generation:
 		return false
 	_reload_done_stages.append(stage)
 	reload_stage_finished.emit(stage)
-	return true
+	return is_reloading and generation == _reload_generation
 
 
 ## 切换射击模式
@@ -752,10 +758,16 @@ func _fire_one_round() -> void:
 	if not bolt_component.is_locked():
 		return
 
+	# Reject an incomplete weapon before consuming a live round or cycling.
+	var barrel_cfg := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
+	if not barrel_cfg:
+		GlobalLogger.warn("BaseWeapon", "[%s] Cannot fire without a barrel" % config.weapon_name)
+		return
+	if not get_world_3d():
+		return
 	ammo_component.consume_round()
 
 	# 哑火判定：底火有概率不响，弹留在膛内，枪机不启动循环
-	var barrel_cfg := _get_attachment_config_of_type(BarrelConfig) as BarrelConfig
 	var misfire := barrel_cfg.misfire_chance if barrel_cfg else 0.0
 	if misfire > 0.0 and randf() < misfire:
 		malfunction_component.trigger_misfire()

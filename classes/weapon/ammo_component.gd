@@ -5,7 +5,7 @@ extends Node
 # 弹药管理组件
 # 功能：管理所有弹匣库存、膛内弹药状态、托弹板推送逻辑。
 #       每个弹匣是一个 Array，内部元素为 null（标准弹）或 BulletData（自定义弹种）。
-# 依赖：WeaponConfig（需要 magazine_capacity / reserve_magazines 等）
+# 依赖：MagazineConfig 提供容量/备弹/挂机参数；WeaponConfig 保留初始化接口。
 # 信号：由 BaseWeapon 消费，驱动空仓挂机和换弹逻辑
 # ============================================================
 

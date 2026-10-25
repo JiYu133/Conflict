@@ -43,12 +43,12 @@ extends Resource
 @export var spring_stiffness_v: float = 120.0
 ## 垂直弹簧阻尼（推荐 15-30）/ Vertical spring damping
 @export var spring_damping_v: float = 20.0
-## ADS 时弹簧刚度倍率（>1 = 瞄准时更硬，晃动更少）/ Stiffness multiplier when ADS
+## 兼容字段；当前头部位置弹簧未读取它，ADS 也不改变镜头后坐回正。
 @export var ads_stiffness_multiplier: float = 2.0
 
 # 头显偏移 ─────────────────────────────────────────────
 @export_group("头显偏移")
 ## 头部位置偏移（局部坐标），靠前可减少贴脸感 / Head position offset in local space
 @export var head_offset: Vector3 = Vector3(0.07, 0.1, -0.15)
-## 布娃娃死亡时摄像机在头骨骼局部空间的偏移，把镜头从骨骼关节移到眼睛位置
+## 兼容字段；当前布娃娃分支直接使用求得的头部位置，未叠加此偏移。
 @export var ragdoll_eye_offset: Vector3 = Vector3(0.0, 0.06, 0.08)
