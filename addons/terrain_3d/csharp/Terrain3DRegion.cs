@@ -1,0 +1,372 @@
+#pragma warning disable CS0109
+using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using Godot;
+using Godot.Collections;
+
+namespace TokisanGames;
+
+[Tool]
+public partial class Terrain3DRegion : Resource
+{
+
+	private new static readonly StringName NativeName = new StringName("Terrain3DRegion");
+
+	[Obsolete("Wrapper types cannot be constructed with constructors (it only instantiate the underlying Terrain3DRegion object), please use the Instantiate() method instead.")]
+	protected Terrain3DRegion() { }
+
+	private static CSharpScript _wrapperScriptAsset;
+
+	/// <summary>
+	/// Try to cast the script on the supplied <paramref name="godotObject"/> to the <see cref="Terrain3DRegion"/> wrapper type,
+	/// if no script has attached to the type, or the script attached to the type does not inherit the <see cref="Terrain3DRegion"/> wrapper type,
+	/// a new instance of the <see cref="Terrain3DRegion"/> wrapper script will get attaches to the <paramref name="godotObject"/>.
+	/// </summary>
+	/// <remarks>The developer should only supply the <paramref name="godotObject"/> that represents the correct underlying GDExtension type.</remarks>
+	/// <param name="godotObject">The <paramref name="godotObject"/> that represents the correct underlying GDExtension type.</param>
+	/// <returns>The existing or a new instance of the <see cref="Terrain3DRegion"/> wrapper script attached to the supplied <paramref name="godotObject"/>.</returns>
+	public new static Terrain3DRegion Bind(GodotObject godotObject)
+	{
+		if (!IsInstanceValid(godotObject))
+			return null;
+
+		if (godotObject is Terrain3DRegion wrapperScriptInstance)
+			return wrapperScriptInstance;
+
+#if DEBUG
+		var expectedType = typeof(Terrain3DRegion);
+		var currentObjectClassName = godotObject.GetClass();
+		if (!ClassDB.IsParentClass(expectedType.Name, currentObjectClassName))
+			throw new InvalidOperationException($"The supplied GodotObject ({currentObjectClassName}) is not the {expectedType.Name} type.");
+#endif
+
+		if (_wrapperScriptAsset is null)
+		{
+			var scriptPathAttribute = typeof(Terrain3DRegion).GetCustomAttributes<ScriptPathAttribute>().FirstOrDefault();
+			if (scriptPathAttribute is null) throw new UnreachableException();
+			_wrapperScriptAsset = ResourceLoader.Load<CSharpScript>(scriptPathAttribute.Path);
+		}
+
+		var instanceId = godotObject.GetInstanceId();
+		godotObject.SetScript(_wrapperScriptAsset);
+		return (Terrain3DRegion)InstanceFromId(instanceId);
+	}
+
+	/// <summary>
+	/// Creates an instance of the GDExtension <see cref="Terrain3DRegion"/> type, and attaches a wrapper script instance to it.
+	/// </summary>
+	/// <returns>The wrapper instance linked to the underlying GDExtension "Terrain3DRegion" type.</returns>
+	public new static Terrain3DRegion Instantiate() => Bind(ClassDB.Instantiate(NativeName).As<GodotObject>());
+
+	/// <summary>
+	/// Loads the resource at the specified path, then attaches the corresponding wrapper script instance.
+	/// </summary>
+	/// <param name="path">The resource path to load.</param>
+	/// <returns>The wrapper instance linked to the underlying GDExtension "Terrain3DRegion" type.</returns>
+	public new static Terrain3DRegion Load(string path) => Bind(ResourceLoader.Load(path));
+
+	public enum MapType
+	{
+		Height = 0,
+		Control = 1,
+		Color = 2,
+		Max = 3,
+	}
+
+	public new class GDExtensionSignalName : Resource.SignalName
+	{
+	}
+
+	public new class GDExtensionPropertyName : Resource.PropertyName
+	{
+		/// <summary>
+		/// Cached name for the 'version' member.
+		/// </summary>
+		public new static readonly StringName Version = "version";
+		/// <summary>
+		/// Cached name for the 'region_size' member.
+		/// </summary>
+		public new static readonly StringName RegionSize = "region_size";
+		/// <summary>
+		/// Cached name for the 'vertex_spacing' member.
+		/// </summary>
+		public new static readonly StringName VertexSpacing = "vertex_spacing";
+		/// <summary>
+		/// Cached name for the 'height_range' member.
+		/// </summary>
+		public new static readonly StringName HeightRange = "height_range";
+		/// <summary>
+		/// Cached name for the 'height_map' member.
+		/// </summary>
+		public new static readonly StringName HeightMap = "height_map";
+		/// <summary>
+		/// Cached name for the 'control_map' member.
+		/// </summary>
+		public new static readonly StringName ControlMap = "control_map";
+		/// <summary>
+		/// Cached name for the 'color_map' member.
+		/// </summary>
+		public new static readonly StringName ColorMap = "color_map";
+		/// <summary>
+		/// Cached name for the 'compressed_color_map' member.
+		/// </summary>
+		public new static readonly StringName CompressedColorMap = "compressed_color_map";
+		/// <summary>
+		/// Cached name for the 'instances' member.
+		/// </summary>
+		public new static readonly StringName Instances = "instances";
+		/// <summary>
+		/// Cached name for the 'edited' member.
+		/// </summary>
+		public new static readonly StringName Edited = "edited";
+		/// <summary>
+		/// Cached name for the 'deleted' member.
+		/// </summary>
+		public new static readonly StringName Deleted = "deleted";
+		/// <summary>
+		/// Cached name for the 'modified' member.
+		/// </summary>
+		public new static readonly StringName Modified = "modified";
+		/// <summary>
+		/// Cached name for the 'location' member.
+		/// </summary>
+		public new static readonly StringName Location = "location";
+	}
+
+	public new double Version
+	{
+		get => Get(GDExtensionPropertyName.Version).As<double>();
+		set => Set(GDExtensionPropertyName.Version, value);
+	}
+
+	public new long RegionSize
+	{
+		get => Get(GDExtensionPropertyName.RegionSize).As<long>();
+		set => Set(GDExtensionPropertyName.RegionSize, value);
+	}
+
+	public new double VertexSpacing
+	{
+		get => Get(GDExtensionPropertyName.VertexSpacing).As<double>();
+		set => Set(GDExtensionPropertyName.VertexSpacing, value);
+	}
+
+	public new Vector2 HeightRange
+	{
+		get => Get(GDExtensionPropertyName.HeightRange).As<Vector2>();
+		set => Set(GDExtensionPropertyName.HeightRange, value);
+	}
+
+	public new Image HeightMap
+	{
+		get => Get(GDExtensionPropertyName.HeightMap).As<Image>();
+		set => Set(GDExtensionPropertyName.HeightMap, value);
+	}
+
+	public new Image ControlMap
+	{
+		get => Get(GDExtensionPropertyName.ControlMap).As<Image>();
+		set => Set(GDExtensionPropertyName.ControlMap, value);
+	}
+
+	public new Image ColorMap
+	{
+		get => Get(GDExtensionPropertyName.ColorMap).As<Image>();
+		set => Set(GDExtensionPropertyName.ColorMap, value);
+	}
+
+	public new Image CompressedColorMap
+	{
+		get => Get(GDExtensionPropertyName.CompressedColorMap).As<Image>();
+		set => Set(GDExtensionPropertyName.CompressedColorMap, value);
+	}
+
+	public new Godot.Collections.Dictionary Instances
+	{
+		get => Get(GDExtensionPropertyName.Instances).As<Godot.Collections.Dictionary>();
+		set => Set(GDExtensionPropertyName.Instances, value);
+	}
+
+	public new bool Edited
+	{
+		get => Get(GDExtensionPropertyName.Edited).As<bool>();
+		set => Set(GDExtensionPropertyName.Edited, value);
+	}
+
+	public new bool Deleted
+	{
+		get => Get(GDExtensionPropertyName.Deleted).As<bool>();
+		set => Set(GDExtensionPropertyName.Deleted, value);
+	}
+
+	public new bool Modified
+	{
+		get => Get(GDExtensionPropertyName.Modified).As<bool>();
+		set => Set(GDExtensionPropertyName.Modified, value);
+	}
+
+	public new Vector2I Location
+	{
+		get => Get(GDExtensionPropertyName.Location).As<Vector2I>();
+		set => Set(GDExtensionPropertyName.Location, value);
+	}
+
+	public new class GDExtensionMethodName : Resource.MethodName
+	{
+		/// <summary>
+		/// Cached name for the 'clear' member.
+		/// </summary>
+		public new static readonly StringName Clear = "clear";
+		/// <summary>
+		/// Cached name for the 'set_map' member.
+		/// </summary>
+		public new static readonly StringName SetMap = "set_map";
+		/// <summary>
+		/// Cached name for the 'get_map' member.
+		/// </summary>
+		public new static readonly StringName GetMap = "get_map";
+		/// <summary>
+		/// Cached name for the 'set_maps' member.
+		/// </summary>
+		public new static readonly StringName SetMaps = "set_maps";
+		/// <summary>
+		/// Cached name for the 'get_maps' member.
+		/// </summary>
+		public new static readonly StringName GetMaps = "get_maps";
+		/// <summary>
+		/// Cached name for the 'clear_color_map' member.
+		/// </summary>
+		public new static readonly StringName ClearColorMap = "clear_color_map";
+		/// <summary>
+		/// Cached name for the 'clear_compressed_color_map' member.
+		/// </summary>
+		public new static readonly StringName ClearCompressedColorMap = "clear_compressed_color_map";
+		/// <summary>
+		/// Cached name for the 'get_active_color_map' member.
+		/// </summary>
+		public new static readonly StringName GetActiveColorMap = "get_active_color_map";
+		/// <summary>
+		/// Cached name for the 'is_color_compressed' member.
+		/// </summary>
+		public new static readonly StringName IsColorCompressed = "is_color_compressed";
+		/// <summary>
+		/// Cached name for the 'compress_color_map' member.
+		/// </summary>
+		public new static readonly StringName CompressColorMap = "compress_color_map";
+		/// <summary>
+		/// Cached name for the 'sanitize_maps' member.
+		/// </summary>
+		public new static readonly StringName SanitizeMaps = "sanitize_maps";
+		/// <summary>
+		/// Cached name for the 'sanitize_map' member.
+		/// </summary>
+		public new static readonly StringName SanitizeMap = "sanitize_map";
+		/// <summary>
+		/// Cached name for the 'validate_map_size' member.
+		/// </summary>
+		public new static readonly StringName ValidateMapSize = "validate_map_size";
+		/// <summary>
+		/// Cached name for the 'update_height' member.
+		/// </summary>
+		public new static readonly StringName UpdateHeight = "update_height";
+		/// <summary>
+		/// Cached name for the 'update_heights' member.
+		/// </summary>
+		public new static readonly StringName UpdateHeights = "update_heights";
+		/// <summary>
+		/// Cached name for the 'calc_height_range' member.
+		/// </summary>
+		public new static readonly StringName CalcHeightRange = "calc_height_range";
+		/// <summary>
+		/// Cached name for the 'save' member.
+		/// </summary>
+		public new static readonly StringName Save = "save";
+		/// <summary>
+		/// Cached name for the 'set_data' member.
+		/// </summary>
+		public new static readonly StringName SetData = "set_data";
+		/// <summary>
+		/// Cached name for the 'get_data' member.
+		/// </summary>
+		public new static readonly StringName GetData = "get_data";
+		/// <summary>
+		/// Cached name for the 'dump' member.
+		/// </summary>
+		public new static readonly StringName Dump = "dump";
+	}
+
+	public new void Clear() => 
+		Call(GDExtensionMethodName.Clear, []);
+
+	public new void SetMap(Terrain3DRegion.MapType mapType, Image map) => 
+		Call(GDExtensionMethodName.SetMap, [Variant.From(mapType), map]);
+
+	public new Image GetMap(Terrain3DRegion.MapType mapType) => 
+		Call(GDExtensionMethodName.GetMap, [Variant.From(mapType)]).As<Image>();
+
+	public new void SetMaps(Godot.Collections.Array maps) => 
+		Call(GDExtensionMethodName.SetMaps, [maps]);
+
+	public new Godot.Collections.Array GetMaps() => 
+		Call(GDExtensionMethodName.GetMaps, []).As<Godot.Collections.Array>();
+
+	public new void ClearColorMap() => 
+		Call(GDExtensionMethodName.ClearColorMap, []);
+
+	public new void ClearCompressedColorMap() => 
+		Call(GDExtensionMethodName.ClearCompressedColorMap, []);
+
+	public new Image GetActiveColorMap() => 
+		Call(GDExtensionMethodName.GetActiveColorMap, []).As<Image>();
+
+	public new bool IsColorCompressed() => 
+		Call(GDExtensionMethodName.IsColorCompressed, []).As<bool>();
+
+	public new void CompressColorMap(long/* "Empty Enum Constant String" */ mode) => 
+		Call(GDExtensionMethodName.CompressColorMap, [mode]);
+
+	public new void SanitizeMaps() => 
+		Call(GDExtensionMethodName.SanitizeMaps, []);
+
+	public new Image SanitizeMap(Terrain3DRegion.MapType mapType, Image map) => 
+		Call(GDExtensionMethodName.SanitizeMap, [Variant.From(mapType), map]).As<Image>();
+
+	public new bool ValidateMapSize(Image map) => 
+		Call(GDExtensionMethodName.ValidateMapSize, [map]).As<bool>();
+
+	public new void UpdateHeight(double height) => 
+		Call(GDExtensionMethodName.UpdateHeight, [height]);
+
+	public new void UpdateHeights(Vector2 lowHigh) => 
+		Call(GDExtensionMethodName.UpdateHeights, [lowHigh]);
+
+	public new void CalcHeightRange() => 
+		Call(GDExtensionMethodName.CalcHeightRange, []);
+
+	public new Error Save(string path = "", bool save16Bit = false, long/* "Empty Enum Constant String" */ colorCompressMode = 5) => 
+		Call(GDExtensionMethodName.Save, [path, save16Bit, colorCompressMode]).As<Error>();
+
+	public new void SetData(Godot.Collections.Dictionary data) => 
+		Call(GDExtensionMethodName.SetData, [data]);
+
+	public new Godot.Collections.Dictionary GetData() => 
+		Call(GDExtensionMethodName.GetData, []).As<Godot.Collections.Dictionary>();
+
+	public new void Dump(bool verbose = false) => 
+		Call(GDExtensionMethodName.Dump, [verbose]);
+
+}
+
+file static class MapTypeExtensions
+{
+public static int SafeAsInt32(this Terrain3DRegion.MapType enumValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3DRegion.MapType enumValue, int defaultValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3DRegion.MapType? enumValue, int defaultValue = 0) =>
+enumValue.HasValue ? Convert.ToInt32(enumValue.Value) : defaultValue;
+}

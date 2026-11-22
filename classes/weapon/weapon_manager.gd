@@ -283,8 +283,7 @@ func _apply_ads_state() -> void:
 		is_aiming,
 		current_weapon.get_effective_ads_time(),
 		current_weapon.get_effective_fov_override(),
-		current_weapon.config.ads_center_offset,
-		current_weapon.get_ads_anchor()
+		current_weapon.config.ads_center_offset
 	)
 
 

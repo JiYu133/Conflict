@@ -27,6 +27,10 @@ GlobalLogger="*res://classes/services/game_logger.gd"
 
 window/size/mode=3
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/terrain_3d/plugin.cfg")
+
 [input]
 
 move_forward={

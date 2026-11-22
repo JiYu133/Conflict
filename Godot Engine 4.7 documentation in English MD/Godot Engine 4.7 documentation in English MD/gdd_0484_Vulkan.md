@@ -1,3 +1,0 @@
-# Vulkan
-
-- Validation layers

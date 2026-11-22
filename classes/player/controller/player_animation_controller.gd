@@ -26,6 +26,7 @@ const SM_CROUCH_TURN_RIGHT := "CrouchTurnRight"
 const SM_PRONE_TURN_LEFT := "ProneTurnLeft"
 const SM_PRONE_TURN_RIGHT := "ProneTurnRight"
 const TURN_THRESHOLD_EPSILON := deg_to_rad(0.1)
+const LOCOMOTION_BLEND_RESPONSE := 18.0
 ## Direct prone locomotion clips bypass AnimationTree, so they need an
 ## explicit blend time when switching between idle and crawl directions.
 const PRONE_LOCOMOTION_BLEND_TIME := 0.16
@@ -77,7 +78,7 @@ var _config: PlayerConfig
 var _state: State = State.IDLE
 var _land_timer: float = 0.0
 var _was_on_floor: bool = true
-# 上一帧的局部水平速度，速度不变时跳过 AnimationTree 参数写入（INF 保证首帧必写）
+# Smoothed local velocity last written to the tree. INF forces the first update.
 var _last_blend_vel: Vector2 = Vector2.INF
 var _last_observed_yaw: float = 0.0
 var _accumulated_turn_yaw: float = 0.0
@@ -139,6 +140,7 @@ func initialize(player: CharacterBody3D, movement: PlayerMovementController, mod
 	# 确保运行时实例（尤其是动态创建的 Bot）不会保留导入模型的 T-pose。
 	_playback.start(SM_IDLE, true)
 	_state = State.IDLE
+	_last_blend_vel = Vector2.INF
 	_reset_turn_tracking()
 
 
@@ -454,7 +456,7 @@ func _process(delta: float) -> void:
 		return
 
 	# 每帧更新 BlendSpace2D 混合坐标（无论当前状态，保持同步）
-	_update_blend_positions()
+	_update_blend_positions(delta)
 	# Turn-in-place is owned by PlayerTurnController. Keep this controller
 	# responsible only for AnimationTree state transitions.
 
@@ -503,7 +505,7 @@ func _process(delta: float) -> void:
 
 # BlendSpace2D 混合坐标更新 ───────────────────────────────────
 
-func _update_blend_positions() -> void:
+func _update_blend_positions(delta: float) -> void:
 	if not is_instance_valid(_player) or not _movement:
 		return
 
@@ -517,7 +519,11 @@ func _update_blend_positions() -> void:
 	if not direction_2d.is_zero_approx():
 		direction_2d = direction_2d.normalized()
 	var horizontal_speed := Vector2(_player.velocity.x, _player.velocity.z).length()
-	var vel_2d := direction_2d * horizontal_speed
+	var target_vel := direction_2d * horizontal_speed
+	var vel_2d := target_vel
+	if _last_blend_vel.is_finite() and not _last_blend_vel.is_equal_approx(target_vel):
+		var weight := 1.0 - exp(-LOCOMOTION_BLEND_RESPONSE * delta)
+		vel_2d = _last_blend_vel.lerp(target_vel, weight)
 
 	# 速度与上一帧相同（如静止站立）时跳过写入，避免无谓的参数路径解析
 	if vel_2d == _last_blend_vel:

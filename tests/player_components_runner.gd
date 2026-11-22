@@ -21,6 +21,10 @@ func _run() -> void:
 		"encounter medical node path is preserved")
 	_check(player.settings_service.get_value("graphics/magnified_scope_mode") != null,
 		"migrated service retains current optics settings")
+	# Deployment moves the preloaded map out of the tree before making it current.
+	remove_child(map)
+	add_child(map)
+	await _test_fire_mode_input(player)
 	_test_weapon_feedback(player)
 	_test_console_commands(player)
 	await _test_menu_input(player)
@@ -96,6 +100,36 @@ func _test_console_commands(player: BasePlayer) -> void:
 	var result := console._run_command("set_aiming", ["1"])
 	_check(result.get("ok", false) and player.weapon_manager.is_aiming, "command table reaches the gameplay interface")
 	console._run_command("set_aiming", ["0"])
+
+
+func _test_fire_mode_input(player: BasePlayer) -> void:
+	var service = player.radial_menu_service
+	var weapon := player.weapon_manager.current_weapon
+	if not weapon or weapon.get_available_fire_modes().size() <= 1:
+		_check(false, "test weapon exposes multiple selectable fire modes")
+		return
+	var initial_mode := weapon.current_fire_mode
+	var press := InputEventKey.new()
+	press.keycode = KEY_V
+	press.physical_keycode = KEY_V
+	press.pressed = true
+	Input.parse_input_event(press)
+	Input.flush_buffered_events()
+	var release := InputEventKey.new()
+	release.keycode = KEY_V
+	release.physical_keycode = KEY_V
+	release.pressed = false
+	Input.parse_input_event(release)
+	Input.flush_buffered_events()
+	_check(weapon.current_fire_mode != initial_mode, "V short press cycles fire mode after deployment")
+
+	Input.parse_input_event(press.duplicate())
+	Input.flush_buffered_events()
+	await get_tree().create_timer(1.1).timeout
+	_check(service.is_open(), "V hold opens fire-mode radial menu after deployment")
+	Input.parse_input_event(release.duplicate())
+	Input.flush_buffered_events()
+	_check(not service.is_open(), "releasing V closes fire-mode radial menu")
 
 
 func _test_menu_input(player: BasePlayer) -> void:

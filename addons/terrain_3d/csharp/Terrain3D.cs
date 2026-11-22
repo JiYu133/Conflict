@@ -1,0 +1,1012 @@
+#pragma warning disable CS0109
+using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using Godot;
+using Godot.Collections;
+
+namespace TokisanGames;
+
+[Tool]
+public partial class Terrain3D : Node3D
+{
+
+	private new static readonly StringName NativeName = new StringName("Terrain3D");
+
+	[Obsolete("Wrapper types cannot be constructed with constructors (it only instantiate the underlying Terrain3D object), please use the Instantiate() method instead.")]
+	protected Terrain3D() { }
+
+	private static CSharpScript _wrapperScriptAsset;
+
+	/// <summary>
+	/// Try to cast the script on the supplied <paramref name="godotObject"/> to the <see cref="Terrain3D"/> wrapper type,
+	/// if no script has attached to the type, or the script attached to the type does not inherit the <see cref="Terrain3D"/> wrapper type,
+	/// a new instance of the <see cref="Terrain3D"/> wrapper script will get attaches to the <paramref name="godotObject"/>.
+	/// </summary>
+	/// <remarks>The developer should only supply the <paramref name="godotObject"/> that represents the correct underlying GDExtension type.</remarks>
+	/// <param name="godotObject">The <paramref name="godotObject"/> that represents the correct underlying GDExtension type.</param>
+	/// <returns>The existing or a new instance of the <see cref="Terrain3D"/> wrapper script attached to the supplied <paramref name="godotObject"/>.</returns>
+	public new static Terrain3D Bind(GodotObject godotObject)
+	{
+		if (!IsInstanceValid(godotObject))
+			return null;
+
+		if (godotObject is Terrain3D wrapperScriptInstance)
+			return wrapperScriptInstance;
+
+#if DEBUG
+		var expectedType = typeof(Terrain3D);
+		var currentObjectClassName = godotObject.GetClass();
+		if (!ClassDB.IsParentClass(expectedType.Name, currentObjectClassName))
+			throw new InvalidOperationException($"The supplied GodotObject ({currentObjectClassName}) is not the {expectedType.Name} type.");
+#endif
+
+		if (_wrapperScriptAsset is null)
+		{
+			var scriptPathAttribute = typeof(Terrain3D).GetCustomAttributes<ScriptPathAttribute>().FirstOrDefault();
+			if (scriptPathAttribute is null) throw new UnreachableException();
+			_wrapperScriptAsset = ResourceLoader.Load<CSharpScript>(scriptPathAttribute.Path);
+		}
+
+		var instanceId = godotObject.GetInstanceId();
+		godotObject.SetScript(_wrapperScriptAsset);
+		return (Terrain3D)InstanceFromId(instanceId);
+	}
+
+	/// <summary>
+	/// Creates an instance of the GDExtension <see cref="Terrain3D"/> type, and attaches a wrapper script instance to it.
+	/// </summary>
+	/// <returns>The wrapper instance linked to the underlying GDExtension "Terrain3D" type.</returns>
+	public new static Terrain3D Instantiate() => Bind(ClassDB.Instantiate(NativeName).As<GodotObject>());
+
+	public enum DebugLevelEnum
+	{
+		Error = 0,
+		Info = 1,
+		Debug = 2,
+		Extreme = 3,
+	}
+
+	public enum RegionSizeEnum
+	{
+		Size64 = 64,
+		Size128 = 128,
+		Size256 = 256,
+		Size512 = 512,
+		Size1024 = 1024,
+		Size2048 = 2048,
+	}
+
+	public enum CompressMode
+	{
+		None = 5,
+		S3tc = 0,
+		Bptc = 3,
+		Etc = 1,
+		Etc2 = 2,
+		Astc = 4,
+	}
+
+	public new class GDExtensionSignalName : Node3D.SignalName
+	{
+		/// <summary>
+		/// Cached name for the 'material_changed' member.
+		/// </summary>
+		public new static readonly StringName MaterialChanged = "material_changed";
+		/// <summary>
+		/// Cached name for the 'assets_changed' member.
+		/// </summary>
+		public new static readonly StringName AssetsChanged = "assets_changed";
+	}
+
+	public new delegate void MaterialChangedSignalHandler();
+	private MaterialChangedSignalHandler _materialChangedSignal;
+	private Callable _materialChangedSignalCallable;
+	public event MaterialChangedSignalHandler MaterialChangedSignal
+	{
+		add
+		{
+			if (_materialChangedSignal is null)
+			{
+				_materialChangedSignalCallable = Callable.From(() => 
+					_materialChangedSignal?.Invoke());
+				Connect(GDExtensionSignalName.MaterialChanged, _materialChangedSignalCallable);
+			}
+			_materialChangedSignal += value;
+		}
+		remove
+		{
+			_materialChangedSignal -= value;
+			if (_materialChangedSignal is not null) return;
+			Disconnect(GDExtensionSignalName.MaterialChanged, _materialChangedSignalCallable);
+			_materialChangedSignalCallable = default;
+		}
+	}
+
+	public new delegate void AssetsChangedSignalHandler();
+	private AssetsChangedSignalHandler _assetsChangedSignal;
+	private Callable _assetsChangedSignalCallable;
+	public event AssetsChangedSignalHandler AssetsChangedSignal
+	{
+		add
+		{
+			if (_assetsChangedSignal is null)
+			{
+				_assetsChangedSignalCallable = Callable.From(() => 
+					_assetsChangedSignal?.Invoke());
+				Connect(GDExtensionSignalName.AssetsChanged, _assetsChangedSignalCallable);
+			}
+			_assetsChangedSignal += value;
+		}
+		remove
+		{
+			_assetsChangedSignal -= value;
+			if (_assetsChangedSignal is not null) return;
+			Disconnect(GDExtensionSignalName.AssetsChanged, _assetsChangedSignalCallable);
+			_assetsChangedSignalCallable = default;
+		}
+	}
+
+	public new class GDExtensionPropertyName : Node3D.PropertyName
+	{
+		/// <summary>
+		/// Cached name for the 'version' member.
+		/// </summary>
+		public new static readonly StringName Version = "version";
+		/// <summary>
+		/// Cached name for the 'debug_level' member.
+		/// </summary>
+		public new static readonly StringName DebugLevel = "debug_level";
+		/// <summary>
+		/// Cached name for the 'data_directory' member.
+		/// </summary>
+		public new static readonly StringName DataDirectory = "data_directory";
+		/// <summary>
+		/// Cached name for the 'material' member.
+		/// </summary>
+		public new static readonly StringName Material = "material";
+		/// <summary>
+		/// Cached name for the 'assets' member.
+		/// </summary>
+		public new static readonly StringName Assets = "assets";
+		/// <summary>
+		/// Cached name for the 'data' member.
+		/// </summary>
+		public new static readonly StringName Data = "data";
+		/// <summary>
+		/// Cached name for the 'collision' member.
+		/// </summary>
+		public new static readonly StringName Collision = "collision";
+		/// <summary>
+		/// Cached name for the 'instancer' member.
+		/// </summary>
+		public new static readonly StringName Instancer = "instancer";
+		/// <summary>
+		/// Cached name for the 'light_target' member.
+		/// </summary>
+		public new static readonly StringName LightTarget = "light_target";
+		/// <summary>
+		/// Cached name for the 'region_size' member.
+		/// </summary>
+		public new static readonly StringName RegionSize = "region_size";
+		/// <summary>
+		/// Cached name for the 'label_distance' member.
+		/// </summary>
+		public new static readonly StringName LabelDistance = "label_distance";
+		/// <summary>
+		/// Cached name for the 'label_size' member.
+		/// </summary>
+		public new static readonly StringName LabelSize = "label_size";
+		/// <summary>
+		/// Cached name for the 'show_grid' member.
+		/// </summary>
+		public new static readonly StringName ShowGrid = "show_grid";
+		/// <summary>
+		/// Cached name for the 'save_16_bit' member.
+		/// </summary>
+		public new static readonly StringName Save16Bit = "save_16_bit";
+		/// <summary>
+		/// Cached name for the 'color_compress_mode' member.
+		/// </summary>
+		public new static readonly StringName ColorCompressMode = "color_compress_mode";
+		/// <summary>
+		/// Cached name for the 'keep_uncompressed_color' member.
+		/// </summary>
+		public new static readonly StringName KeepUncompressedColor = "keep_uncompressed_color";
+		/// <summary>
+		/// Cached name for the 'collision_mode' member.
+		/// </summary>
+		public new static readonly StringName CollisionMode = "collision_mode";
+		/// <summary>
+		/// Cached name for the 'collision_shape_size' member.
+		/// </summary>
+		public new static readonly StringName CollisionShapeSize = "collision_shape_size";
+		/// <summary>
+		/// Cached name for the 'collision_radius' member.
+		/// </summary>
+		public new static readonly StringName CollisionRadius = "collision_radius";
+		/// <summary>
+		/// Cached name for the 'collision_target' member.
+		/// </summary>
+		public new static readonly StringName CollisionTarget = "collision_target";
+		/// <summary>
+		/// Cached name for the 'collision_layer' member.
+		/// </summary>
+		public new static readonly StringName CollisionLayer = "collision_layer";
+		/// <summary>
+		/// Cached name for the 'collision_mask' member.
+		/// </summary>
+		public new static readonly StringName CollisionMask = "collision_mask";
+		/// <summary>
+		/// Cached name for the 'collision_priority' member.
+		/// </summary>
+		public new static readonly StringName CollisionPriority = "collision_priority";
+		/// <summary>
+		/// Cached name for the 'physics_material' member.
+		/// </summary>
+		public new static readonly StringName PhysicsMaterial = "physics_material";
+		/// <summary>
+		/// Cached name for the 'clipmap_target' member.
+		/// </summary>
+		public new static readonly StringName ClipmapTarget = "clipmap_target";
+		/// <summary>
+		/// Cached name for the 'mesh_lods' member.
+		/// </summary>
+		public new static readonly StringName MeshLods = "mesh_lods";
+		/// <summary>
+		/// Cached name for the 'tessellation_level' member.
+		/// </summary>
+		public new static readonly StringName TessellationLevel = "tessellation_level";
+		/// <summary>
+		/// Cached name for the 'mesh_size' member.
+		/// </summary>
+		public new static readonly StringName MeshSize = "mesh_size";
+		/// <summary>
+		/// Cached name for the 'vertex_spacing' member.
+		/// </summary>
+		public new static readonly StringName VertexSpacing = "vertex_spacing";
+		/// <summary>
+		/// Cached name for the 'cull_margin' member.
+		/// </summary>
+		public new static readonly StringName CullMargin = "cull_margin";
+		/// <summary>
+		/// Cached name for the 'cast_shadows' member.
+		/// </summary>
+		public new static readonly StringName CastShadows = "cast_shadows";
+		/// <summary>
+		/// Cached name for the 'gi_mode' member.
+		/// </summary>
+		public new static readonly StringName GiMode = "gi_mode";
+		/// <summary>
+		/// Cached name for the 'render_layers' member.
+		/// </summary>
+		public new static readonly StringName RenderLayers = "render_layers";
+		/// <summary>
+		/// Cached name for the 'displacement_scale' member.
+		/// </summary>
+		public new static readonly StringName DisplacementScale = "displacement_scale";
+		/// <summary>
+		/// Cached name for the 'displacement_sharpness' member.
+		/// </summary>
+		public new static readonly StringName DisplacementSharpness = "displacement_sharpness";
+		/// <summary>
+		/// Cached name for the 'buffer_shader_override_enabled' member.
+		/// </summary>
+		public new static readonly StringName BufferShaderOverrideEnabled = "buffer_shader_override_enabled";
+		/// <summary>
+		/// Cached name for the 'buffer_shader_override' member.
+		/// </summary>
+		public new static readonly StringName BufferShaderOverride = "buffer_shader_override";
+		/// <summary>
+		/// Cached name for the 'ocean_enabled' member.
+		/// </summary>
+		public new static readonly StringName OceanEnabled = "ocean_enabled";
+		/// <summary>
+		/// Cached name for the 'ocean_mesh_lods' member.
+		/// </summary>
+		public new static readonly StringName OceanMeshLods = "ocean_mesh_lods";
+		/// <summary>
+		/// Cached name for the 'ocean_tessellation_level' member.
+		/// </summary>
+		public new static readonly StringName OceanTessellationLevel = "ocean_tessellation_level";
+		/// <summary>
+		/// Cached name for the 'ocean_mesh_size' member.
+		/// </summary>
+		public new static readonly StringName OceanMeshSize = "ocean_mesh_size";
+		/// <summary>
+		/// Cached name for the 'ocean_vertex_spacing' member.
+		/// </summary>
+		public new static readonly StringName OceanVertexSpacing = "ocean_vertex_spacing";
+		/// <summary>
+		/// Cached name for the 'ocean_cull_margin' member.
+		/// </summary>
+		public new static readonly StringName OceanCullMargin = "ocean_cull_margin";
+		/// <summary>
+		/// Cached name for the 'ocean_cast_shadows' member.
+		/// </summary>
+		public new static readonly StringName OceanCastShadows = "ocean_cast_shadows";
+		/// <summary>
+		/// Cached name for the 'ocean_gi_mode' member.
+		/// </summary>
+		public new static readonly StringName OceanGiMode = "ocean_gi_mode";
+		/// <summary>
+		/// Cached name for the 'ocean_render_layers' member.
+		/// </summary>
+		public new static readonly StringName OceanRenderLayers = "ocean_render_layers";
+		/// <summary>
+		/// Cached name for the 'ocean_material' member.
+		/// </summary>
+		public new static readonly StringName OceanMaterial = "ocean_material";
+		/// <summary>
+		/// Cached name for the 'mouse_layer' member.
+		/// </summary>
+		public new static readonly StringName MouseLayer = "mouse_layer";
+		/// <summary>
+		/// Cached name for the 'free_editor_textures' member.
+		/// </summary>
+		public new static readonly StringName FreeEditorTextures = "free_editor_textures";
+		/// <summary>
+		/// Cached name for the 'instancer_mode' member.
+		/// </summary>
+		public new static readonly StringName InstancerMode = "instancer_mode";
+		/// <summary>
+		/// Cached name for the 'show_region_grid' member.
+		/// </summary>
+		public new static readonly StringName ShowRegionGrid = "show_region_grid";
+		/// <summary>
+		/// Cached name for the 'show_instancer_grid' member.
+		/// </summary>
+		public new static readonly StringName ShowInstancerGrid = "show_instancer_grid";
+		/// <summary>
+		/// Cached name for the 'show_vertex_grid' member.
+		/// </summary>
+		public new static readonly StringName ShowVertexGrid = "show_vertex_grid";
+		/// <summary>
+		/// Cached name for the 'show_contours' member.
+		/// </summary>
+		public new static readonly StringName ShowContours = "show_contours";
+		/// <summary>
+		/// Cached name for the 'show_slope' member.
+		/// </summary>
+		public new static readonly StringName ShowSlope = "show_slope";
+		/// <summary>
+		/// Cached name for the 'show_navigation' member.
+		/// </summary>
+		public new static readonly StringName ShowNavigation = "show_navigation";
+		/// <summary>
+		/// Cached name for the 'show_checkered' member.
+		/// </summary>
+		public new static readonly StringName ShowCheckered = "show_checkered";
+		/// <summary>
+		/// Cached name for the 'show_grey' member.
+		/// </summary>
+		public new static readonly StringName ShowGrey = "show_grey";
+		/// <summary>
+		/// Cached name for the 'show_heightmap' member.
+		/// </summary>
+		public new static readonly StringName ShowHeightmap = "show_heightmap";
+		/// <summary>
+		/// Cached name for the 'show_jaggedness' member.
+		/// </summary>
+		public new static readonly StringName ShowJaggedness = "show_jaggedness";
+		/// <summary>
+		/// Cached name for the 'show_autoshader' member.
+		/// </summary>
+		public new static readonly StringName ShowAutoshader = "show_autoshader";
+		/// <summary>
+		/// Cached name for the 'show_control_texture' member.
+		/// </summary>
+		public new static readonly StringName ShowControlTexture = "show_control_texture";
+		/// <summary>
+		/// Cached name for the 'show_control_blend' member.
+		/// </summary>
+		public new static readonly StringName ShowControlBlend = "show_control_blend";
+		/// <summary>
+		/// Cached name for the 'show_control_angle' member.
+		/// </summary>
+		public new static readonly StringName ShowControlAngle = "show_control_angle";
+		/// <summary>
+		/// Cached name for the 'show_control_scale' member.
+		/// </summary>
+		public new static readonly StringName ShowControlScale = "show_control_scale";
+		/// <summary>
+		/// Cached name for the 'show_colormap' member.
+		/// </summary>
+		public new static readonly StringName ShowColormap = "show_colormap";
+		/// <summary>
+		/// Cached name for the 'show_roughmap' member.
+		/// </summary>
+		public new static readonly StringName ShowRoughmap = "show_roughmap";
+		/// <summary>
+		/// Cached name for the 'show_displacement_buffer' member.
+		/// </summary>
+		public new static readonly StringName ShowDisplacementBuffer = "show_displacement_buffer";
+		/// <summary>
+		/// Cached name for the 'show_texture_albedo' member.
+		/// </summary>
+		public new static readonly StringName ShowTextureAlbedo = "show_texture_albedo";
+		/// <summary>
+		/// Cached name for the 'show_texture_height' member.
+		/// </summary>
+		public new static readonly StringName ShowTextureHeight = "show_texture_height";
+		/// <summary>
+		/// Cached name for the 'show_texture_normal' member.
+		/// </summary>
+		public new static readonly StringName ShowTextureNormal = "show_texture_normal";
+		/// <summary>
+		/// Cached name for the 'show_texture_rough' member.
+		/// </summary>
+		public new static readonly StringName ShowTextureRough = "show_texture_rough";
+		/// <summary>
+		/// Cached name for the 'show_texture_ao' member.
+		/// </summary>
+		public new static readonly StringName ShowTextureAo = "show_texture_ao";
+	}
+
+	public new string Version
+	{
+		get => Get(GDExtensionPropertyName.Version).As<string>();
+	}
+
+	public new Terrain3D.DebugLevelEnum DebugLevel
+	{
+		get => Get(GDExtensionPropertyName.DebugLevel).As<Terrain3D.DebugLevelEnum>();
+		set => Set(GDExtensionPropertyName.DebugLevel, Variant.From(value));
+	}
+
+	public new string DataDirectory
+	{
+		get => Get(GDExtensionPropertyName.DataDirectory).As<string>();
+		set => Set(GDExtensionPropertyName.DataDirectory, value);
+	}
+
+	public new Terrain3DMaterial Material
+	{
+		get => Terrain3DMaterial.Bind(Get(GDExtensionPropertyName.Material).As<Resource>());
+		set => Set(GDExtensionPropertyName.Material, value);
+	}
+
+	public new Terrain3DAssets Assets
+	{
+		get => Terrain3DAssets.Bind(Get(GDExtensionPropertyName.Assets).As<Resource>());
+		set => Set(GDExtensionPropertyName.Assets, value);
+	}
+
+	public new Terrain3DData Data
+	{
+		get => Terrain3DData.Bind(Get(GDExtensionPropertyName.Data).As<GodotObject>());
+	}
+
+	public new Terrain3DCollision Collision
+	{
+		get => Terrain3DCollision.Bind(Get(GDExtensionPropertyName.Collision).As<GodotObject>());
+	}
+
+	public new Terrain3DInstancer Instancer
+	{
+		get => Terrain3DInstancer.Bind(Get(GDExtensionPropertyName.Instancer).As<GodotObject>());
+	}
+
+	public new Node3D LightTarget
+	{
+		get => Get(GDExtensionPropertyName.LightTarget).As<Node3D>();
+		set => Set(GDExtensionPropertyName.LightTarget, value);
+	}
+
+	public new Terrain3D.RegionSizeEnum RegionSize
+	{
+		get => Get(GDExtensionPropertyName.RegionSize).As<Terrain3D.RegionSizeEnum>();
+		set => Set(GDExtensionPropertyName.RegionSize, Variant.From(value));
+	}
+
+	public new double LabelDistance
+	{
+		get => Get(GDExtensionPropertyName.LabelDistance).As<double>();
+		set => Set(GDExtensionPropertyName.LabelDistance, value);
+	}
+
+	public new long LabelSize
+	{
+		get => Get(GDExtensionPropertyName.LabelSize).As<long>();
+		set => Set(GDExtensionPropertyName.LabelSize, value);
+	}
+
+	public new bool ShowGrid
+	{
+		get => Get(GDExtensionPropertyName.ShowGrid).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowGrid, value);
+	}
+
+	public new bool Save16Bit
+	{
+		get => Get(GDExtensionPropertyName.Save16Bit).As<bool>();
+		set => Set(GDExtensionPropertyName.Save16Bit, value);
+	}
+
+	public new long/* "Empty Enum Constant String" */ ColorCompressMode
+	{
+		get => Get(GDExtensionPropertyName.ColorCompressMode).As<long/* "Empty Enum Constant String" */>();
+		set => Set(GDExtensionPropertyName.ColorCompressMode, value);
+	}
+
+	public new bool KeepUncompressedColor
+	{
+		get => Get(GDExtensionPropertyName.KeepUncompressedColor).As<bool>();
+		set => Set(GDExtensionPropertyName.KeepUncompressedColor, value);
+	}
+
+	public new Terrain3DCollision.CollisionMode CollisionMode
+	{
+		get => Get(GDExtensionPropertyName.CollisionMode).As<Terrain3DCollision.CollisionMode>();
+		set => Set(GDExtensionPropertyName.CollisionMode, Variant.From(value));
+	}
+
+	public new long CollisionShapeSize
+	{
+		get => Get(GDExtensionPropertyName.CollisionShapeSize).As<long>();
+		set => Set(GDExtensionPropertyName.CollisionShapeSize, value);
+	}
+
+	public new long CollisionRadius
+	{
+		get => Get(GDExtensionPropertyName.CollisionRadius).As<long>();
+		set => Set(GDExtensionPropertyName.CollisionRadius, value);
+	}
+
+	public new Node3D CollisionTarget
+	{
+		get => Get(GDExtensionPropertyName.CollisionTarget).As<Node3D>();
+		set => Set(GDExtensionPropertyName.CollisionTarget, value);
+	}
+
+	public new long CollisionLayer
+	{
+		get => Get(GDExtensionPropertyName.CollisionLayer).As<long>();
+		set => Set(GDExtensionPropertyName.CollisionLayer, value);
+	}
+
+	public new long CollisionMask
+	{
+		get => Get(GDExtensionPropertyName.CollisionMask).As<long>();
+		set => Set(GDExtensionPropertyName.CollisionMask, value);
+	}
+
+	public new double CollisionPriority
+	{
+		get => Get(GDExtensionPropertyName.CollisionPriority).As<double>();
+		set => Set(GDExtensionPropertyName.CollisionPriority, value);
+	}
+
+	public new PhysicsMaterial PhysicsMaterial
+	{
+		get => Get(GDExtensionPropertyName.PhysicsMaterial).As<PhysicsMaterial>();
+		set => Set(GDExtensionPropertyName.PhysicsMaterial, value);
+	}
+
+	public new Node3D ClipmapTarget
+	{
+		get => Get(GDExtensionPropertyName.ClipmapTarget).As<Node3D>();
+		set => Set(GDExtensionPropertyName.ClipmapTarget, value);
+	}
+
+	public new long MeshLods
+	{
+		get => Get(GDExtensionPropertyName.MeshLods).As<long>();
+		set => Set(GDExtensionPropertyName.MeshLods, value);
+	}
+
+	public new long TessellationLevel
+	{
+		get => Get(GDExtensionPropertyName.TessellationLevel).As<long>();
+		set => Set(GDExtensionPropertyName.TessellationLevel, value);
+	}
+
+	public new long MeshSize
+	{
+		get => Get(GDExtensionPropertyName.MeshSize).As<long>();
+		set => Set(GDExtensionPropertyName.MeshSize, value);
+	}
+
+	public new double VertexSpacing
+	{
+		get => Get(GDExtensionPropertyName.VertexSpacing).As<double>();
+		set => Set(GDExtensionPropertyName.VertexSpacing, value);
+	}
+
+	public new double CullMargin
+	{
+		get => Get(GDExtensionPropertyName.CullMargin).As<double>();
+		set => Set(GDExtensionPropertyName.CullMargin, value);
+	}
+
+	public new RenderingServer.ShadowCastingSetting CastShadows
+	{
+		get => Get(GDExtensionPropertyName.CastShadows).As<RenderingServer.ShadowCastingSetting>();
+		set => Set(GDExtensionPropertyName.CastShadows, Variant.From(value));
+	}
+
+	public new GeometryInstance3D.GIModeEnum GiMode
+	{
+		get => Get(GDExtensionPropertyName.GiMode).As<GeometryInstance3D.GIModeEnum>();
+		set => Set(GDExtensionPropertyName.GiMode, Variant.From(value));
+	}
+
+	public new long RenderLayers
+	{
+		get => Get(GDExtensionPropertyName.RenderLayers).As<long>();
+		set => Set(GDExtensionPropertyName.RenderLayers, value);
+	}
+
+	public new double DisplacementScale
+	{
+		get => Get(GDExtensionPropertyName.DisplacementScale).As<double>();
+		set => Set(GDExtensionPropertyName.DisplacementScale, value);
+	}
+
+	public new double DisplacementSharpness
+	{
+		get => Get(GDExtensionPropertyName.DisplacementSharpness).As<double>();
+		set => Set(GDExtensionPropertyName.DisplacementSharpness, value);
+	}
+
+	public new bool BufferShaderOverrideEnabled
+	{
+		get => Get(GDExtensionPropertyName.BufferShaderOverrideEnabled).As<bool>();
+		set => Set(GDExtensionPropertyName.BufferShaderOverrideEnabled, value);
+	}
+
+	public new Shader BufferShaderOverride
+	{
+		get => Get(GDExtensionPropertyName.BufferShaderOverride).As<Shader>();
+		set => Set(GDExtensionPropertyName.BufferShaderOverride, value);
+	}
+
+	public new bool OceanEnabled
+	{
+		get => Get(GDExtensionPropertyName.OceanEnabled).As<bool>();
+		set => Set(GDExtensionPropertyName.OceanEnabled, value);
+	}
+
+	public new long OceanMeshLods
+	{
+		get => Get(GDExtensionPropertyName.OceanMeshLods).As<long>();
+		set => Set(GDExtensionPropertyName.OceanMeshLods, value);
+	}
+
+	public new long OceanTessellationLevel
+	{
+		get => Get(GDExtensionPropertyName.OceanTessellationLevel).As<long>();
+		set => Set(GDExtensionPropertyName.OceanTessellationLevel, value);
+	}
+
+	public new long OceanMeshSize
+	{
+		get => Get(GDExtensionPropertyName.OceanMeshSize).As<long>();
+		set => Set(GDExtensionPropertyName.OceanMeshSize, value);
+	}
+
+	public new double OceanVertexSpacing
+	{
+		get => Get(GDExtensionPropertyName.OceanVertexSpacing).As<double>();
+		set => Set(GDExtensionPropertyName.OceanVertexSpacing, value);
+	}
+
+	public new double OceanCullMargin
+	{
+		get => Get(GDExtensionPropertyName.OceanCullMargin).As<double>();
+		set => Set(GDExtensionPropertyName.OceanCullMargin, value);
+	}
+
+	public new RenderingServer.ShadowCastingSetting OceanCastShadows
+	{
+		get => Get(GDExtensionPropertyName.OceanCastShadows).As<RenderingServer.ShadowCastingSetting>();
+		set => Set(GDExtensionPropertyName.OceanCastShadows, Variant.From(value));
+	}
+
+	public new GeometryInstance3D.GIModeEnum OceanGiMode
+	{
+		get => Get(GDExtensionPropertyName.OceanGiMode).As<GeometryInstance3D.GIModeEnum>();
+		set => Set(GDExtensionPropertyName.OceanGiMode, Variant.From(value));
+	}
+
+	public new long OceanRenderLayers
+	{
+		get => Get(GDExtensionPropertyName.OceanRenderLayers).As<long>();
+		set => Set(GDExtensionPropertyName.OceanRenderLayers, value);
+	}
+
+	public new Material OceanMaterial
+	{
+		get => Get(GDExtensionPropertyName.OceanMaterial).As<Material>();
+		set => Set(GDExtensionPropertyName.OceanMaterial, value);
+	}
+
+	public new long MouseLayer
+	{
+		get => Get(GDExtensionPropertyName.MouseLayer).As<long>();
+		set => Set(GDExtensionPropertyName.MouseLayer, value);
+	}
+
+	public new bool FreeEditorTextures
+	{
+		get => Get(GDExtensionPropertyName.FreeEditorTextures).As<bool>();
+		set => Set(GDExtensionPropertyName.FreeEditorTextures, value);
+	}
+
+	public new Terrain3DInstancer.InstancerMode InstancerMode
+	{
+		get => Get(GDExtensionPropertyName.InstancerMode).As<Terrain3DInstancer.InstancerMode>();
+		set => Set(GDExtensionPropertyName.InstancerMode, Variant.From(value));
+	}
+
+	public new bool ShowRegionGrid
+	{
+		get => Get(GDExtensionPropertyName.ShowRegionGrid).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowRegionGrid, value);
+	}
+
+	public new bool ShowInstancerGrid
+	{
+		get => Get(GDExtensionPropertyName.ShowInstancerGrid).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowInstancerGrid, value);
+	}
+
+	public new bool ShowVertexGrid
+	{
+		get => Get(GDExtensionPropertyName.ShowVertexGrid).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowVertexGrid, value);
+	}
+
+	public new bool ShowContours
+	{
+		get => Get(GDExtensionPropertyName.ShowContours).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowContours, value);
+	}
+
+	public new bool ShowSlope
+	{
+		get => Get(GDExtensionPropertyName.ShowSlope).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowSlope, value);
+	}
+
+	public new bool ShowNavigation
+	{
+		get => Get(GDExtensionPropertyName.ShowNavigation).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowNavigation, value);
+	}
+
+	public new bool ShowCheckered
+	{
+		get => Get(GDExtensionPropertyName.ShowCheckered).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowCheckered, value);
+	}
+
+	public new bool ShowGrey
+	{
+		get => Get(GDExtensionPropertyName.ShowGrey).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowGrey, value);
+	}
+
+	public new bool ShowHeightmap
+	{
+		get => Get(GDExtensionPropertyName.ShowHeightmap).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowHeightmap, value);
+	}
+
+	public new bool ShowJaggedness
+	{
+		get => Get(GDExtensionPropertyName.ShowJaggedness).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowJaggedness, value);
+	}
+
+	public new bool ShowAutoshader
+	{
+		get => Get(GDExtensionPropertyName.ShowAutoshader).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowAutoshader, value);
+	}
+
+	public new bool ShowControlTexture
+	{
+		get => Get(GDExtensionPropertyName.ShowControlTexture).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowControlTexture, value);
+	}
+
+	public new bool ShowControlBlend
+	{
+		get => Get(GDExtensionPropertyName.ShowControlBlend).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowControlBlend, value);
+	}
+
+	public new bool ShowControlAngle
+	{
+		get => Get(GDExtensionPropertyName.ShowControlAngle).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowControlAngle, value);
+	}
+
+	public new bool ShowControlScale
+	{
+		get => Get(GDExtensionPropertyName.ShowControlScale).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowControlScale, value);
+	}
+
+	public new bool ShowColormap
+	{
+		get => Get(GDExtensionPropertyName.ShowColormap).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowColormap, value);
+	}
+
+	public new bool ShowRoughmap
+	{
+		get => Get(GDExtensionPropertyName.ShowRoughmap).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowRoughmap, value);
+	}
+
+	public new bool ShowDisplacementBuffer
+	{
+		get => Get(GDExtensionPropertyName.ShowDisplacementBuffer).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowDisplacementBuffer, value);
+	}
+
+	public new bool ShowTextureAlbedo
+	{
+		get => Get(GDExtensionPropertyName.ShowTextureAlbedo).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowTextureAlbedo, value);
+	}
+
+	public new bool ShowTextureHeight
+	{
+		get => Get(GDExtensionPropertyName.ShowTextureHeight).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowTextureHeight, value);
+	}
+
+	public new bool ShowTextureNormal
+	{
+		get => Get(GDExtensionPropertyName.ShowTextureNormal).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowTextureNormal, value);
+	}
+
+	public new bool ShowTextureRough
+	{
+		get => Get(GDExtensionPropertyName.ShowTextureRough).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowTextureRough, value);
+	}
+
+	public new bool ShowTextureAo
+	{
+		get => Get(GDExtensionPropertyName.ShowTextureAo).As<bool>();
+		set => Set(GDExtensionPropertyName.ShowTextureAo, value);
+	}
+
+	public new class GDExtensionMethodName : Node3D.MethodName
+	{
+		/// <summary>
+		/// Cached name for the 'set_editor' member.
+		/// </summary>
+		public new static readonly StringName SetEditor = "set_editor";
+		/// <summary>
+		/// Cached name for the 'get_editor' member.
+		/// </summary>
+		public new static readonly StringName GetEditor = "get_editor";
+		/// <summary>
+		/// Cached name for the 'set_plugin' member.
+		/// </summary>
+		public new static readonly StringName SetPlugin = "set_plugin";
+		/// <summary>
+		/// Cached name for the 'get_plugin' member.
+		/// </summary>
+		public new static readonly StringName GetPlugin = "get_plugin";
+		/// <summary>
+		/// Cached name for the 'set_camera' member.
+		/// </summary>
+		public new static readonly StringName SetCamera = "set_camera";
+		/// <summary>
+		/// Cached name for the 'get_camera' member.
+		/// </summary>
+		public new static readonly StringName GetCamera = "get_camera";
+		/// <summary>
+		/// Cached name for the 'get_clipmap_target_position' member.
+		/// </summary>
+		public new static readonly StringName GetClipmapTargetPosition = "get_clipmap_target_position";
+		/// <summary>
+		/// Cached name for the 'get_collision_target_position' member.
+		/// </summary>
+		public new static readonly StringName GetCollisionTargetPosition = "get_collision_target_position";
+		/// <summary>
+		/// Cached name for the 'snap' member.
+		/// </summary>
+		public new static readonly StringName Snap = "snap";
+		/// <summary>
+		/// Cached name for the 'get_intersection' member.
+		/// </summary>
+		public new static readonly StringName GetIntersection = "get_intersection";
+		/// <summary>
+		/// Cached name for the 'get_raycast_result' member.
+		/// </summary>
+		public new static readonly StringName GetRaycastResult = "get_raycast_result";
+		/// <summary>
+		/// Cached name for the 'bake_mesh' member.
+		/// </summary>
+		public new static readonly StringName BakeMesh = "bake_mesh";
+		/// <summary>
+		/// Cached name for the 'generate_nav_mesh_source_geometry' member.
+		/// </summary>
+		public new static readonly StringName GenerateNavMeshSourceGeometry = "generate_nav_mesh_source_geometry";
+	}
+
+	public new void SetEditor(Terrain3DEditor editor) => 
+		Call(GDExtensionMethodName.SetEditor, [editor]);
+
+	public new Terrain3DEditor GetEditor() => 
+		Terrain3DEditor.Bind(Call(GDExtensionMethodName.GetEditor, []).As<GodotObject>());
+
+	public new void SetPlugin(GodotObject plugin) => 
+		Call(GDExtensionMethodName.SetPlugin, [plugin]);
+
+	public new GodotObject GetPlugin() => 
+		Call(GDExtensionMethodName.GetPlugin, []).As<GodotObject>();
+
+	public new void SetCamera(Camera3D camera) => 
+		Call(GDExtensionMethodName.SetCamera, [camera]);
+
+	public new Camera3D GetCamera() => 
+		Call(GDExtensionMethodName.GetCamera, []).As<Camera3D>();
+
+	public new Vector3 GetClipmapTargetPosition() => 
+		Call(GDExtensionMethodName.GetClipmapTargetPosition, []).As<Vector3>();
+
+	public new Vector3 GetCollisionTargetPosition() => 
+		Call(GDExtensionMethodName.GetCollisionTargetPosition, []).As<Vector3>();
+
+	public new void Snap() => 
+		Call(GDExtensionMethodName.Snap, []);
+
+	public new Vector3 GetIntersection(Vector3 srcPos, Vector3 direction, bool gpuMode = false) => 
+		Call(GDExtensionMethodName.GetIntersection, [srcPos, direction, gpuMode]).As<Vector3>();
+
+	public new Godot.Collections.Dictionary GetRaycastResult(Vector3 srcPos, Vector3 direction, long collisionMask = 4294967295, bool excludeTerrain = false) => 
+		Call(GDExtensionMethodName.GetRaycastResult, [srcPos, direction, collisionMask, excludeTerrain]).As<Godot.Collections.Dictionary>();
+
+	public new Mesh BakeMesh(long lod, Terrain3DData.HeightFilter filter = Terrain3DData.HeightFilter.Nearest) => 
+		Call(GDExtensionMethodName.BakeMesh, [lod, Variant.From(filter)]).As<Mesh>();
+
+	public new Vector3[] GenerateNavMeshSourceGeometry(Aabb globalAabb, bool requireNav = true) => 
+		Call(GDExtensionMethodName.GenerateNavMeshSourceGeometry, [globalAabb, requireNav]).As<Vector3[]>();
+
+}
+
+file static class DebugLevelEnumExtensions
+{
+public static int SafeAsInt32(this Terrain3D.DebugLevelEnum enumValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3D.DebugLevelEnum enumValue, int defaultValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3D.DebugLevelEnum? enumValue, int defaultValue = 0) =>
+enumValue.HasValue ? Convert.ToInt32(enumValue.Value) : defaultValue;
+}
+
+file static class RegionSizeEnumExtensions
+{
+public static int SafeAsInt32(this Terrain3D.RegionSizeEnum enumValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3D.RegionSizeEnum enumValue, int defaultValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3D.RegionSizeEnum? enumValue, int defaultValue = 0) =>
+enumValue.HasValue ? Convert.ToInt32(enumValue.Value) : defaultValue;
+}
+
+file static class CompressModeExtensions
+{
+public static int SafeAsInt32(this Terrain3D.CompressMode enumValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3D.CompressMode enumValue, int defaultValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3D.CompressMode? enumValue, int defaultValue = 0) =>
+enumValue.HasValue ? Convert.ToInt32(enumValue.Value) : defaultValue;
+}

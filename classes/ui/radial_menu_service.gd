@@ -14,6 +14,7 @@ var _menu: RadialMenu
 var _active_action_id := ""
 var _pending_action_id := ""
 var _pending_time := 0.0
+var _pending_pressed := false
 var _open := false
 var _all_options: Array[RadialMenuOption] = []
 var _page_index := 0
@@ -95,22 +96,25 @@ func is_open() -> bool:
 func _process(delta: float) -> void:
 	var hold_threshold: float = _get_hold_threshold()
 	if _pending_action_id != "":
-		var pending: Dictionary = _wheels.get(_pending_action_id, {})
-		var action := String(pending.get("input_action", ""))
-		if action.is_empty() or not Input.is_action_pressed(action):
-			# 正常情况下由 _input 处理松开事件；这里作为兜底，防止事件丢失后
-			# 一直保留未完成的短按状态。
-			_pending_action_id = ""
-		else:
+		if not _can_start_wheel():
+			_clear_pending_input()
+		elif _pending_pressed:
 			_pending_time += delta
 			if _pending_time >= hold_threshold:
 				var action_id := _pending_action_id
-				_pending_action_id = ""
+				_clear_pending_input()
 				_open_wheel(action_id)
 	if _open:
 		var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
 		_menu.update_stick(stick)
 		if not _player or not is_instance_valid(_player) or not _player.is_alive:
+			close(false)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_clear_pending_input()
+		if _open:
 			close(false)
 
 
@@ -155,12 +159,14 @@ func _input(event: InputEvent) -> void:
 			if _pending_action_id == "" and not _open and _can_start_wheel():
 				_pending_action_id = action_id
 				_pending_time = 0.0
+				_pending_pressed = true
 				get_viewport().set_input_as_handled()
 				return
 		if event.is_action_released(action):
 			if _pending_action_id == action_id:
-				_pending_action_id = ""
-				if _pending_time < _get_hold_threshold():
+				var pressed_time := _pending_time
+				_clear_pending_input()
+				if pressed_time < _get_hold_threshold():
 					var callback: Callable = wheel.short_press
 					if callback.is_valid():
 						callback.call()
@@ -174,6 +180,12 @@ func _input(event: InputEvent) -> void:
 
 func _can_start_wheel() -> bool:
 	return _player and is_instance_valid(_player) and _player.is_alive and _player.controllable
+
+
+func _clear_pending_input() -> void:
+	_pending_action_id = ""
+	_pending_time = 0.0
+	_pending_pressed = false
 
 
 func _get_hold_threshold() -> float:

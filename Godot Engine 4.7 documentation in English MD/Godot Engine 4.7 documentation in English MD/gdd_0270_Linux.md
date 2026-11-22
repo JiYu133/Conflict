@@ -1,3 +1,0 @@
-# Linux
-
-- Wayland/X11

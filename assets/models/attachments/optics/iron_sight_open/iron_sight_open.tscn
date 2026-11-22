@@ -12,4 +12,4 @@ script = ExtResource("1_base")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0069319606, 0, -0.032653783)
 
 [node name="ADSAnchor" type="Marker3D" parent="." unique_id=46838991]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.008065897, 0.015700787, 0.08074514)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.008065897, 0.015700787, 0.1359733)

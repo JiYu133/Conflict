@@ -90,6 +90,12 @@ func _create_ui(ui: Node, node_name: String) -> Node:
 	return ui
 
 
+func _enter_tree() -> void:
+	# Deployment re-enters the tree with its existing player UI.
+	if is_instance_valid(radial_menu_service):
+		_register_radial_wheels()
+
+
 func _exit_tree() -> void:
 	# A newer local player may already own the service during a scene change.
 	# Only clear the registrations when this layer's player still owns it.

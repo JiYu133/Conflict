@@ -1,0 +1,555 @@
+#pragma warning disable CS0109
+using System;
+using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
+using Godot;
+using Godot.Collections;
+
+namespace TokisanGames;
+
+[Tool]
+public partial class Terrain3DMeshAsset : Terrain3DAssetResource
+{
+
+	private new static readonly StringName NativeName = new StringName("Terrain3DMeshAsset");
+
+	[Obsolete("Wrapper types cannot be constructed with constructors (it only instantiate the underlying Terrain3DMeshAsset object), please use the Instantiate() method instead.")]
+	protected Terrain3DMeshAsset() { }
+
+	private static CSharpScript _wrapperScriptAsset;
+
+	/// <summary>
+	/// Try to cast the script on the supplied <paramref name="godotObject"/> to the <see cref="Terrain3DMeshAsset"/> wrapper type,
+	/// if no script has attached to the type, or the script attached to the type does not inherit the <see cref="Terrain3DMeshAsset"/> wrapper type,
+	/// a new instance of the <see cref="Terrain3DMeshAsset"/> wrapper script will get attaches to the <paramref name="godotObject"/>.
+	/// </summary>
+	/// <remarks>The developer should only supply the <paramref name="godotObject"/> that represents the correct underlying GDExtension type.</remarks>
+	/// <param name="godotObject">The <paramref name="godotObject"/> that represents the correct underlying GDExtension type.</param>
+	/// <returns>The existing or a new instance of the <see cref="Terrain3DMeshAsset"/> wrapper script attached to the supplied <paramref name="godotObject"/>.</returns>
+	public new static Terrain3DMeshAsset Bind(GodotObject godotObject)
+	{
+		if (!IsInstanceValid(godotObject))
+			return null;
+
+		if (godotObject is Terrain3DMeshAsset wrapperScriptInstance)
+			return wrapperScriptInstance;
+
+#if DEBUG
+		var expectedType = typeof(Terrain3DMeshAsset);
+		var currentObjectClassName = godotObject.GetClass();
+		if (!ClassDB.IsParentClass(expectedType.Name, currentObjectClassName))
+			throw new InvalidOperationException($"The supplied GodotObject ({currentObjectClassName}) is not the {expectedType.Name} type.");
+#endif
+
+		if (_wrapperScriptAsset is null)
+		{
+			var scriptPathAttribute = typeof(Terrain3DMeshAsset).GetCustomAttributes<ScriptPathAttribute>().FirstOrDefault();
+			if (scriptPathAttribute is null) throw new UnreachableException();
+			_wrapperScriptAsset = ResourceLoader.Load<CSharpScript>(scriptPathAttribute.Path);
+		}
+
+		var instanceId = godotObject.GetInstanceId();
+		godotObject.SetScript(_wrapperScriptAsset);
+		return (Terrain3DMeshAsset)InstanceFromId(instanceId);
+	}
+
+	/// <summary>
+	/// Creates an instance of the GDExtension <see cref="Terrain3DMeshAsset"/> type, and attaches a wrapper script instance to it.
+	/// </summary>
+	/// <returns>The wrapper instance linked to the underlying GDExtension "Terrain3DMeshAsset" type.</returns>
+	public new static Terrain3DMeshAsset Instantiate() => Bind(ClassDB.Instantiate(NativeName).As<GodotObject>());
+
+	/// <summary>
+	/// Loads the resource at the specified path, then attaches the corresponding wrapper script instance.
+	/// </summary>
+	/// <param name="path">The resource path to load.</param>
+	/// <returns>The wrapper instance linked to the underlying GDExtension "Terrain3DMeshAsset" type.</returns>
+	public new static Terrain3DMeshAsset Load(string path) => Bind(ResourceLoader.Load(path));
+
+	public enum GenType
+	{
+		None = 0,
+		TextureCard = 1,
+		Max = 2,
+	}
+
+	public new class GDExtensionSignalName : Terrain3DAssetResource.GDExtensionSignalName
+	{
+		/// <summary>
+		/// Cached name for the 'id_changed' member.
+		/// </summary>
+		public new static readonly StringName IdChanged = "id_changed";
+		/// <summary>
+		/// Cached name for the 'setting_changed' member.
+		/// </summary>
+		public new static readonly StringName SettingChanged = "setting_changed";
+		/// <summary>
+		/// Cached name for the 'instancer_setting_changed' member.
+		/// </summary>
+		public new static readonly StringName InstancerSettingChanged = "instancer_setting_changed";
+		/// <summary>
+		/// Cached name for the 'instance_count_changed' member.
+		/// </summary>
+		public new static readonly StringName InstanceCountChanged = "instance_count_changed";
+	}
+
+	public new delegate void IdChangedSignalHandler(long type, long oldId, long newId);
+	private IdChangedSignalHandler _idChangedSignal;
+	private Callable _idChangedSignalCallable;
+	public event IdChangedSignalHandler IdChangedSignal
+	{
+		add
+		{
+			if (_idChangedSignal is null)
+			{
+				_idChangedSignalCallable = Callable.From((Variant type, Variant oldId, Variant newId) => 
+					_idChangedSignal?.Invoke(type.As<long>(), oldId.As<long>(), newId.As<long>()));
+				Connect(GDExtensionSignalName.IdChanged, _idChangedSignalCallable);
+			}
+			_idChangedSignal += value;
+		}
+		remove
+		{
+			_idChangedSignal -= value;
+			if (_idChangedSignal is not null) return;
+			Disconnect(GDExtensionSignalName.IdChanged, _idChangedSignalCallable);
+			_idChangedSignalCallable = default;
+		}
+	}
+
+	public new delegate void SettingChangedSignalHandler(long id);
+	private SettingChangedSignalHandler _settingChangedSignal;
+	private Callable _settingChangedSignalCallable;
+	public event SettingChangedSignalHandler SettingChangedSignal
+	{
+		add
+		{
+			if (_settingChangedSignal is null)
+			{
+				_settingChangedSignalCallable = Callable.From((Variant id) => 
+					_settingChangedSignal?.Invoke(id.As<long>()));
+				Connect(GDExtensionSignalName.SettingChanged, _settingChangedSignalCallable);
+			}
+			_settingChangedSignal += value;
+		}
+		remove
+		{
+			_settingChangedSignal -= value;
+			if (_settingChangedSignal is not null) return;
+			Disconnect(GDExtensionSignalName.SettingChanged, _settingChangedSignalCallable);
+			_settingChangedSignalCallable = default;
+		}
+	}
+
+	public new delegate void InstancerSettingChangedSignalHandler(long id);
+	private InstancerSettingChangedSignalHandler _instancerSettingChangedSignal;
+	private Callable _instancerSettingChangedSignalCallable;
+	public event InstancerSettingChangedSignalHandler InstancerSettingChangedSignal
+	{
+		add
+		{
+			if (_instancerSettingChangedSignal is null)
+			{
+				_instancerSettingChangedSignalCallable = Callable.From((Variant id) => 
+					_instancerSettingChangedSignal?.Invoke(id.As<long>()));
+				Connect(GDExtensionSignalName.InstancerSettingChanged, _instancerSettingChangedSignalCallable);
+			}
+			_instancerSettingChangedSignal += value;
+		}
+		remove
+		{
+			_instancerSettingChangedSignal -= value;
+			if (_instancerSettingChangedSignal is not null) return;
+			Disconnect(GDExtensionSignalName.InstancerSettingChanged, _instancerSettingChangedSignalCallable);
+			_instancerSettingChangedSignalCallable = default;
+		}
+	}
+
+	public new delegate void InstanceCountChangedSignalHandler();
+	private InstanceCountChangedSignalHandler _instanceCountChangedSignal;
+	private Callable _instanceCountChangedSignalCallable;
+	public event InstanceCountChangedSignalHandler InstanceCountChangedSignal
+	{
+		add
+		{
+			if (_instanceCountChangedSignal is null)
+			{
+				_instanceCountChangedSignalCallable = Callable.From(() => 
+					_instanceCountChangedSignal?.Invoke());
+				Connect(GDExtensionSignalName.InstanceCountChanged, _instanceCountChangedSignalCallable);
+			}
+			_instanceCountChangedSignal += value;
+		}
+		remove
+		{
+			_instanceCountChangedSignal -= value;
+			if (_instanceCountChangedSignal is not null) return;
+			Disconnect(GDExtensionSignalName.InstanceCountChanged, _instanceCountChangedSignalCallable);
+			_instanceCountChangedSignalCallable = default;
+		}
+	}
+
+	public new class GDExtensionPropertyName : Terrain3DAssetResource.GDExtensionPropertyName
+	{
+		/// <summary>
+		/// Cached name for the 'name' member.
+		/// </summary>
+		public new static readonly StringName Name = "name";
+		/// <summary>
+		/// Cached name for the 'id' member.
+		/// </summary>
+		public new static readonly StringName Id = "id";
+		/// <summary>
+		/// Cached name for the 'enabled' member.
+		/// </summary>
+		public new static readonly StringName Enabled = "enabled";
+		/// <summary>
+		/// Cached name for the 'scene_file' member.
+		/// </summary>
+		public new static readonly StringName SceneFile = "scene_file";
+		/// <summary>
+		/// Cached name for the 'generated_type' member.
+		/// </summary>
+		public new static readonly StringName GeneratedType = "generated_type";
+		/// <summary>
+		/// Cached name for the 'height_offset' member.
+		/// </summary>
+		public new static readonly StringName HeightOffset = "height_offset";
+		/// <summary>
+		/// Cached name for the 'density' member.
+		/// </summary>
+		public new static readonly StringName Density = "density";
+		/// <summary>
+		/// Cached name for the 'cast_shadows' member.
+		/// </summary>
+		public new static readonly StringName CastShadows = "cast_shadows";
+		/// <summary>
+		/// Cached name for the 'visibility_layers' member.
+		/// </summary>
+		public new static readonly StringName VisibilityLayers = "visibility_layers";
+		/// <summary>
+		/// Cached name for the 'material_override' member.
+		/// </summary>
+		public new static readonly StringName MaterialOverride = "material_override";
+		/// <summary>
+		/// Cached name for the 'material_overlay' member.
+		/// </summary>
+		public new static readonly StringName MaterialOverlay = "material_overlay";
+		/// <summary>
+		/// Cached name for the 'generated_faces' member.
+		/// </summary>
+		public new static readonly StringName GeneratedFaces = "generated_faces";
+		/// <summary>
+		/// Cached name for the 'generated_size' member.
+		/// </summary>
+		public new static readonly StringName GeneratedSize = "generated_size";
+		/// <summary>
+		/// Cached name for the 'lod_count' member.
+		/// </summary>
+		public new static readonly StringName LodCount = "lod_count";
+		/// <summary>
+		/// Cached name for the 'last_lod' member.
+		/// </summary>
+		public new static readonly StringName LastLod = "last_lod";
+		/// <summary>
+		/// Cached name for the 'last_shadow_lod' member.
+		/// </summary>
+		public new static readonly StringName LastShadowLod = "last_shadow_lod";
+		/// <summary>
+		/// Cached name for the 'shadow_impostor' member.
+		/// </summary>
+		public new static readonly StringName ShadowImpostor = "shadow_impostor";
+		/// <summary>
+		/// Cached name for the 'lod0_range' member.
+		/// </summary>
+		public new static readonly StringName Lod0Range = "lod0_range";
+		/// <summary>
+		/// Cached name for the 'lod1_range' member.
+		/// </summary>
+		public new static readonly StringName Lod1Range = "lod1_range";
+		/// <summary>
+		/// Cached name for the 'lod2_range' member.
+		/// </summary>
+		public new static readonly StringName Lod2Range = "lod2_range";
+		/// <summary>
+		/// Cached name for the 'lod3_range' member.
+		/// </summary>
+		public new static readonly StringName Lod3Range = "lod3_range";
+		/// <summary>
+		/// Cached name for the 'lod4_range' member.
+		/// </summary>
+		public new static readonly StringName Lod4Range = "lod4_range";
+		/// <summary>
+		/// Cached name for the 'lod5_range' member.
+		/// </summary>
+		public new static readonly StringName Lod5Range = "lod5_range";
+		/// <summary>
+		/// Cached name for the 'lod6_range' member.
+		/// </summary>
+		public new static readonly StringName Lod6Range = "lod6_range";
+		/// <summary>
+		/// Cached name for the 'lod7_range' member.
+		/// </summary>
+		public new static readonly StringName Lod7Range = "lod7_range";
+		/// <summary>
+		/// Cached name for the 'lod8_range' member.
+		/// </summary>
+		public new static readonly StringName Lod8Range = "lod8_range";
+		/// <summary>
+		/// Cached name for the 'lod9_range' member.
+		/// </summary>
+		public new static readonly StringName Lod9Range = "lod9_range";
+		/// <summary>
+		/// Cached name for the 'fade_margin' member.
+		/// </summary>
+		public new static readonly StringName FadeMargin = "fade_margin";
+	}
+
+	public new string Name
+	{
+		get => Get(GDExtensionPropertyName.Name).As<string>();
+		set => Set(GDExtensionPropertyName.Name, value);
+	}
+
+	public new long Id
+	{
+		get => Get(GDExtensionPropertyName.Id).As<long>();
+		set => Set(GDExtensionPropertyName.Id, value);
+	}
+
+	public new bool Enabled
+	{
+		get => Get(GDExtensionPropertyName.Enabled).As<bool>();
+		set => Set(GDExtensionPropertyName.Enabled, value);
+	}
+
+	public new PackedScene SceneFile
+	{
+		get => Get(GDExtensionPropertyName.SceneFile).As<PackedScene>();
+		set => Set(GDExtensionPropertyName.SceneFile, value);
+	}
+
+	public new Terrain3DMeshAsset.GenType GeneratedType
+	{
+		get => Get(GDExtensionPropertyName.GeneratedType).As<Terrain3DMeshAsset.GenType>();
+		set => Set(GDExtensionPropertyName.GeneratedType, Variant.From(value));
+	}
+
+	public new double HeightOffset
+	{
+		get => Get(GDExtensionPropertyName.HeightOffset).As<double>();
+		set => Set(GDExtensionPropertyName.HeightOffset, value);
+	}
+
+	public new double Density
+	{
+		get => Get(GDExtensionPropertyName.Density).As<double>();
+		set => Set(GDExtensionPropertyName.Density, value);
+	}
+
+	public new RenderingServer.ShadowCastingSetting CastShadows
+	{
+		get => Get(GDExtensionPropertyName.CastShadows).As<RenderingServer.ShadowCastingSetting>();
+		set => Set(GDExtensionPropertyName.CastShadows, Variant.From(value));
+	}
+
+	public new long VisibilityLayers
+	{
+		get => Get(GDExtensionPropertyName.VisibilityLayers).As<long>();
+		set => Set(GDExtensionPropertyName.VisibilityLayers, value);
+	}
+
+	public new Material MaterialOverride
+	{
+		get => Get(GDExtensionPropertyName.MaterialOverride).As<Material>();
+		set => Set(GDExtensionPropertyName.MaterialOverride, value);
+	}
+
+	public new Material MaterialOverlay
+	{
+		get => Get(GDExtensionPropertyName.MaterialOverlay).As<Material>();
+		set => Set(GDExtensionPropertyName.MaterialOverlay, value);
+	}
+
+	public new long GeneratedFaces
+	{
+		get => Get(GDExtensionPropertyName.GeneratedFaces).As<long>();
+		set => Set(GDExtensionPropertyName.GeneratedFaces, value);
+	}
+
+	public new Vector2 GeneratedSize
+	{
+		get => Get(GDExtensionPropertyName.GeneratedSize).As<Vector2>();
+		set => Set(GDExtensionPropertyName.GeneratedSize, value);
+	}
+
+	public new long LodCount
+	{
+		get => Get(GDExtensionPropertyName.LodCount).As<long>();
+	}
+
+	public new long LastLod
+	{
+		get => Get(GDExtensionPropertyName.LastLod).As<long>();
+		set => Set(GDExtensionPropertyName.LastLod, value);
+	}
+
+	public new long LastShadowLod
+	{
+		get => Get(GDExtensionPropertyName.LastShadowLod).As<long>();
+		set => Set(GDExtensionPropertyName.LastShadowLod, value);
+	}
+
+	public new long ShadowImpostor
+	{
+		get => Get(GDExtensionPropertyName.ShadowImpostor).As<long>();
+		set => Set(GDExtensionPropertyName.ShadowImpostor, value);
+	}
+
+	public new double Lod0Range
+	{
+		get => Get(GDExtensionPropertyName.Lod0Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod0Range, value);
+	}
+
+	public new double Lod1Range
+	{
+		get => Get(GDExtensionPropertyName.Lod1Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod1Range, value);
+	}
+
+	public new double Lod2Range
+	{
+		get => Get(GDExtensionPropertyName.Lod2Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod2Range, value);
+	}
+
+	public new double Lod3Range
+	{
+		get => Get(GDExtensionPropertyName.Lod3Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod3Range, value);
+	}
+
+	public new double Lod4Range
+	{
+		get => Get(GDExtensionPropertyName.Lod4Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod4Range, value);
+	}
+
+	public new double Lod5Range
+	{
+		get => Get(GDExtensionPropertyName.Lod5Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod5Range, value);
+	}
+
+	public new double Lod6Range
+	{
+		get => Get(GDExtensionPropertyName.Lod6Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod6Range, value);
+	}
+
+	public new double Lod7Range
+	{
+		get => Get(GDExtensionPropertyName.Lod7Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod7Range, value);
+	}
+
+	public new double Lod8Range
+	{
+		get => Get(GDExtensionPropertyName.Lod8Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod8Range, value);
+	}
+
+	public new double Lod9Range
+	{
+		get => Get(GDExtensionPropertyName.Lod9Range).As<double>();
+		set => Set(GDExtensionPropertyName.Lod9Range, value);
+	}
+
+	public new double FadeMargin
+	{
+		get => Get(GDExtensionPropertyName.FadeMargin).As<double>();
+		set => Set(GDExtensionPropertyName.FadeMargin, value);
+	}
+
+	public new class GDExtensionMethodName : Terrain3DAssetResource.GDExtensionMethodName
+	{
+		/// <summary>
+		/// Cached name for the 'clear' member.
+		/// </summary>
+		public new static readonly StringName Clear = "clear";
+		/// <summary>
+		/// Cached name for the 'set_highlighted' member.
+		/// </summary>
+		public new static readonly StringName SetHighlighted = "set_highlighted";
+		/// <summary>
+		/// Cached name for the 'is_highlighted' member.
+		/// </summary>
+		public new static readonly StringName IsHighlighted = "is_highlighted";
+		/// <summary>
+		/// Cached name for the 'get_highlight_color' member.
+		/// </summary>
+		public new static readonly StringName GetHighlightColor = "get_highlight_color";
+		/// <summary>
+		/// Cached name for the 'get_thumbnail' member.
+		/// </summary>
+		public new static readonly StringName GetThumbnail = "get_thumbnail";
+		/// <summary>
+		/// Cached name for the 'get_mesh' member.
+		/// </summary>
+		public new static readonly StringName GetMesh = "get_mesh";
+		/// <summary>
+		/// Cached name for the 'set_lod_range' member.
+		/// </summary>
+		public new static readonly StringName SetLodRange = "set_lod_range";
+		/// <summary>
+		/// Cached name for the 'get_lod_range' member.
+		/// </summary>
+		public new static readonly StringName GetLodRange = "get_lod_range";
+		/// <summary>
+		/// Cached name for the 'get_instance_count' member.
+		/// </summary>
+		public new static readonly StringName GetInstanceCount = "get_instance_count";
+	}
+
+	public new void Clear() => 
+		Call(GDExtensionMethodName.Clear, []);
+
+	public new void SetHighlighted(bool enabled) => 
+		Call(GDExtensionMethodName.SetHighlighted, [enabled]);
+
+	public new bool IsHighlighted() => 
+		Call(GDExtensionMethodName.IsHighlighted, []).As<bool>();
+
+	public new Color GetHighlightColor() => 
+		Call(GDExtensionMethodName.GetHighlightColor, []).As<Color>();
+
+	public new Texture2D GetThumbnail() => 
+		Call(GDExtensionMethodName.GetThumbnail, []).As<Texture2D>();
+
+	public new Mesh GetMesh(long lod = 0) => 
+		Call(GDExtensionMethodName.GetMesh, [lod]).As<Mesh>();
+
+	public new void SetLodRange(long lod, double distance) => 
+		Call(GDExtensionMethodName.SetLodRange, [lod, distance]);
+
+	public new double GetLodRange(long lod) => 
+		Call(GDExtensionMethodName.GetLodRange, [lod]).As<double>();
+
+	public new long GetInstanceCount() => 
+		Call(GDExtensionMethodName.GetInstanceCount, []).As<long>();
+
+}
+
+file static class GenTypeExtensions
+{
+public static int SafeAsInt32(this Terrain3DMeshAsset.GenType enumValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3DMeshAsset.GenType enumValue, int defaultValue) =>
+Convert.ToInt32(enumValue);
+
+public static int SafeAsInt32(this Terrain3DMeshAsset.GenType? enumValue, int defaultValue = 0) =>
+enumValue.HasValue ? Convert.ToInt32(enumValue.Value) : defaultValue;
+}

@@ -1,0 +1,5 @@
+[gd_scene format=3 uid="uid://cu0xjqd3pncyi"]
+
+[node name="Avdiivka" type="Node3D" unique_id=1057043358]
+
+[node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=516084785]
