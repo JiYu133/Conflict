@@ -1,6 +1,7 @@
 # IronSightAttachment
 
-**文件路径：** `Classes/Weapon/WeaponAttachments/scopes/iron_sight.gd`  
+**文件路径：** `classes/weapon/weaponattachments/scopes/iron_sight.gd`
+
 **继承自：** `OpticAttachment`
 
 ## 功能概述

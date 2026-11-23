@@ -1,6 +1,7 @@
 # EjectionComponent
 
-**文件路径：** `Classes/Weapon/Weapon/ejection_component.gd`  
+**文件路径：** `classes/weapon/ejection_component.gd`
+
 **继承自：** `Node`
 
 ## 功能概述
@@ -31,7 +32,7 @@
 返回弹壳弹出位置相对于武器节点原点的偏移向量，供上层在世界空间中换算后生成弹壳实体。
 
 ### `get_ejection_velocity() -> Vector3`
-返回弹壳弹出时的初始速度向量（世界空间方向），供刚体或粒子系统设置初速。
+返回弹壳局部参考初速；WeaponFXController 结合武器/抛壳挂点变换到世界空间并叠加携枪者速度。
 
 ## 依赖关系
 
@@ -44,3 +45,7 @@
 - 代码注释明确说明后续应根据武器模型自动检测挂载点（`Marker3D`/`BoneAttachment3D`）替代硬编码偏移。
 - 速度向量为局部参考方向，实际生成弹壳时需将其与武器节点的全局变换（`global_transform.basis`）相乘才能得到正确的世界空间速度。
 - 此组件不负责实例化弹壳场景或播放抛壳音效，只提供数据；弹壳的视觉和音频效果由上层系统实现。
+
+## 故障配置与接口
+
+reconfigure(barrel_cfg) 缓存枪管的底火可靠性参数；reconfigure_bolt(bolt_cfg) 更新抛壳失败概率。attempt_eject() 返回是否成功并更新 is_case_stuck()；clear_stuck_case() 清理卡壳状态。底火哑火判断本身在 BaseWeapon，双上膛升级由其循环逻辑处理，不读取旧 WeaponConfig 的故障字段。

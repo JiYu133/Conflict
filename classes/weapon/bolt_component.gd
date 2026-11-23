@@ -6,7 +6,7 @@ extends Node
 # 功能：模拟枪机开锁→后坐→复进→闭锁的完整自动循环。
 #       枪机状态是武器能否击发的关键前提。
 #       支持物理故障状态：卡弹（复进受阻）、双上膛（两发卡死）。
-# 依赖：WeaponConfig（需要 bolt_mass / recoil_spring_strength 等）
+# 依赖：BoltCarrierConfig 提供质量/复进簧，BarrelConfig 提供初速。
 # 信号：由 BaseWeapon._update_cycle() 在枪机到达特定位置时触发
 # ============================================================
 

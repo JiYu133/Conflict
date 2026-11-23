@@ -95,7 +95,7 @@ P3/P4 已实现：
 | `hit_position` | `Vector3` | 世界空间命中点 |
 | `source` | `Node` | 伤害来源 |
 | `is_penetrating` | `bool` | 是否为穿透伤；当前不直接参与 P2 求解 |
-| `impact_velocity` | `float` | 撞击速度；当前预留 |
+| `impact_velocity` | `float` | 撞击速度（m/s），弹道命中填写并可进入受力载荷的物理数据 |
 | `anchor_bone` | `String` | 伤道所属的骨骼/hitbox 名称 |
 | `local_entry` | `Vector3` | 命中点在 hitbox 局部空间中的位置 |
 | `local_direction` | `Vector3` | 弹道在 hitbox 局部空间中的方向 |

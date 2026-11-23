@@ -79,7 +79,7 @@ function Test-Godot {
                 ($report.PSObject.Properties['status'] -and $report.status -eq 'failed')) {
                 $errors += "runner reported failure: $line"
             }
-        } elseif ($line -match '^(ads_system|aim_breathing)=') {
+        } elseif ($line -match '^(ads_system|aim_breathing|combat_regression_check|force_pose_regression)=') {
             $completed = $true
             if ($line -notmatch '=ok failures=0$') { $errors += $line }
         } elseif ($line -match '^ik_rig_check=') {
@@ -112,6 +112,8 @@ foreach ($scene in @('title/title_screen', 'map/TestMap', 'map/test_map')) {
 }
 if (-not $Quick) {
     foreach ($runner in @(
+        'combat_regression_check',
+        'force_pose_regression',
         'ik_rig_check',
         'ads_system_runner',
         'aim_breathing_runner',

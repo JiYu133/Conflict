@@ -20,6 +20,7 @@ static func run_all() -> Dictionary:
 		"physical_recoil_angular_impulse_moves_bone": _physical_recoil_angular_impulse_moves_bone(),
 		"recoil_state_persists_after_payload_cleanup": _recoil_state_persists_after_payload_cleanup(),
 		"recoil_burst_accumulates_and_settles": _recoil_burst_accumulates_and_settles(),
+		"recoil_accumulates_at_force_capacity": _recoil_accumulates_at_force_capacity(),
 		"recoil_extreme_input_stays_finite": _recoil_extreme_input_stays_finite(),
 		"pending_impulse_is_one_shot": _pending_impulse_is_one_shot(),
 		"clearing_resets_pose_and_pending": _clearing_resets_pose_and_pending(),
@@ -104,6 +105,44 @@ static func _recoil_burst_accumulates_and_settles() -> bool:
 		and receiver._recoil_states.is_empty() \
 		and is_zero_approx(_angle_of(receiver, bone))
 	return settled
+
+
+## Evicting an old payload must not discard the newly accepted shot's momentum.
+static func _recoil_accumulates_at_force_capacity() -> bool:
+	var passed := true
+	for limit in [1, 8]:
+		var skeleton := _build_skeleton()
+		var config := _make_config()
+		config.max_active_forces = limit
+		config.recoil_bone_inertia_kg_m2["mixamorig_RightHand"] = 0.02
+		var receiver := _make_receiver(skeleton, config)
+		var bone := "mixamorig_RightHand"
+		var bone_idx := skeleton.find_bone(bone)
+		# Start with a full buffer of impact forces, then keep replacing entries.
+		for _index in limit:
+			receiver.apply_force(Vector3.BACK, 0.1, "mixamorig_Spine1", 5.0)
+		var impulse := Vector3.RIGHT * 0.04
+		for shot in limit + 3:
+			receiver.apply_recoil_impulse(Vector3.BACK, impulse, bone, 0.12)
+			var state: Dictionary = receiver._recoil_states.get(bone_idx, {})
+			var velocity: Vector3 = state.get("velocity", Vector3.ZERO)
+			var expected := impulse * float(shot + 1) / 0.02
+			passed = passed and velocity.is_equal_approx(expected)
+			passed = passed and receiver.get_active_force_count() == limit
+			passed = passed and receiver._active.back().physical_recoil
+		# Rejected input at capacity must not accidentally reuse the last payload.
+		var before: Vector3 = receiver._recoil_states.get(bone_idx, {}).get("velocity", Vector3.ZERO)
+		receiver.apply_recoil_impulse(Vector3(NAN, 0, 0), impulse, bone, 0.12)
+		var after: Vector3 = receiver._recoil_states.get(bone_idx, {}).get("velocity", Vector3.ZERO)
+		passed = passed and before.is_equal_approx(after)
+		receiver.update_pose_offsets(0.016)
+		passed = passed and _angle_of(receiver, bone) > 0.0
+		receiver.clear_recoil_state()
+		passed = passed and receiver.get_active_force_count() == 0
+		passed = passed and receiver._recoil_states.is_empty()
+		receiver.free()
+		skeleton.free()
+	return passed
 
 
 static func _recoil_extreme_input_stays_finite() -> bool:

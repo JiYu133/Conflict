@@ -64,19 +64,17 @@ func _apply_translation(skeleton: Skeleton3D, bone_idx: int, translation: Vector
 		skeleton.set_bone_pose_position(bone_idx, result)
 
 
-## 旋转叠加：沿用 SpineAimModifier 已验证的“父骨骼 basis⁻¹ → 全局旋转
-## → 骨骼局部”换算，使传入的世界空间轴在任意父级朝向下都成立。
+## Convert the world rotation through the current parent world orientation.
+## Bone pose rotation already includes the rest orientation.
 func _apply_rotation(skeleton: Skeleton3D, bone_idx: int, axis: Vector3, angle: float) -> void:
 	if not axis.is_finite() or not is_finite(angle) or absf(angle) <= 0.000001:
 		return
 	if axis.length_squared() <= 0.0000001:
 		return
 	var global_extra := Quaternion(axis.normalized(), angle)
-	var parent_basis := _parent_basis(skeleton, bone_idx)
-	var rest_basis := skeleton.get_bone_rest(bone_idx).basis.orthonormalized()
+	var parent_basis := _parent_basis(skeleton, bone_idx).orthonormalized()
 	var parent_extra := Quaternion(parent_basis).inverse() * global_extra * Quaternion(parent_basis)
-	var local_extra := Quaternion(rest_basis).inverse() * parent_extra * Quaternion(rest_basis)
-	var result := (local_extra * skeleton.get_bone_pose_rotation(bone_idx)).normalized()
+	var result := (parent_extra * skeleton.get_bone_pose_rotation(bone_idx)).normalized()
 	if result.is_finite():
 		skeleton.set_bone_pose_rotation(bone_idx, result)
 
@@ -84,5 +82,5 @@ func _apply_rotation(skeleton: Skeleton3D, bone_idx: int, axis: Vector3, angle: 
 func _parent_basis(skeleton: Skeleton3D, bone_idx: int) -> Basis:
 	var parent_idx := skeleton.get_bone_parent(bone_idx)
 	if parent_idx < 0:
-		return Basis.IDENTITY
-	return skeleton.get_bone_global_pose(parent_idx).basis.orthonormalized()
+		return skeleton.global_basis
+	return skeleton.global_basis * skeleton.get_bone_global_pose(parent_idx).basis

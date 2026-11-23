@@ -1,6 +1,6 @@
 extends LoggerService
 
-## 用法：Logger.info("模块名", "消息")
+## 用法：GlobalLogger.info("模块名", "消息")
 ## 级别：DEBUG < INFO < WARN < ERROR
 
 enum Level {

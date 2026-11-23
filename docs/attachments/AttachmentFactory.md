@@ -7,9 +7,9 @@
 
 统一创建配件实例的入口。调用方只需传入 `AttachmentConfig`，工厂按以下优先级创建实例：
 
-1. `cfg.no_visual = true` → 直接返回裸 `BaseAttachment`（无任何子节点）
+1. `cfg.no_visual = true` 且不是 SELECTOR_SWITCH → 返回空 BaseAttachment；快慢机继续走专用类型分支
 2. `cfg.attachment_scene` 有效 → 实例化场景，根节点必须是 `BaseAttachment`
-3. 场景缺失或根节点类型错误 → `_create_default_placeholder()` 用 BoxMesh 动态生成占位模型
+3. 场景缺失或实例化失败 → 尝试 `_create_default_placeholder()`；根节点不是 BaseAttachment 时直接返回 null
 4. 实例化成功后调用 `attachment_root.initialize(cfg, weapon)` 注入配置
 
 ## 公开方法

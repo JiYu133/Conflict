@@ -6,7 +6,7 @@ extends Node
 # 功能：确定弹壳从抛壳窗飞出时的位置和初始速度。
 #       被击发后的弹壳由枪机后坐抽出→抛壳挺撞击→抛出枪身。
 #       支持物理故障模拟：抛壳有概率失败，导致烟囱卡弹或双上膛。
-# 依赖：WeaponConfig（weapon_type / stovepipe_chance / double_feed_chance）
+# 依赖：WeaponConfig 保留初始化接口；枪管/枪机框配置提供可靠性参数。
 # ============================================================
 
 var config: WeaponConfig
@@ -68,7 +68,7 @@ func clear_stuck_case() -> void:
 func get_ejection_position() -> Vector3:
 	return _ejection_port_position
 
-## 获取弹壳初始速度（世界空间方向）
+## 获取弹壳局部参考速度；WeaponFXController 再转换到世界空间。
 func get_ejection_velocity() -> Vector3:
 	return _ejection_velocity
 

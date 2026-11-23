@@ -1,6 +1,7 @@
 # VerticalGripAttachment
 
-**文件路径：** `Classes/Weapon/WeaponAttachments/grips/vertical_grip.gd`  
+**文件路径：** `classes/weapon/weaponattachments/grips/vertical_grip.gd`
+
 **继承自：** `BaseAttachment`
 
 ## 功能概述

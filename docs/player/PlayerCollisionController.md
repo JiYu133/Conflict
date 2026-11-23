@@ -64,6 +64,4 @@ PlayerCollisionController
 
 ## 测试
 
-- `tests/hitbox_driven_collision_check.tscn`：验证医疗系统只发布 AABB、唯一碰撞所有权、八角点包围、未知 3D 包络限速、自动拟合水平胶囊，以及 steady-state 不重复写 physics shape。
-- `tests/prone_exit_collision_check.tscn`：验证无 hitbox fallback 在趴下起身时平滑、脚底不漂移，并验证低天花板会拒绝扩张且姿态回滚。
-- `tests/live_prone_collision_check.tscn`：运行真实趴下/起身动画，检查竖直→水平→竖直主轴、合理的站/趴垂直尺寸、半径/高度/旋转限速、相机三维单帧位移、角色根节点、空地 clearance 判定和地面接触。
+此前的专用碰撞运行器已移除。当前 ik_rig_check 间接覆盖真实站蹲/斜坡接触，但不覆盖全部包络、低天花板拒绝或俯卧起身碰撞不变量。测试清单及缺口见 [Testing](../Testing.md)。

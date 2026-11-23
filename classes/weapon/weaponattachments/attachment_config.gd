@@ -94,7 +94,7 @@ extends Resource
 ## 枪口长度修正（m），消音器填正值 / Muzzle length modifier in m; positive for suppressors
 @export var length_modifier: float = 0.0
 
-## 伤害修正，消音器亚音速弹可能为负 / Damage modifier; subsonic suppressors may be negative
+## 保留的伤害修正字段，当前无运行时消费者 / Reserved damage modifier; currently unused at runtime
 @export var damage_modifier: float = 0.0
 
 # ──────────────────────────── 视觉 ────────────────────────────
@@ -105,7 +105,7 @@ extends Resource
 ## 旧版单值安装点；preferred_slot_names 为空时使用它 / Legacy single mount point
 @export var mount_point_name: String = ""
 
-## true = 纯数值配件，不生成任何 3D 节点（扳机组、弹簧等纯参数配件适用）
+## true = 不实例化视觉场景，仍创建配件 Node3D；快慢机使用专用分支
 @export var no_visual: bool = false
 
 # ── 导轨位置调整 ────────────────────────────────────────────────

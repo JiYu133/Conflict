@@ -1,6 +1,7 @@
 # OpticAttachment
 
-**文件路径：** `Classes/Weapon/WeaponAttachments/scopes/optic_attachment.gd`  
+**文件路径：** `classes/weapon/weaponattachments/scopes/optic_attachment.gd`
+
 **继承自：** `BaseAttachment`
 
 ## 功能概述

@@ -1,94 +1,37 @@
 # PlayerConfig
 
 **文件路径：** `classes/player/config/player_config.gd`
+
 **继承自：** `Resource`
 
-## 功能概述
+玩家子系统配置组合资源，默认 assets/config/player/player_config.tres。移动、姿态和碰撞参数编辑 movement_config 引用的 MovementConfig，而不是旧版平铺属性。
 
-玩家的全局配置资源。以 `.tres` 文件形式在编辑器中创建并填写，涵盖移动物理参数、运动手感微调、碰撞体尺寸、子配置资源引用（摄像机、模型查找规则）以及初始武器。由 `BasePlayer` 在初始化时读取并分发给各子系统。
+| 字段 | 类型 | 脚本默认值 |
+|---|---|---|
+| `movement_config` | `MovementConfig` | `null` |
+| `model_scene` | `PackedScene` | `null` |
+| `model_config` | `ModelLookupConfig` | `null` |
+| `camera_config` | `CameraConfig` | `null` |
+| `aim_config` | `AimConfig` | `null` |
+| `walk_enter_speed_sq` | `float` | `0.25` |
+| `walk_exit_speed_sq` | `float` | `0.0225` |
+| `land_recovery_time` | `float` | `0.3` |
+| `camera_stand_eye_height` | `float` | `1.6` |
+| `camera_crouch_eye_height` | `float` | `1.0` |
+| `ragdoll_config` | `RagdollConfig` | `null` |
+| `force_config` | `ForceConfig` | `null` |
+| `ik_config` | `IKRigConfig` | `null` |
+| `spine_aim_config` | `SpineAimConfig` | `null` |
+| `starting_weapon` | `WeaponConfig` | `null` |
+| `health_config` | `HealthConfig` | `null` |
+| `blood_effect_config` | `BloodEffectConfig` | `null` |
+| `stamina_config` | `StaminaConfig` | `null` |
 
-## 配置参数（@export var）
 
-### 移动参数
+movement_config 负责速度、重力、姿态、转身与模型高度，见 [MovementConfig](MovementConfig.md)。model_config 是节点查找，camera_config 是相机弹簧；ik_config 配置统一双臂/双腿 IKRig，spine_aim_config 配置脊柱，aim_config 配置 ADS 速率和呼吸。ragdoll、force、health、blood_effect、stamina 配置分别归各子系统所有。
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `walk_speed` | `float` | `1.5` | 行走速度（m/s），参考负重士兵战术行走 1.2–1.5 m/s |
-| `run_speed` | `float` | `3.5` | 奔跑速度（m/s），参考负重士兵持续跑步 3.5–4.0 m/s |
-| `ground_acceleration` | `float` | `6.0` | 地面加速度（m/s²），起步约需 0.6s 到达步行速度 |
-| `jump_force` | `float` | `3.2` | 跳跃初速度（m/s） |
-| `gravity` | `float` | `9.8` | 重力加速度（m/s²） |
-| `air_acceleration` | `float` | `1.0` | 空中加速度（m/s²） |
-| `air_deceleration` | `float` | `2.0` | 空中减速度（m/s²） |
-| `input_dead_zone` | `float` | `0.1` | 输入死区阈值，低于此长度的方向向量视为无输入（适用于摇杆/键盘） |
-| `floor_snap_velocity` | `float` | `-0.5` | 落地时 Y 速度钳制值，防止下坡累积下冲速度；不宜设为 0（会导致台阶弹跳）或过大负值（会穿地） |
-| `backward_dot_threshold` | `float` | `-0.3` | 后退判定 dot product 阈值，低于此值视为向后移动，乘以 `backward_speed_ratio` 限速 |
-| `lateral_dot_threshold` | `float` | `0.7` | 横移判定 dot product 阈值，高于此值视为纯侧移，乘以 `lateral_speed_ratio` 限速 |
-| `turn_decel_min_speed` | `float` | `0.01` | 启用转向减速的最低速度（m/s）；**注意**：代码中比较的是 `length_squared() > value²`，因此此字段的语义是速度（m/s），不是 length_squared |
-| `air_input_threshold` | `float` | `0.1` | 空中加速/减速切换的目标速度阈值（m/s）；低于此值使用 `air_deceleration`，高于则用 `air_acceleration` |
-| `moving_body_turn_speed_degrees` | `float` | `360.0` | 移动时下半身/玩家根节点追随实际水平速度方向的最大转向速度（度/秒）；上半身瞄准由脊柱修正独立完成 |
-| `moving_body_velocity_yaw_threshold_degrees` | `float` | `120.0` | 速度与视角夹角不超过此值时身体才转向速度；超过阈值的后方移动保持身体朝向视角，以播放后退动画 |
+walk_enter_speed_sq / walk_exit_speed_sq / land_recovery_time 属于动画状态阈值；camera_stand_eye_height / camera_crouch_eye_height 用作缺少有效头部挂点时的眼高 fallback。
 
-### 运动手感
+walk_speed、model_y_offset 等旧只读 getter 仍委托 movement_config，但不是可独立保存的导出字段；缺失 movement_config 时的 fallback 也不保证等于新建 MovementConfig 的默认值。
 
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `burst_strength` | `float` | `1.2` | 起步爆发峰值速度倍率 |
-| `burst_duration` | `float` | `0.12` | 起步爆发持续时间（秒） |
-| `gait_frequency_walk` | `float` | `1.8` | 走路步频（Hz），约 108 步/分 |
-| `gait_frequency_run` | `float` | `2.5` | 跑步步频（Hz），约 150 步/分 |
-| `gait_amplitude_walk` | `float` | `0.06` | 走路速度波动振幅（m/s） |
-| `gait_amplitude_run` | `float` | `0.12` | 跑步速度波动振幅（m/s） |
-| `turn_decel_factor` | `float` | `0.85` | 转向减速强度，0.0 = 不减速，1.0 = 完全余弦削减 |
-| `stop_brake_strength` | `float` | `5.0` | 停止制动强度（m/s²），避免瞬间急停 |
-| `lateral_speed_ratio` | `float` | `0.8` | 横向（纯侧移）速度上限比例 |
-| `backward_speed_ratio` | `float` | `0.7` | 后退速度上限比例 |
-
-### 模型配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `model_scene` | `PackedScene` | `null` | 玩家 3D 模型场景（.tscn / .glb） |
-| `model_config` | `ModelLookupConfig` | `null` | 节点查找规则资源 |
-| `camera_config` | `CameraConfig` | `null` | 摄像机与视角效果配置资源 |
-| `collision_shape_height` | `float` | `1.8` | 碰撞胶囊体高度（m） |
-| `collision_shape_radius` | `float` | `0.4` | 碰撞胶囊体半径（m） |
-| `hitbox_driven_collision` | `bool` | `true` | 从当前 BodyHitbox 自动推导环境胶囊高度 |
-| `collision_bounds_margin` | `float` | `0.025` | 自动边界通用安全余量（m） |
-| `collision_bounds_follow_speed` | `float` | `2.0` | 胶囊边界最大追随速度（m/s） |
-| `collision_bounds_min_height` | `float` | `0.6` | 自动胶囊最小合法高度（m） |
-| `collision_bounds_max_height` | `float` | `3.0` | 异常动作保护的最大高度（m） |
-| `collision_bounds_max_radius` | `float` | `0.75` | 异常包络保护的最大胶囊半径（m） |
-| `collision_axis_switch_ratio` | `float` | `1.15` | 新主轴切换所需的长度优势比例 |
-| `collision_axis_switch_stability_frames` | `int` | `4` | 主轴候选连续稳定物理帧数 |
-| `collision_axis_follow_speed_degrees` | `float` | `240.0` | 胶囊主轴最大旋转速度（度/秒） |
-
-### 武器配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `starting_weapon` | `WeaponConfig` | `null` | 初始武器配置资源 |
-
-### 子系统配置
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `ragdoll_config` | `RagdollConfig` | `null` | 死亡布娃娃物理配置 |
-| `force_config` | `ForceConfig` | `null` | 通用力系统配置；为空时使用代码默认值。详见 [ForceSystem](ForceSystem.md) |
-| `ik_config` | `IKRigConfig` | `null` | 双臂握枪与双脚贴地参数（见 [IKRig](IKRig.md)） |
-| `spine_aim_config` | `SpineAimConfig` | `null` | 脊柱视角旋转参数 |
-| `health_config` | `HealthConfig` | `null` | 医疗系统参数 |
-| `blood_effect_config` | `BloodEffectConfig` | `null` | 死亡渗血表现参数 |
-| `stamina_config` | `StaminaConfig` | `null` | 体力系统参数 |
-
-## 依赖关系
-
-- **依赖：** `ModelLookupConfig`、`CameraConfig`、`WeaponConfig`、`MovementConfig`、`RagdollConfig`、`ForceConfig`
-- **被依赖：** `BasePlayer`、`PlayerMovementController`、`PlayerCameraController`、`IKRig`
-
-## 注意事项
-
-- `walk_speed` 和 `run_speed` 的值需与 `CameraConfig.walk_speed_reference` / `max_speed_reference` 保持一致，否则头部摆动的频率切换和振幅归一化会出现偏差。
-- `model_scene` 为空时 `BasePlayer._ready()` 不会调用 `load_model()`，所有依赖模型加载完成后才初始化的子系统（布娃娃、动画控制器、武器挂载）将不可用。
-- `turn_decel_min_speed` 是速度单位（m/s），代码中比较 `h_vel_2d.length_squared() > turn_decel_min_speed²`，因此将此值设为 `0.1` 表示 0.1 m/s 阈值，而不是 `0.01`（0.01 的平方 = 0.0001，等效于 0.01 m/s，几乎任何移动都会触发转向减速）。
-- `floor_snap_velocity` 不应设为正值或 0；它的唯一作用是防止 `move_and_slide` 在楼梯/斜坡上因连续落地帧而累积向下速度。
+加载模型必须传有效 PlayerConfig 和 model_scene。个别子系统支持 null 配置，不能推导出所有入口都接受空 PlayerConfig。

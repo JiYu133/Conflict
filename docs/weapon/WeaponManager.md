@@ -12,7 +12,8 @@
 | 信号 | 参数 | 说明 |
 |------|------|------|
 | `weapon_changed` | `new_weapon: BaseWeapon` | 装备新武器时 |
-| `weapon_fired` | `weapon: BaseWeapon` | 预留 |
+| `weapon_fired` | `weapon: BaseWeapon` | 当前保留信号，未主动 emit |
+| `aiming_changed` | `aiming: bool` | 有效 ADS 状态变化，接入手 IK 和武器展示 |
 | `attachment_equipped` | `slot_name, attachment_name` | 配件装备后 |
 | `attachment_detached` | `slot_name` | 配件卸下后 |
 | `weapon_stats_changed` | — | 配件变更导致数值重算后 |
@@ -80,3 +81,7 @@ default_attachment_configs = [barrel_cfg, mag_cfg, handguard_cfg, dust_cover_cfg
 `set_aiming()` 会触发 `_apply_ads_state()`，自动读取：
 - 配件瞄具的 `fov_override`（优先于 `config.ads_fov_override`）
 - 配件的 `ads_speed_modifier`（叠加到 `config.ads_time`）
+
+set_aiming() 在没有有效武器时不会启用 ADS，重复状态不重复广播；cancel_aiming() 显式退出。换弹、排障和切换武器会取消 ADS。FOV 与有效 ADS 时间交给 PlayerCameraController，完整武器姿态由 [WeaponPresentationController](../player/WeaponPresentationController.md) 独立处理。
+
+AI 使用 load_and_equip_staggered() 分帧装配；调用方需等待 BasePlayer.is_ai_runtime_ready()，不能假定创建 Bot 后三帧就有完整武器。

@@ -1,56 +1,23 @@
 # RecoilComponent
 
 **文件路径：** `classes/weapon/recoil_component.gd`
+
 **继承自：** `Node`
 
-## 功能概述
+RecoilPhysicsModel 计算同一发的线性/角冲量与俯仰/偏航角速度。组件保留自身阻尼角度状态；骨骼受力和镜头弹簧各自消费 physical_recoil_applied 信号。
 
-物理驱动的后座组件。每发子弹根据弹头动量、燃气冲量、武器总质量、质心、转动惯量和力矩臂，计算一次俯仰/偏航角速度冲量；随后用弹簧阻尼系统将摄像机偏移回正。
+| 方法 | 行为 |
+|---|---|
+| `initialize(cfg, am = null)` | 创建模型并重建武器/配件物理数据 |
+| `rebuild_physics()` | 配件变化后重算模型，重置本组件角度/速度 |
+| `apply_recoil(control_multiplier = 1.0)` | 累加单发角速度，发物理冲量数据 |
+| `set_control_multiplier(value)` | 调整本组件后续回正刚度/阻尼倍率 |
+| `reset()` | 清零本组件角度/速度 |
+| `get_recoil_offset()` / `get_recoil_horizontal_offset()` | 返回本组件 pitch/yaw 偏移，单位为度 |
+| `get_physics_snapshot()` | 模型快照，供 UI/调试读取 |
 
-它不再读取 `recoil_vertical_modifier` / `recoil_horizontal_modifier` 等角度修正字段。旧字段仅保留为兼容数据，不参与后座计算。
+不存在 get_camera_pitch_offset()/get_camera_yaw_offset()。PlayerCameraController 监听射击信号后运行独立视觉弹簧，不按帧读取上述角度 getter。
 
-## 初始化
+信号数据为 linear_impulse_local（N·s）、angular_impulse_local（N·m·s）、angular_velocity（Vector2，rad/s）。BaseWeapon 交给 BasePlayer.apply_weapon_recoil()，由 [ForceSystem](../player/ForceSystem.md) 分配到有效肩/手骨骼；相机独立订阅同一发结果。
 
-```gdscript
-initialize(cfg: WeaponConfig, am: AttachmentManager = null) -> void
-```
-
-创建 `RecoilPhysicsModel` 并根据当前武器和配件重建物理快照。
-
-## 公开方法
-
-每次 `apply_recoil()` 会同时发出 `physical_recoil_applied(recoil_data)`。数据包含同一发使用的线性冲量、枪械角冲量和相应角速度，供玩家 `ForceReceiver` 按枪托、主手、辅手接触刚度分配到骨骼；镜头弹簧和骨骼受力复用同一发随机装药结果。
-
-`recoil_data` 字段：`linear_impulse_local`（N*s）、`angular_impulse_local`（N*m*s）、`angular_velocity`（rad/s）。
-
-```gdscript
-rebuild_physics() -> void
-```
-
-配件装卸后由 `BaseWeapon._reconfigure_from_attachments()` 调用，重新计算质量、质心、转动惯量、燃气冲量和控枪参数。
-
-```gdscript
-apply_recoil(control_multiplier: float = 1.0) -> void
-```
-
-对当前后座状态施加一发子弹的角速度冲量。`control_multiplier` 只影响后续弹簧刚度/阻尼，不改变单发冲量。
-
-```gdscript
-get_camera_pitch_offset() -> float
-get_camera_yaw_offset() -> float
-```
-
-返回当前瞬态后座偏移（弧度），由 `PlayerCameraController` 每帧叠加到鼠标视角上。
-
-```gdscript
-get_physics_snapshot() -> Dictionary
-```
-
-返回 `RecoilPhysicsModel` 的物理快照，供改装 UI 和调试使用。
-
-## 依赖关系
-
-- `RecoilPhysicsModel`：冲量、力矩、转动惯量、弹簧阻尼计算
-- `BarrelConfig`：弹头质量、初速、装药质量、燃气速度
-- `MuzzleDeviceConfig` / `GripConfig` / `StockConfig`：枪口燃气向量、握把支撑、肩部接触点
-- `PlayerCameraController`：每帧读取 `get_camera_*_offset()` 并应用到摄像机
+BaseWeapon._apply_attachment_change() 触发重建；数据来自 BarrelConfig、StockConfig、GripConfig、MuzzleDeviceConfig 和 WeaponConfig。旧 recoil_vertical/kick_* 仅为兼容数据。当前模型 receiver COM 分子仍缺少质量权重，该 P3 数据问题尚未在本轮文档工作中修复。

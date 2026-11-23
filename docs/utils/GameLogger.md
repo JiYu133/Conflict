@@ -1,7 +1,8 @@
 # GameLogger
 
-**文件路径：** `classes/services/game_logger.gd`  
-**继承自：** `LoggerService`（`Node`）
+**文件路径：** `classes/services/game_logger.gd`
+
+**继承自：** `LoggerService`（继承 `Node`）
 
 ## 功能概述
 
@@ -9,7 +10,7 @@
 
 ## 初始化
 
-无 `initialize()` 方法。以 Autoload `GlobalLogger` 注册。`LoggerService` 提供相同的四级接口及静默默认实现；支持注入的组件可替换其 `_logger`。
+无 `initialize()` 方法。作为 `Node` 使用，通常以 Autoload 方式注册为全局单例（项目中注册名为 `GlobalLogger`），在场景树就绪后即可使用。
 
 典型用法：
 ```
@@ -54,3 +55,7 @@ GlobalLogger.error("AttachmentFactory", "配件场景实例化失败")
 - `Time.get_time_string_from_system()` 返回本地时间，不含日期，长时间运行的会话中无法区分跨天的日志。
 - 本类不写入文件，所有输出仅在运行时可见（控制台 / 编辑器输出面板），无持久化能力。
 - WARN 级别会同时 `print` 和 `push_warning`，日志会在控制台出现两次（一次普通输出，一次来自 `push_warning` 的引擎内部回显，取决于编辑器版本）。
+
+project.godot 使用显式源码路径 *res://classes/services/game_logger.gd 注册 autoload，不依赖开发机 UID 缓存。干净导入检查见 [Testing](../Testing.md)。
+
+LoggerService 基类提供相同的静默 debug/info/warn/error 接口，可注入支持日志替换的组件；GlobalLogger 是默认输出实现。
